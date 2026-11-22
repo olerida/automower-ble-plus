@@ -1,0 +1,98 @@
+"""The main Home Assistant lawn mower entity."""
+
+from automower_ble.protocol import MowerActivity, MowerState
+from homeassistant.components.lawn_mower import (
+    LawnMowerActivity,
+    LawnMowerEntity,
+    LawnMowerEntityFeature,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from .coordinator import MowerEntry
+from .entity import MowerEntity
+from .schedule import ScheduleTask
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: MowerEntry, add_entities: AddConfigEntryEntitiesCallback
+) -> None:
+    """Add the mower entity for this entry."""
+    add_entities([AutomowerEntity(entry.runtime_data, "mower")])
+
+
+class AutomowerEntity(MowerEntity, LawnMowerEntity):
+    """Expose standard mower controls and timed actions."""
+
+    _attr_name = None
+    _attr_supported_features = (
+        LawnMowerEntityFeature.START_MOWING
+        | LawnMowerEntityFeature.DOCK
+        | LawnMowerEntityFeature.PAUSE
+    )
+
+    @property
+    def activity(self) -> LawnMowerActivity | None:
+        """Translate the mower state machine into Home Assistant activities."""
+        state, activity = (
+            self.coordinator.data["state"],
+            self.coordinator.data["activity"],
+        )
+        if state == MowerState.PAUSED:
+            return LawnMowerActivity.PAUSED
+        if state in (
+            MowerState.ERROR,
+            MowerState.FATAL_ERROR,
+            MowerState.WAIT_FOR_SAFETYPIN,
+        ):
+            return LawnMowerActivity.ERROR
+        if state in (MowerState.OFF, MowerState.STOPPED):
+            return LawnMowerActivity.IDLE
+        if activity in (MowerActivity.CHARGING, MowerActivity.PARKED):
+            return LawnMowerActivity.DOCKED
+        if activity in (MowerActivity.GOING_OUT, MowerActivity.MOWING):
+            return LawnMowerActivity.MOWING
+        if activity == MowerActivity.GOING_HOME:
+            return LawnMowerActivity.RETURNING
+        if activity == MowerActivity.STOPPED_IN_GARDEN:
+            return LawnMowerActivity.IDLE
+        if activity == MowerActivity.NONE and state == MowerState.RESTRICTED:
+            return LawnMowerActivity.DOCKED
+        return None
+
+    async def async_start_mowing(self) -> None:
+        await self.coordinator.async_mower_action("start")
+
+    async def async_dock(self) -> None:
+        await self.coordinator.async_mower_action("park")
+
+    async def async_pause(self) -> None:
+        await self.coordinator.async_mower_action("pause")
+
+    async def async_mow_for(self, minutes: int, mission_id: int | None = None) -> None:
+        """Mow outside the normal schedule for the requested duration."""
+        await self.coordinator.async_mower_action(
+            "mow_for", minutes * 60, mission_id=mission_id
+        )
+
+    async def async_park_for(self, minutes: int) -> None:
+        """Park outside the normal schedule for the requested duration."""
+        await self.coordinator.async_mower_action("park_for", minutes * 60)
+
+    async def async_get_schedule(self) -> dict:
+        """Return the mower's locally stored weekly schedule."""
+        return await self.coordinator.async_read_schedule()
+
+    async def async_replace_schedule(self, intervals: list[dict]) -> None:
+        """Replace and verify the weekly schedule."""
+        await self.coordinator.async_write_schedule(
+            [ScheduleTask.from_action(**interval) for interval in intervals]
+        )
+
+    async def async_get_message_history(self, offset: int, limit: int) -> dict:
+        """Return messages from the mower's local history."""
+        return await self.coordinator.async_read_history(offset, limit)
+
+    async def async_get_work_areas(self, offset: int, limit: int) -> dict:
+        """Return available work areas and their device-assigned IDs."""
+        return await self.coordinator.async_read_work_areas(offset, limit)

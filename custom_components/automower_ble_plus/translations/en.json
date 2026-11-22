@@ -1,0 +1,318 @@
+{
+  "config": {
+    "flow_title": "Automower BLE Plus: {name}",
+    "step": {
+      "user": {
+        "title": "Connect to your mower",
+        "description": "Put the mower in Bluetooth pairing mode and enter its Bluetooth address. Enter the operator PIN if required.",
+        "data": {
+          "address": "Bluetooth address",
+          "pin": "Operator PIN"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Set up {name}",
+        "description": "Put the mower in pairing mode and enter its operator PIN if required.",
+        "data": {
+          "pin": "Operator PIN"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update the operator PIN",
+        "description": "Enter the current PIN for {name}.",
+        "data": {
+          "pin": "Operator PIN"
+        }
+      }
+    },
+    "error": {
+      "invalid_address": "Enter a valid Bluetooth address.",
+      "invalid_pin": "Enter a four-digit PIN.",
+      "invalid_auth": "The mower rejected the PIN.",
+      "cannot_connect": "Could not connect to a compatible mower. Check Bluetooth range and pairing mode."
+    },
+    "abort": {
+      "already_configured": "This mower is already configured.",
+      "already_in_progress": "Configuration is already in progress.",
+      "core_entry_enabled": "Disable the Husqvarna Automower BLE entry for this mower, then try again.",
+      "reauth_successful": "The operator PIN was updated."
+    }
+  },
+  "entity": {
+    "button": {
+      "resume_schedule": {
+        "name": "Resume schedule"
+      },
+      "park_indefinitely": {
+        "name": "Park indefinitely"
+      },
+      "spot_cut_available": {
+        "name": "Spot cut"
+      }
+    },
+    "binary_sensor": {
+      "charging": {
+        "name": "Charging"
+      }
+    },
+    "switch": {
+      "eco_mode": {
+        "name": "ECO mode"
+      },
+      "weather_timer": {
+        "name": "Weather timer"
+      },
+      "frost_guard": {
+        "name": "Frost guard"
+      },
+      "automatic_height_reduction": {
+        "name": "Automatic cutting height reduction"
+      },
+      "gps_assisted_navigation": {
+        "name": "GPS-assisted navigation"
+      },
+      "obstacle_avoidance": {
+        "name": "Obstacle avoidance"
+      },
+      "obstacle_avoidance_at_boundary": {
+        "name": "Obstacle avoidance at boundary"
+      },
+      "headlight_error_indication": {
+        "name": "Headlight error indication"
+      },
+      "automatic_clock_sync": {
+        "name": "Automatic clock synchronization"
+      },
+      "use_24_hour_time": {
+        "name": "24-hour display clock"
+      },
+      "display_cutting_height_in_inches": {
+        "name": "Display cutting height in inches"
+      },
+      "mower_house": {
+        "name": "Mower house"
+      },
+      "automatic_passage_handling": {
+        "name": "Automatic passage handling"
+      },
+      "starting_point_enabled": {
+        "name": "Starting point {index}"
+      },
+      "starting_point_passage_cutting": {
+        "name": "Passage cutting at starting point {index}"
+      },
+      "station_search_boundary": {
+        "name": "Find station by boundary wire"
+      },
+      "station_search_guide_1": {
+        "name": "Find station by guide 1"
+      },
+      "station_search_guide_2": {
+        "name": "Find station by guide 2"
+      },
+      "station_search_guide_3": {
+        "name": "Find station by guide 3"
+      },
+      "station_search_direct": {
+        "name": "Find station by station signal"
+      }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Cutting height level"
+      },
+      "drive_past_wire": {
+        "name": "Drive past wire"
+      },
+      "boundary_corridor": {
+        "name": "Boundary corridor width"
+      },
+      "starting_point_distance": {
+        "name": "Distance for starting point {index}"
+      },
+      "starting_point_proportion": {
+        "name": "Proportion for starting point {index}"
+      },
+      "station_search_boundary_delay": {
+        "name": "Search delay for boundary wire"
+      },
+      "station_search_guide_1_delay": {
+        "name": "Search delay for guide 1"
+      },
+      "station_search_guide_2_delay": {
+        "name": "Search delay for guide 2"
+      },
+      "station_search_guide_3_delay": {
+        "name": "Search delay for guide 3"
+      }
+    },
+    "select": {
+      "headlight_schedule": {
+        "name": "Headlight schedule",
+        "state": {
+          "always_on": "Always on",
+          "always_off": "Always off",
+          "evening": "Evening only",
+          "evening_and_night": "Evening and night"
+        }
+      },
+      "weather_timer_sensitivity": {
+        "name": "Weather timer sensitivity",
+        "state": {
+          "very_low": "Very low",
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "very_high": "Very high"
+        }
+      },
+      "starting_point_wire": {
+        "name": "Wire for starting point {index}",
+        "state": {
+          "boundary_right": "Boundary right",
+          "boundary_left": "Boundary left",
+          "guide_1": "Guide 1",
+          "guide_2": "Guide 2",
+          "guide_3": "Guide 3"
+        }
+      },
+      "station_search_range": {
+        "name": "Station search range",
+        "state": {
+          "minimum": "Minimum",
+          "medium": "Medium",
+          "maximum": "Maximum"
+        }
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "battery_voltage": {
+        "name": "Battery voltage"
+      },
+      "battery_current": {
+        "name": "Battery current"
+      },
+      "battery_temperature": {
+        "name": "Battery temperature"
+      },
+      "next_start": {
+        "name": "Next start"
+      },
+      "remaining_charging_time": {
+        "name": "Remaining charging time"
+      },
+      "operation_mode": {
+        "name": "Operation mode code"
+      },
+      "error_code": {
+        "name": "Error code"
+      },
+      "restriction_reason": {
+        "name": "Restriction reason code"
+      },
+      "drive_past_wire": {
+        "name": "Drive past wire"
+      },
+      "reversing_distance": {
+        "name": "Reversing distance"
+      },
+      "total_running_time": {
+        "name": "Total running time"
+      },
+      "total_cutting_time": {
+        "name": "Total cutting time"
+      },
+      "total_charging_time": {
+        "name": "Total charging time"
+      },
+      "total_searching_time": {
+        "name": "Total searching time"
+      },
+      "collisions": {
+        "name": "Collisions"
+      },
+      "charging_cycles": {
+        "name": "Charging cycles"
+      },
+      "blade_usage_time": {
+        "name": "Blade usage time"
+      }
+    },
+    "device_tracker": {
+      "latitude": {
+        "name": "Mower position"
+      }
+    }
+  },
+  "services": {
+    "mow_for": {
+      "name": "Mow for a duration",
+      "description": "Start mowing for the given duration.",
+      "fields": {
+        "minutes": {
+          "name": "Duration",
+          "description": "Number of minutes to mow."
+        },
+        "mission_id": {
+          "name": "Work area ID",
+          "description": "Optional ID from Read work areas."
+        }
+      }
+    },
+    "park_for": {
+      "name": "Park for a duration",
+      "description": "Send the mower to the station for the given duration.",
+      "fields": {
+        "minutes": {
+          "name": "Duration",
+          "description": "Number of minutes to park."
+        }
+      }
+    },
+    "get_schedule": {
+      "name": "Read schedule",
+      "description": "Read the weekly schedule and interval limits from the mower."
+    },
+    "replace_schedule": {
+      "name": "Replace schedule",
+      "description": "Replace all the weekly mowing intervals stored by the mower.",
+      "fields": {
+        "intervals": {
+          "name": "Intervals",
+          "description": "List of intervals with start, duration_minutes, weekdays, and optional mission_id."
+        }
+      }
+    },
+    "get_message_history": {
+      "name": "Read mower messages",
+      "description": "Read a page of messages from the mower's local history.",
+      "fields": {
+        "offset": {
+          "name": "Offset",
+          "description": "Number of entries to skip."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Maximum number of entries to return."
+        }
+      }
+    },
+    "get_work_areas": {
+      "name": "Read work areas",
+      "description": "Read a page of the mower’s named BLE work areas.",
+      "fields": {
+        "offset": {
+          "name": "Offset",
+          "description": "Number of entries to skip."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Maximum number of entries to return."
+        }
+      }
+    }
+  }
+}

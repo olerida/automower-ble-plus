@@ -1,0 +1,318 @@
+{
+  "config": {
+    "flow_title": "Automower BLE Plus: {name}",
+    "step": {
+      "user": {
+        "title": "Conectar el cortacésped",
+        "description": "Pon el cortacésped en modo de emparejamiento e introduce su dirección Bluetooth. Introduce el PIN si el modelo lo requiere.",
+        "data": {
+          "address": "Dirección Bluetooth",
+          "pin": "PIN del cortacésped"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Configurar {name}",
+        "description": "Pon el cortacésped en modo de emparejamiento e introduce su PIN si el modelo lo requiere.",
+        "data": {
+          "pin": "PIN del cortacésped"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Actualizar el PIN",
+        "description": "Introduce el PIN actual de {name}.",
+        "data": {
+          "pin": "PIN del cortacésped"
+        }
+      }
+    },
+    "error": {
+      "invalid_address": "Introduce una dirección Bluetooth válida.",
+      "invalid_pin": "Introduce un PIN de cuatro cifras.",
+      "invalid_auth": "El cortacésped ha rechazado el PIN.",
+      "cannot_connect": "No se ha podido conectar a un cortacésped compatible. Comprueba el alcance y el modo de emparejamiento."
+    },
+    "abort": {
+      "already_configured": "Este cortacésped ya está configurado.",
+      "already_in_progress": "Este cortacésped ya se está configurando.",
+      "core_entry_enabled": "Deshabilita la entrada de Husqvarna Automower BLE de este cortacésped y vuelve a intentarlo.",
+      "reauth_successful": "El PIN se ha actualizado."
+    }
+  },
+  "entity": {
+    "button": {
+      "resume_schedule": {
+        "name": "Reanudar horario"
+      },
+      "park_indefinitely": {
+        "name": "Aparcar indefinidamente"
+      },
+      "spot_cut_available": {
+        "name": "Corte localizado"
+      }
+    },
+    "binary_sensor": {
+      "charging": {
+        "name": "En carga"
+      }
+    },
+    "switch": {
+      "eco_mode": {
+        "name": "Modo ECO"
+      },
+      "weather_timer": {
+        "name": "Temporizador climático"
+      },
+      "frost_guard": {
+        "name": "Protección contra heladas"
+      },
+      "automatic_height_reduction": {
+        "name": "Reducción automática de la altura de corte"
+      },
+      "gps_assisted_navigation": {
+        "name": "Navegación asistida por GPS"
+      },
+      "obstacle_avoidance": {
+        "name": "Detección de obstáculos"
+      },
+      "obstacle_avoidance_at_boundary": {
+        "name": "Detección de obstáculos en el límite"
+      },
+      "headlight_error_indication": {
+        "name": "Aviso de error mediante los faros"
+      },
+      "automatic_clock_sync": {
+        "name": "Sincronización automática del reloj"
+      },
+      "use_24_hour_time": {
+        "name": "Reloj de 24 horas en pantalla"
+      },
+      "display_cutting_height_in_inches": {
+        "name": "Altura de corte en pulgadas en pantalla"
+      },
+      "mower_house": {
+        "name": "Caseta del cortacésped"
+      },
+      "automatic_passage_handling": {
+        "name": "Gestión automática de los pasillos"
+      },
+      "starting_point_enabled": {
+        "name": "Punto de partida {index}"
+      },
+      "starting_point_passage_cutting": {
+        "name": "Corte de pasillo en el punto de partida {index}"
+      },
+      "station_search_boundary": {
+        "name": "Buscar la estación por cable delimitador"
+      },
+      "station_search_guide_1": {
+        "name": "Buscar la estación por guía 1"
+      },
+      "station_search_guide_2": {
+        "name": "Buscar la estación por guía 2"
+      },
+      "station_search_guide_3": {
+        "name": "Buscar la estación por guía 3"
+      },
+      "station_search_direct": {
+        "name": "Buscar la estación por señal de la estación"
+      }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Nivel de altura de corte"
+      },
+      "drive_past_wire": {
+        "name": "Distancia para sobrepasar el cable"
+      },
+      "boundary_corridor": {
+        "name": "Anchura del pasillo del cable delimitador"
+      },
+      "starting_point_distance": {
+        "name": "Distancia del punto de partida {index}"
+      },
+      "starting_point_proportion": {
+        "name": "Proporción del punto de partida {index}"
+      },
+      "station_search_boundary_delay": {
+        "name": "Retardo de búsqueda por cable delimitador"
+      },
+      "station_search_guide_1_delay": {
+        "name": "Retardo de búsqueda por guía 1"
+      },
+      "station_search_guide_2_delay": {
+        "name": "Retardo de búsqueda por guía 2"
+      },
+      "station_search_guide_3_delay": {
+        "name": "Retardo de búsqueda por guía 3"
+      }
+    },
+    "select": {
+      "headlight_schedule": {
+        "name": "Horario de los faros",
+        "state": {
+          "always_on": "Siempre encendidos",
+          "always_off": "Siempre apagados",
+          "evening": "Solo al atardecer",
+          "evening_and_night": "Al atardecer y por la noche"
+        }
+      },
+      "weather_timer_sensitivity": {
+        "name": "Sensibilidad del temporizador climático",
+        "state": {
+          "very_low": "Muy baja",
+          "low": "Baja",
+          "medium": "Media",
+          "high": "Alta",
+          "very_high": "Muy alta"
+        }
+      },
+      "starting_point_wire": {
+        "name": "Cable del punto de partida {index}",
+        "state": {
+          "boundary_right": "Cable delimitador a la derecha",
+          "boundary_left": "Cable delimitador a la izquierda",
+          "guide_1": "Guía 1",
+          "guide_2": "Guía 2",
+          "guide_3": "Guía 3"
+        }
+      },
+      "station_search_range": {
+        "name": "Alcance de búsqueda de la estación",
+        "state": {
+          "minimum": "Mínimo",
+          "medium": "Medio",
+          "maximum": "Máximo"
+        }
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Batería"
+      },
+      "battery_voltage": {
+        "name": "Tensión de la batería"
+      },
+      "battery_current": {
+        "name": "Corriente de la batería"
+      },
+      "battery_temperature": {
+        "name": "Temperatura de la batería"
+      },
+      "next_start": {
+        "name": "Próximo arranque"
+      },
+      "remaining_charging_time": {
+        "name": "Tiempo de carga restante"
+      },
+      "operation_mode": {
+        "name": "Código de modo de funcionamiento"
+      },
+      "error_code": {
+        "name": "Código de error"
+      },
+      "restriction_reason": {
+        "name": "Código de motivo de restricción"
+      },
+      "drive_past_wire": {
+        "name": "Distancia para sobrepasar el cable"
+      },
+      "reversing_distance": {
+        "name": "Distancia de marcha atrás"
+      },
+      "total_running_time": {
+        "name": "Tiempo total de funcionamiento"
+      },
+      "total_cutting_time": {
+        "name": "Tiempo total de corte"
+      },
+      "total_charging_time": {
+        "name": "Tiempo total de carga"
+      },
+      "total_searching_time": {
+        "name": "Tiempo total de búsqueda de la estación"
+      },
+      "collisions": {
+        "name": "Colisiones"
+      },
+      "charging_cycles": {
+        "name": "Ciclos de carga"
+      },
+      "blade_usage_time": {
+        "name": "Tiempo de uso de las cuchillas"
+      }
+    },
+    "device_tracker": {
+      "latitude": {
+        "name": "Posición del cortacésped"
+      }
+    }
+  },
+  "services": {
+    "mow_for": {
+      "name": "Cortar durante un intervalo",
+      "description": "Inicia el corte durante el tiempo indicado.",
+      "fields": {
+        "minutes": {
+          "name": "Duración",
+          "description": "Minutos de corte."
+        },
+        "mission_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID opcional devuelto por Leer áreas de trabajo."
+        }
+      }
+    },
+    "park_for": {
+      "name": "Aparcar durante un intervalo",
+      "description": "Envía el cortacésped a la estación durante el tiempo indicado.",
+      "fields": {
+        "minutes": {
+          "name": "Duración",
+          "description": "Minutos de aparcamiento."
+        }
+      }
+    },
+    "get_schedule": {
+      "name": "Leer horario",
+      "description": "Lee el horario semanal y los límites de intervalos del cortacésped."
+    },
+    "replace_schedule": {
+      "name": "Reemplazar horario",
+      "description": "Sustituye todos los intervalos semanales guardados en el cortacésped.",
+      "fields": {
+        "intervals": {
+          "name": "Intervalos",
+          "description": "Lista con start, duration_minutes, weekdays y, opcionalmente, mission_id."
+        }
+      }
+    },
+    "get_message_history": {
+      "name": "Leer historial de avisos",
+      "description": "Lee una página de mensajes del historial local del cortacésped.",
+      "fields": {
+        "offset": {
+          "name": "Desplazamiento",
+          "description": "Número de avisos que se omiten al principio."
+        },
+        "limit": {
+          "name": "Límite",
+          "description": "Número máximo de avisos devueltos."
+        }
+      }
+    },
+    "get_work_areas": {
+      "name": "Leer áreas de trabajo",
+      "description": "Lee una página de áreas de trabajo del cortacésped por BLE.",
+      "fields": {
+        "offset": {
+          "name": "Desplazamiento",
+          "description": "Número de avisos que se omiten al principio."
+        },
+        "limit": {
+          "name": "Límite",
+          "description": "Número máximo de avisos devueltos."
+        }
+      }
+    }
+  }
+}

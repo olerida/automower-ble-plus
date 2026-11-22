@@ -1,0 +1,18 @@
+{
+  "domain": "automower_ble_plus",
+  "name": "Automower BLE Plus",
+  "bluetooth": [
+    {"connectable": true, "service_uuid": "98bd0001-0b0e-421a-84e5-ddbf75dc6de4"}
+  ],
+  "categories": ["garden_plants"],
+  "codeowners": ["@olerida"],
+  "config_flow": true,
+  "connectivity": ["bluetooth"],
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/olerida/automower-ble-plus#readme",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/olerida/automower-ble-plus/issues",
+  "requirements": ["automower-ble>=0.2.9"],
+  "version": "0.1.0"
+}

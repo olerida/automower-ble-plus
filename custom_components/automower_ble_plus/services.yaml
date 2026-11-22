@@ -1,0 +1,96 @@
+mow_for:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    minutes:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 71582788
+          step: 1
+          mode: box
+          unit_of_measurement: min
+    mission_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+park_for:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    minutes:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 71582788
+          step: 1
+          mode: box
+          unit_of_measurement: min
+get_schedule:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+replace_schedule:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    intervals:
+      required: true
+      selector:
+        object:
+get_message_history:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    offset:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+    limit:
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
+get_work_areas:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    offset:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+    limit:
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
