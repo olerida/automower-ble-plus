@@ -47,6 +47,7 @@ from .features import (
 )
 from .firmware import FirmwareProfile, get_firmware_profile
 from .history import async_get_message_history
+from .mapfiles import async_get_map, async_replace_map
 from .models import STARTING_POINT_COUNTS
 from .schedule import (
     ScheduleTask,
@@ -583,4 +584,36 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             ) as err:
                 raise HomeAssistantError(
                     f"Could not change the mower installation name: {err}"
+                ) from err
+
+    async def async_read_map(self, generated: bool) -> dict:
+        """Read map geometry from the mower's native BLE attributes."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                return await async_get_map(self.client, generated)
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not read the mower map: {err}"
+                ) from err
+
+    async def async_write_map(self, svg: str, expected_checksum: str) -> dict:
+        """Replace the prior map revision confirmed by the user."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                return await async_replace_map(self.client, svg, expected_checksum)
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not update the mower map: {err}"
                 ) from err

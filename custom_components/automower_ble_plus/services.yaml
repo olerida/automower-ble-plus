@@ -175,3 +175,28 @@ rename_installation:
       required: true
       selector:
         text:
+get_map:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    generated:
+      default: false
+      selector:
+        boolean:
+replace_map:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    svg:
+      required: true
+      selector:
+        text:
+          multiline: true
+    expected_checksum:
+      required: true
+      selector:
+        text:

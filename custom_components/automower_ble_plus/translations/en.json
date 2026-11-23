@@ -397,6 +397,30 @@
           "description": "New installation name."
         }
       }
+    },
+    "get_map": {
+      "name": "Read Automower map",
+      "description": "Download the current or generated SVG map over Bluetooth.",
+      "fields": {
+        "generated": {
+          "name": "Generated map",
+          "description": "Read the generated map instead of the active installation map."
+        }
+      }
+    },
+    "replace_map": {
+      "name": "Replace Automower map",
+      "description": "Upload an Automower SVG to the active installation.",
+      "fields": {
+        "svg": {
+          "name": "SVG",
+          "description": "Map markup containing Automower polygons and polylines."
+        },
+        "expected_checksum": {
+          "name": "Expected checksum",
+          "description": "Checksum returned by reading the active map."
+        }
+      }
     }
   }
 }

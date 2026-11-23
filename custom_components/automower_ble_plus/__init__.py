@@ -65,6 +65,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "get_message_history": page_schema,
         "get_work_areas": page_schema,
         "get_installations": page_schema,
+        "get_map": {vol.Optional("generated", default=False): cv.boolean},
+        "replace_map": {
+            vol.Required("svg"): cv.string,
+            vol.Required("expected_checksum"): cv.string,
+        },
         "rename_installation": {
             vol.Required("site_id"): _bounded_integer(0, 0xFFFFFFFF),
             vol.Required("name"): cv.string,
@@ -85,6 +90,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             func=f"async_{action}",
             supports_response=SupportsResponse.ONLY
             if action.startswith("get_")
+            else SupportsResponse.OPTIONAL
+            if action == "replace_map"
             else SupportsResponse.NONE,
         )
     return True

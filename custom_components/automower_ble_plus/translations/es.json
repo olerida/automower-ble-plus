@@ -397,6 +397,30 @@
           "description": "Nuevo nombre de la instalación."
         }
       }
+    },
+    "get_map": {
+      "name": "Leer mapa Automower",
+      "description": "Descarga por Bluetooth el SVG del mapa activo o generado.",
+      "fields": {
+        "generated": {
+          "name": "Mapa generado",
+          "description": "Lee el mapa generado por el robot."
+        }
+      }
+    },
+    "replace_map": {
+      "name": "Reemplazar mapa Automower",
+      "description": "Carga un SVG de Automower en la instalación activa.",
+      "fields": {
+        "svg": {
+          "name": "SVG",
+          "description": "Contenido del mapa con polígonos y líneas de Automower."
+        },
+        "expected_checksum": {
+          "name": "Suma de comprobación esperada",
+          "description": "Valor checksum devuelto al leer el mapa activo."
+        }
+      }
     }
   }
 }

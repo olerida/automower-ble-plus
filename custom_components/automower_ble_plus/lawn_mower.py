@@ -122,3 +122,11 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
     async def async_rename_installation(self, site_id: int, name: str) -> None:
         """Rename the active installation after verifying the site ID."""
         await self.coordinator.async_change_installation_name(site_id, name)
+
+    async def async_get_map(self, generated: bool = False) -> dict:
+        """Read the site or generated map as Automower SVG, when available."""
+        return await self.coordinator.async_read_map(generated)
+
+    async def async_replace_map(self, svg: str, expected_checksum: str) -> dict:
+        """Upload a matching revision of the active installation map."""
+        return await self.coordinator.async_write_map(svg, expected_checksum)
