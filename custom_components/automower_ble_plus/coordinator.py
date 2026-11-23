@@ -6,7 +6,12 @@ from datetime import timedelta
 from struct import error as StructError
 
 from automower_ble.models import MowerModels
-from automower_ble.protocol import MowerActivity, MowerState, ResponseResult
+from automower_ble.protocol import (
+    ModeOfOperation,
+    MowerActivity,
+    MowerState,
+    ResponseResult,
+)
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, CONF_PIN
@@ -40,8 +45,8 @@ from .features import (
     SettingVariant,
     settings_for_model,
 )
+from .firmware import FirmwareProfile, get_firmware_profile
 from .history import async_get_message_history
-from .installation import get_installation_limits
 from .models import STARTING_POINT_COUNTS
 from .schedule import (
     ScheduleTask,
@@ -92,6 +97,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self.address: str = entry.data[CONF_ADDRESS]
         self.client = AutomowerClient(self.address, entry.data.get(CONF_PIN))
         self.device_info: DeviceInfo
+        self.firmware_profile: FirmwareProfile | None = None
         self.settings: tuple[Setting, ...] = ()
         self.setting_variants: dict[str, SettingVariant] = {}
         self._operation_lock = asyncio.Lock()
@@ -148,10 +154,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         ) as err:
             raise UpdateFailed("Could not identify the mower") from err
         identity = MowerModels.get(model_id)
-        limits = await self.hass.async_add_executor_job(
-            get_installation_limits, model_id, node_version
+        self.firmware_profile = await self.hass.async_add_executor_job(
+            get_firmware_profile, model_id, node_version
         )
-        self.settings = settings_for_model(model_id, guide_count, limits)
+        self.settings = settings_for_model(model_id, guide_count, self.firmware_profile)
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, self.address)},
             name=self.config_entry.title,
@@ -223,6 +229,13 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             if key not in setting_keys
         )
         probes.extend((("statistics", None), ("position", None)))
+        if (profile := self.firmware_profile) and profile.blade_usage_reset:
+            probes.append(
+                (
+                    "blade_reset_available",
+                    Reading(Command(4726, profile.blade_usage_read), U32),
+                )
+            )
         for _ in probes:
             key, item = probes[self._optional_index]
             self._optional_index = (self._optional_index + 1) % len(probes)
@@ -239,7 +252,13 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         else:
                             values.pop(key, None)
                     elif isinstance(item, Reading):
-                        values[key] = await self._read(item)
+                        value = await self._read(item)
+                        if key == "blade_reset_available":
+                            values.update(
+                                blade_reset_available=1, blade_usage_time=value
+                            )
+                        else:
+                            values[key] = value
                     elif key == "statistics":
                         raw = await self.client.command(GET_STATISTICS)
                         values.update(
@@ -335,10 +354,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise
 
     async def _async_mow_for(
-        self, duration: int, mission_id: int | None = None
+        self,
+        duration: int,
+        mission_id: int | None = None,
+        *,
+        mode: ModeOfOperation = ModeOfOperation.AUTO,
     ) -> None:
-        await self._async_clear_override()
-        await self.client.command(_SET_MODE, b"\0")
+        if mode == ModeOfOperation.AUTO:
+            await self._async_clear_override()
+        await self.client.command(_SET_MODE, U8.pack(mode))
         if mission_id is None:
             await self.client.command(_MOW_FOR, U32.pack(duration))
         else:
@@ -372,6 +396,19 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     await self.client.command(_SET_MODE, b"\0")
                 elif action == "park_indefinitely":
                     await self.client.command(_SET_MODE, b"\x02")
+                elif action == "reset_blade_usage":
+                    await self._async_reset_blade_usage()
+                elif action == "mow_secondary_area":
+                    ModeOfOperation(await self._read(READINGS["operation_mode"]))
+                    if mission_id is not None:
+                        if duration is None:
+                            raise ValueError(
+                                "Specify a duration when selecting a work area"
+                            )
+                        await self._async_check_work_area(mission_id)
+                    await self._async_mow_for(
+                        duration or 0, mission_id, mode=ModeOfOperation.MANUAL
+                    )
                 elif action in ("mow_for", "park_for") and duration is not None:
                     if action == "mow_for":
                         if mission_id is not None:
@@ -402,6 +439,16 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     f"Could not execute mower action {action}: {err}"
                 ) from err
         await self.async_request_refresh()
+
+    async def _async_reset_blade_usage(self) -> None:
+        profile = self.firmware_profile
+        if not profile or not profile.blade_usage_reset:
+            raise ValueError("The firmware does not advertise a blade counter reset")
+        counter = Reading(Command(4726, profile.blade_usage_read), U32)
+        await self._read(counter)
+        await self.client.command(Command(4726, profile.blade_usage_reset))
+        usage = await self._read(counter)
+        self.async_set_updated_data({**(self.data or {}), "blade_usage_time": usage})
 
     async def async_read_schedule(self) -> dict:
         """Read the complete weekly schedule with the mower's limits."""

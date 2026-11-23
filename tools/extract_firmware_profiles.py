@@ -1,4 +1,4 @@
-"""Extract numeric installation limits from an Automower Connect APK."""
+"""Extract firmware-specific BLE limits and operation identifiers from Automower Connect."""
 
 import argparse
 import json
@@ -9,14 +9,15 @@ FAMILY = "LeaveChargingStation"
 FAMILY_ID = "4716"
 
 
-def limits(profile: dict) -> tuple[int, ...] | None:
+def capabilities(profile: dict) -> tuple[int, ...] | None:
     methods = {}
+    blade_operations = {}
     for method in profile.get("methods", ()):
-        if method["family"] != FAMILY:
-            continue
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
-        if protocol.get("msgType") == FAMILY_ID:
+        if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
             methods[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "Statistics" and protocol.get("msgType") == "4726":
+            blade_operations[method["command"]] = protocol.get("subCmd")
     types = {item["name"]: item for item in profile.get("types", ())}
 
     def value_range(name: str) -> tuple[int, int]:
@@ -49,7 +50,15 @@ def limits(profile: dict) -> tuple[int, ...] | None:
         low, high = value_range("Angle")
         if max(45, low) < min(315, high):
             angles = max(45, low), min(315, high)
-    return (*reverse, *angles) if any((*reverse, *angles)) else None
+    blade = (
+        blade_operations.get("GetCuttingBladeUsageTime"),
+        blade_operations.get("ResetCuttingBladeUsageTime"),
+    )
+    blade_ids = (
+        tuple(map(int, blade)) if blade in (("7", "8"), ("13", "14")) else (0, 0)
+    )
+    result = (*reverse, *angles, *blade_ids)
+    return result if any(result) else None
 
 
 def extract(apk: Path) -> dict:
@@ -67,7 +76,7 @@ def extract(apk: Path) -> dict:
                 if file not in members:
                     continue
                 if file not in by_file:
-                    by_file[file] = limits(json.loads(archive.read(file)))
+                    by_file[file] = capabilities(json.loads(archive.read(file)))
                 if (profile := by_file[file]) is not None:
                     if profile not in profiles:
                         profiles.append(profile)

@@ -23,6 +23,20 @@ async def async_setup_entry(
         lambda key, _: SpotCutButton(entry.runtime_data, key),
         require_true=True,
     )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"operation_mode": None},
+        lambda _key, _: AutomowerButton(entry.runtime_data, "mow_secondary_area"),
+    )
+    profile = entry.runtime_data.firmware_profile
+    if profile and profile.blade_usage_reset:
+        async_add_detected(
+            entry,
+            add_entities,
+            {"blade_reset_available": None},
+            lambda _key, _: AutomowerButton(entry.runtime_data, "reset_blade_usage"),
+        )
 
 
 class AutomowerButton(MowerEntity, ButtonEntity):

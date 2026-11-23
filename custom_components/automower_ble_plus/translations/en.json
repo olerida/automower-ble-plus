@@ -48,6 +48,12 @@
       },
       "spot_cut_available": {
         "name": "Spot cut"
+      },
+      "mow_secondary_area": {
+        "name": "Mow secondary area until battery is low"
+      },
+      "reset_blade_usage": {
+        "name": "Reset blade usage time"
       }
     },
     "binary_sensor": {
@@ -347,6 +353,20 @@
         "enabled": {
           "name": "Enabled",
           "description": "Whether the mower can use this area."
+        }
+      }
+    },
+    "mow_secondary_area": {
+      "name": "Mow secondary area",
+      "description": "Start mowing in the secondary area. Leave the duration empty to mow until the battery is low.",
+      "fields": {
+        "minutes": {
+          "name": "Duration",
+          "description": "Number of minutes to mow."
+        },
+        "mission_id": {
+          "name": "Work area ID",
+          "description": "Optional ID from Read work areas."
         }
       }
     }

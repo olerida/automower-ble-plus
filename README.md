@@ -14,6 +14,7 @@ Incluye el estado del cortacésped, inicio, pausa, aparcamiento, reanudación de
 
 - `get_schedule` lee los intervalos semanales y sus límites. `replace_schedule` guarda el nuevo horario y lo vuelve a leer. Cada intervalo usa `start` (hora local), `duration_minutes`, `weekdays` (`mon` a `sun`) y, si procede, `mission_id`.
 - `get_message_history` devuelve una página de avisos del cortacésped.
+- `mow_secondary_area` inicia el modo de área secundaria. Si omites `minutes`, el cortacésped trabaja hasta que baja la batería.
 - `get_work_areas` devuelve los nombres e identificadores de las áreas en modelos compatibles. Puedes pasar `mission_id` a `mow_for` para cortar en esa área o a `update_work_area` para cambiar su nombre o estado.
 - Cuando el robot proporciona una posición válida, la entidad de ubicación se puede habilitar en Home Assistant.
 

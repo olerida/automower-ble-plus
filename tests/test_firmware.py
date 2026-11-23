@@ -1,0 +1,23 @@
+"""Test the app's firmware matching and legacy model identity checks."""
+
+from custom_components.automower_ble_plus.firmware import (
+    FirmwareProfile,
+    get_firmware_profile,
+)
+
+
+def test_legacy_profile_requires_the_mower_to_report_the_same_model():
+    assert get_firmware_profile((5, 0), "App-G3_devicetype-5.0") == FirmwareProfile(
+        150, 3000, 45, 315, 7, 8
+    )
+    assert get_firmware_profile((23, 1), "App-G3_devicetype-5.0") is None
+
+
+def test_exact_release_precedes_family_and_unknown_versions_stay_unknown():
+    assert get_firmware_profile((26, 1), "40.1_Main-App-P25_26.19") == FirmwareProfile(
+        150, 3000, 0, 0, 7, 8
+    )
+    assert get_firmware_profile((26, 1), "40.1_Main-App-P25_other") == FirmwareProfile(
+        600, 5000, 0, 0, 7, 8
+    )
+    assert get_firmware_profile((5, 0), "999.1_Main-App-Unrecognized") is None

@@ -21,10 +21,11 @@ from homeassistant.helpers import (
     label_registry,
 )
 
-from custom_components.automower_ble_plus import number, switch
+from custom_components.automower_ble_plus import button, number, switch
 from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
-from custom_components.automower_ble_plus.features import U16
+from custom_components.automower_ble_plus.features import U16, U32
+from custom_components.automower_ble_plus.firmware import get_firmware_profile
 from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command
 
@@ -38,6 +39,7 @@ class FakeAutomower420:
             (Command(4106, 20), b""): b"\x64",
             (Command(4586, 2), b""): b"\x07",
             (Command(4586, 3), b""): b"\x05",
+            (Command(4586, 1), b""): b"\x00",
             (Command(4692, 6), b""): b"\x01",
             (Command(4422, 5), b""): b"\x00",
             (Command(4422, 2), b""): b"\x04",
@@ -176,3 +178,84 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert entry.state == ConfigEntryState.NOT_LOADED
     finally:
         await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("duration", "mission_id"), [(None, None), (1800, None), (1800, 11)]
+)
+async def test_secondary_area_uses_the_apps_manual_start_sequence(
+    tmp_path, duration, mission_id
+):
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), _entry())
+    client = FakeAutomower420()
+    coordinator.client = client
+    mode = (Command(4586, 0), b"\x01")
+    start = (Command(4586, 4), b"")
+    encoded_duration = U32.pack(duration or 0)
+    verification = [(Command(4586, 1), b"")]
+    if mission_id is None:
+        override = (Command(4658, 3), encoded_duration)
+    else:
+        area = (Command(5604, 13), U32.pack(mission_id))
+        client.values[area] = b"\x01"
+        verification.append(area)
+        override = (Command(4658, 9), encoded_duration + U32.pack(mission_id))
+    for request in (mode, override, start):
+        client.values[request] = b""
+
+    await coordinator.async_mower_action(
+        "mow_secondary_area", duration, mission_id=mission_id
+    )
+
+    assert client.calls[: len(verification) + 3] == [
+        *verification,
+        mode,
+        override,
+        start,
+    ]
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("version", "read_id", "reset_id"),
+    [
+        ("App-G3_devicetype-5.0", 7, 8),
+        ("40.3_Main-App-P16_29.47", 13, 14),
+    ],
+)
+async def test_blade_reset_uses_the_builds_command_after_confirming_the_counter(
+    tmp_path, version, read_id, reset_id, monkeypatch
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    await coordinator._async_setup()
+    coordinator.firmware_profile = get_firmware_profile((5, 0), version)
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    read = Command(4726, read_id)
+    reset = Command(4726, reset_id)
+    client.values[read, b""] = U32.pack(1240)
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == reset:
+            client.values[read, b""] = U32.pack(0)
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    entities = []
+    await button.async_setup_entry(coordinator.hass, entry, entities.extend)
+    assert "reset_blade_usage" not in {entity.key for entity in entities}
+    await coordinator.async_refresh_optional()
+    reset_button = next(
+        entity for entity in entities if entity.key == "reset_blade_usage"
+    )
+    assert coordinator.data["blade_usage_time"] == 1240
+    await reset_button.async_press()
+    assert coordinator.data["blade_usage_time"] == 0
+    await coordinator.async_shutdown()

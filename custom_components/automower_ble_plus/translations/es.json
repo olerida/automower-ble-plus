@@ -48,6 +48,12 @@
       },
       "spot_cut_available": {
         "name": "Corte localizado"
+      },
+      "mow_secondary_area": {
+        "name": "Cortar área secundaria hasta batería baja"
+      },
+      "reset_blade_usage": {
+        "name": "Reiniciar tiempo de uso de las cuchillas"
       }
     },
     "binary_sensor": {
@@ -347,6 +353,20 @@
         "enabled": {
           "name": "Habilitada",
           "description": "Indica si el cortacésped puede utilizar el área."
+        }
+      }
+    },
+    "mow_secondary_area": {
+      "name": "Cortar área secundaria",
+      "description": "Inicia el corte en el área secundaria. Deja la duración vacía para cortar hasta que baje la batería.",
+      "fields": {
+        "minutes": {
+          "name": "Duración",
+          "description": "Minutos de corte."
+        },
+        "mission_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID opcional devuelto por Leer áreas de trabajo."
         }
       }
     }

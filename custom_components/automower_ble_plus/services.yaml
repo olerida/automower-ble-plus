@@ -35,6 +35,27 @@ park_for:
           step: 1
           mode: box
           unit_of_measurement: min
+mow_secondary_area:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    minutes:
+      selector:
+        number:
+          min: 1
+          max: 71582788
+          step: 1
+          mode: box
+          unit_of_measurement: min
+    mission_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
 get_schedule:
   target:
     entity:

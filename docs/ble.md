@@ -9,7 +9,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Funciones | Identificador de familia HCP | Estado |
 | --- | --- | --- |
 | Batería y carga | 4106 | Lecturas implementadas |
-| Actividad, estado, pausa e inicio | 4586 | Implementadas |
+| Actividad, estado, pausa e inicio | 4586 | Incluye inicio en área secundaria en modo manual |
 | Próximo arranque, restricciones y anulaciones del horario | 4658 | Lecturas y acciones puntuales implementadas |
 | Horario semanal | 4690 | Lectura, edición en transacción y verificación posterior |
 | Identificación y versión de firmware | 4698 | Implementadas |
@@ -22,7 +22,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Búsqueda de la estación | 4708 | Métodos, retardos y alcance con detección |
 | Navegación asistida y obstáculos | 4732, 5356 | Ajustes con detección |
 | Protección contra heladas | 5370, 5412 | Ajuste con detección de variantes |
-| Estadísticas y desgaste de cuchillas | 4726 | Lecturas implementadas |
+| Estadísticas y desgaste de cuchillas | 4726 | Lecturas y reinicio del contador por perfil de firmware |
 | Historial de avisos | 4730 | Lectura paginada |
 | Corte localizado | 4710, 4658, 4586 | Inicio con detección de disponibilidad. Pendiente verificar variantes de firmware |
 | Áreas de trabajo | 5604, 4658 | Lista, inicio de corte, cambio de nombre y habilitación según firmware. Geometría pendiente |
@@ -31,4 +31,8 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 
 Las entradas implementadas identifican código y evidencia estática. La verificación con un robot físico se registra por modelo y firmware cuando existan resultados.
 
-La app lee la versión del nodo principal por BLE (`GetVersionString`, familia 96, operación 0) y busca el perfil correspondiente. REA localizó el envío en `ev_4ed95968cd8768f561ae97ffb22a93ce031875f446081a5a47c39feb89ac0f0a`, el receptor en `ev_b3916f62dbc81c6cbcbb5c2734e14bdde2beb156f5c2e8bc6be000d84ff226e5` y la resolución por familia en `ev_128d9d5f2a362e6f6ac9c7cbb0260fe668bdcd67a330a7065efbe99de16ebea5`. El constructor DEX confirma el envío enlazado con familia 96 y operación 0. El catálogo de la integración contiene los rangos numéricos y permite regenerarlos a partir del APK con `tools/extract_installation_profiles.py`. Para la identidad G3 `5.0`, la app apunta al perfil 31.7, con 150–3000 mm de marcha atrás y 45–315° de salida.
+La app lee la versión del nodo principal por BLE (`GetVersionString`, familia 96, operación 0) y busca el perfil correspondiente. REA localizó el envío en `ev_4ed95968cd8768f561ae97ffb22a93ce031875f446081a5a47c39feb89ac0f0a`, el receptor en `ev_b3916f62dbc81c6cbcbb5c2734e14bdde2beb156f5c2e8bc6be000d84ff226e5` y la resolución por familia en `ev_128d9d5f2a362e6f6ac9c7cbb0260fe668bdcd67a330a7065efbe99de16ebea5`. El constructor DEX confirma el envío enlazado con familia 96 y operación 0. Regenera el catálogo de rangos y operaciones a partir del APK con `tools/extract_firmware_profiles.py`. Para la identidad G3 `5.0`, la app apunta al perfil 31.7, con 150–3000 mm de marcha atrás y 45–315° de salida.
+
+Para el área secundaria, la app valida una conexión Bluetooth, selecciona `MANUAL`, escribe la duración y envía `StartTrigger`. La duración `0` corresponde al modo manual hasta batería baja. REA confirmó las variantes sin límite, temporizada y por área en `ev_44df46e896eb5c23d7a045befff9dc6ab19994fd3f18f06e11d882a458166e00`, `ev_3dc2ecad36bca062908f4f2c62fdd951e40b025d4e966158bba0cc886157da85` y `ev_af8e361a634f46949d5c53ce1d224e164efe4602b6f5623875cb5d6f010cd98a`.
+
+REA siguió el reinicio del contador de cuchillas hasta `MowerBluetoothDataSourceImpl` en `ev_395604821ec534bd4bdcc33a21f773fec59c26ae808e728d72846041db9bcb0b`. En los TIF de la familia 4726 aparecen los pares 7/8 y 13/14. La integración selecciona el par por firmware y muestra el botón después de leer su contador.

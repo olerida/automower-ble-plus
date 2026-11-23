@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from struct import Struct
 from struct import error as StructError
 
-from .installation import InstallationLimits
+from .firmware import FirmwareProfile
 from .models import BOUNDARY_RANGES, STARTING_POINT_COUNTS
 from .wire import Command
 
@@ -140,7 +140,7 @@ _SETTINGS = (
 def settings_for_model(
     model: tuple[int, int],
     guide_count: int | None,
-    limits: InstallationLimits | None = None,
+    limits: FirmwareProfile | None = None,
 ) -> tuple[Setting, ...]:
     """Select settings with verified value ranges for this mower model."""
     bounds = BOUNDARY_RANGES.get(model)

@@ -56,6 +56,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Optional("mission_id"): _bounded_integer(0, 0xFFFFFFFF),
         },
         "park_for": {vol.Required("minutes"): duration},
+        "mow_secondary_area": {
+            vol.Optional("minutes"): duration,
+            vol.Optional("mission_id"): _bounded_integer(0, 0xFFFFFFFF),
+        },
         "get_schedule": {},
         "replace_schedule": {vol.Required("intervals"): [interval_schema]},
         "get_message_history": page_schema,

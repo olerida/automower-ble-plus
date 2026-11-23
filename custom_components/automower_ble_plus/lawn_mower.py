@@ -79,6 +79,16 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         """Park outside the normal schedule for the requested duration."""
         await self.coordinator.async_mower_action("park_for", minutes * 60)
 
+    async def async_mow_secondary_area(
+        self, minutes: int | None = None, mission_id: int | None = None
+    ) -> None:
+        """Start the mower in the secondary area for a duration or until the battery runs low."""
+        await self.coordinator.async_mower_action(
+            "mow_secondary_area",
+            minutes * 60 if minutes is not None else None,
+            mission_id=mission_id,
+        )
+
     async def async_get_schedule(self) -> dict:
         """Return the mower's locally stored weekly schedule."""
         return await self.coordinator.async_read_schedule()

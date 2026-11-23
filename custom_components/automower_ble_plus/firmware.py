@@ -1,4 +1,4 @@
-"""Resolve installation limits using the mower's main node version."""
+"""Resolve firmware-specific BLE capabilities using the mower's main node version."""
 
 import json
 import re
@@ -11,25 +11,25 @@ _FAMILY = re.compile(r"^([0-9]+\.[0-9]+)_Main-App-")
 
 
 @dataclass(frozen=True, slots=True)
-class InstallationLimits:
+class FirmwareProfile:
     """The settings applicable to a single firmware profile."""
 
     reverse_min: int
     reverse_max: int
     angle_min: int
     angle_max: int
+    blade_usage_read: int
+    blade_usage_reset: int
 
 
 @cache
 def _catalog() -> dict:
-    return json.loads(
-        Path(__file__).with_name("installation_profiles.json").read_text()
-    )
+    return json.loads(Path(__file__).with_name("firmware_profiles.json").read_text())
 
 
-def get_installation_limits(
+def get_firmware_profile(
     model_id: tuple[int, int], node_version: str | None
-) -> InstallationLimits | None:
+) -> FirmwareProfile | None:
     """Look up the exact build, the app's family, or a matching G3 model."""
     if not node_version:
         return None
@@ -46,7 +46,5 @@ def get_installation_limits(
     else:
         return None
     return (
-        InstallationLimits(*catalog["profiles"][profile])
-        if profile is not None
-        else None
+        FirmwareProfile(*catalog["profiles"][profile]) if profile is not None else None
     )
