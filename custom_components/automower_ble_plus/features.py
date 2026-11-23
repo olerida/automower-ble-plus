@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from struct import Struct
 from struct import error as StructError
 
+from .installation import InstallationLimits
 from .models import BOUNDARY_RANGES, STARTING_POINT_COUNTS
 from .wire import Command
 
@@ -137,11 +138,45 @@ _SETTINGS = (
 
 
 def settings_for_model(
-    model: tuple[int, int], guide_count: int | None
+    model: tuple[int, int],
+    guide_count: int | None,
+    limits: InstallationLimits | None = None,
 ) -> tuple[Setting, ...]:
     """Select settings with verified value ranges for this mower model."""
     bounds = BOUNDARY_RANGES.get(model)
     settings = list(_SETTINGS)
+    if limits and limits.reverse_max:
+        settings.append(
+            Setting(
+                "reversing_distance",
+                (_variant(4716, 0, 1, codec=U16),),
+                minimum=limits.reverse_min,
+                maximum=limits.reverse_max,
+                unit="mm",
+                step=10,
+            )
+        )
+    if limits and limits.angle_max:
+        for key, opcode in (
+            ("sector_1_start_angle", 2),
+            ("sector_1_end_angle", 4),
+            ("sector_2_start_angle", 6),
+            ("sector_2_end_angle", 8),
+        ):
+            settings.append(
+                Setting(
+                    key,
+                    (_variant(4716, opcode, opcode + 1, codec=U16),),
+                    minimum=limits.angle_min,
+                    maximum=limits.angle_max,
+                    unit="°",
+                )
+            )
+        settings.append(
+            Setting(
+                "sector_1_proportion", (_variant(4716, 10, 11),), maximum=100, unit="%"
+            )
+        )
     if bounds is not None:
         settings.append(
             Setting(

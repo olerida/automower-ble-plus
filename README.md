@@ -14,7 +14,7 @@ Incluye el estado del cortacésped, inicio, pausa, aparcamiento, reanudación de
 
 - `get_schedule` lee los intervalos semanales y sus límites. `replace_schedule` guarda el nuevo horario y lo vuelve a leer. Cada intervalo usa `start` (hora local), `duration_minutes`, `weekdays` (`mon` a `sun`) y, si procede, `mission_id`.
 - `get_message_history` devuelve una página de avisos del cortacésped.
-- `get_work_areas` devuelve los nombres e identificadores de las áreas en modelos compatibles. Puedes pasar `mission_id` a `mow_for` para cortar en esa área.
+- `get_work_areas` devuelve los nombres e identificadores de las áreas en modelos compatibles. Puedes pasar `mission_id` a `mow_for` para cortar en esa área o a `update_work_area` para cambiar su nombre o estado.
 - Cuando el robot proporciona una posición válida, la entidad de ubicación se puede habilitar en Home Assistant.
 
 El Automower 420 es el modelo de referencia. Las pruebas automatizadas reproducen el emparejamiento y la detección de funciones con un dispositivo simulado. El [inventario de BLE](docs/ble.md) recoge la cobertura y las funciones pendientes de comprobar.

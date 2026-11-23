@@ -33,6 +33,7 @@ from .features import (
     STATISTIC_KEYS,
     STATISTICS,
     U8,
+    U16,
     U32,
     Reading,
     Setting,
@@ -40,6 +41,7 @@ from .features import (
     settings_for_model,
 )
 from .history import async_get_message_history
+from .installation import get_installation_limits
 from .models import STARTING_POINT_COUNTS
 from .schedule import (
     ScheduleTask,
@@ -49,7 +51,7 @@ from .schedule import (
 )
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
 from .wire import Command
-from .work_areas import async_get_work_areas
+from .work_areas import async_get_work_areas, async_update_work_area
 
 type MowerEntry = ConfigEntry[MowerCoordinator]
 type MowerData = dict[str, int]
@@ -65,6 +67,14 @@ _GET_TASK_COUNT = Command(4690, 4)
 _START = Command(4586, 4)
 _PAUSE = Command(4586, 5)
 _START_SPOT_CUTTING = Command(4710, 7)
+_SECTOR_MAXIMUM = {
+    Command(4716, 3): Command(4716, 4),
+    Command(4716, 7): Command(4716, 8),
+}
+_SECTOR_MINIMUM = {
+    Command(4716, 5): Command(4716, 2),
+    Command(4716, 9): Command(4716, 6),
+}
 
 
 class MowerCoordinator(DataUpdateCoordinator[MowerData]):
@@ -106,6 +116,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
 
     async def _async_setup(self) -> None:
         guide_count = None
+        node_version = None
         try:
             async with self._operation_lock:
                 await self._async_connect()
@@ -125,6 +136,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         )
                     except CommandRejected, MowerConnectionError, ValueError:
                         pass
+                if self.client.is_connected():
+                    try:
+                        node_version = await self.client.main_node_version()
+                    except CommandRejected, MowerConnectionError, UnicodeError:
+                        pass
         except (
             MowerConnectionError,
             CommandRejected,
@@ -132,7 +148,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         ) as err:
             raise UpdateFailed("Could not identify the mower") from err
         identity = MowerModels.get(model_id)
-        self.settings = settings_for_model(model_id, guide_count)
+        limits = await self.hass.async_add_executor_job(
+            get_installation_limits, model_id, node_version
+        )
+        self.settings = settings_for_model(model_id, guide_count, limits)
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, self.address)},
             name=self.config_entry.title,
@@ -269,7 +288,20 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 )
             try:
                 await self._async_connect()
-                await self.client.command(variant.write, setting.encode(variant, value))
+                payload = setting.encode(variant, value)
+                if (
+                    maximum := _SECTOR_MAXIMUM.get(variant.write)
+                ) and value > await self._read(Reading(maximum, U16)):
+                    raise ValueError(
+                        "The start angle must be at or below the end angle"
+                    )
+                if (
+                    minimum := _SECTOR_MINIMUM.get(variant.write)
+                ) and value < await self._read(Reading(minimum, U16)):
+                    raise ValueError(
+                        "The end angle must be at or above the start angle"
+                    )
+                await self.client.command(variant.write, payload)
                 actual = await self._read(variant.read)
             except (CommandRejected, MowerConnectionError, ValueError) as err:
                 raise HomeAssistantError(f"Could not set {setting.key}: {err}") from err
@@ -452,3 +484,23 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         await super().async_shutdown()
         async with self._operation_lock:
             await self.client.disconnect()
+
+    async def async_change_work_area(
+        self, mission_id: int, *, name: str | None, enabled: bool | None
+    ) -> None:
+        """Change one supported work area setting and check the result."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                await async_update_work_area(
+                    self.client, mission_id, name=name, enabled=enabled
+                )
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not update the work area: {err}"
+                ) from err

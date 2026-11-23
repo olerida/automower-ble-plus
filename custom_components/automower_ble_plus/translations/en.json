@@ -144,6 +144,24 @@
       },
       "station_search_guide_3_delay": {
         "name": "Search delay for guide 3"
+      },
+      "reversing_distance": {
+        "name": "Reversing distance"
+      },
+      "sector_1_start_angle": {
+        "name": "Sector 1 start angle"
+      },
+      "sector_1_end_angle": {
+        "name": "Sector 1 end angle"
+      },
+      "sector_2_start_angle": {
+        "name": "Sector 2 start angle"
+      },
+      "sector_2_end_angle": {
+        "name": "Sector 2 end angle"
+      },
+      "sector_1_proportion": {
+        "name": "Sector 1 proportion"
       }
     },
     "select": {
@@ -311,6 +329,24 @@
         "limit": {
           "name": "Limit",
           "description": "Maximum number of entries to return."
+        }
+      }
+    },
+    "update_work_area": {
+      "name": "Update work area",
+      "description": "Rename an existing work area or change whether it is enabled.",
+      "fields": {
+        "mission_id": {
+          "name": "Work area ID",
+          "description": "ID returned by Read work areas."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New name for the work area."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the mower can use this area."
         }
       }
     }

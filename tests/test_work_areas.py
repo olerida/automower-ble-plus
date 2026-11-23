@@ -6,7 +6,11 @@ import pytest
 
 from custom_components.automower_ble_plus.features import U32
 from custom_components.automower_ble_plus.transport import CommandRejected
-from custom_components.automower_ble_plus.work_areas import async_get_work_areas
+from custom_components.automower_ble_plus.wire import Command
+from custom_components.automower_ble_plus.work_areas import (
+    async_get_work_areas,
+    async_update_work_area,
+)
 
 
 @pytest.mark.asyncio
@@ -44,4 +48,27 @@ async def test_one_based_area_and_utf16_name():
             "enabled": True,
             "schedulable": True,
         }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_area_name_is_written_and_verified():
+    client = AsyncMock()
+    old = "Antes\0".encode("utf-16-le")
+    new = "Área árbol\0".encode("utf-16-le")
+    client.command.side_effect = [b"\x01", old, b"", new]
+    await async_update_work_area(client, 12, name="Área árbol", enabled=None)
+    client.command.assert_any_await(Command(5604, 8), U32.pack(12) + new)
+    assert client.command.await_count == 4
+
+
+@pytest.mark.asyncio
+async def test_area_setting_not_supported_by_mower_is_never_written():
+    client = AsyncMock()
+    client.command.side_effect = [b"\x01", CommandRejected(Command(5604, 31), 7)]
+    with pytest.raises(CommandRejected):
+        await async_update_work_area(client, 12, name=None, enabled=False)
+    assert [call.args[0].operation for call in client.command.await_args_list] == [
+        20,
+        31,
     ]

@@ -13,6 +13,7 @@ from homeassistant.config_entries import (
     ConfigEntryState,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import (
     area_registry,
     device_registry,
@@ -41,16 +42,25 @@ class FakeAutomower420:
             (Command(4422, 5), b""): b"\x00",
             (Command(4422, 2), b""): b"\x04",
             (Command(4712, 0), b""): U16.pack(310),
+            (Command(4716, 0), b""): U16.pack(600),
+            (Command(4716, 2), b""): U16.pack(90),
+            (Command(4716, 4), b""): U16.pack(210),
             (Command(4706, 10), b"\x01"): U16.pack(150),
         }
 
     def is_connected(self):
         return True
 
+    async def main_node_version(self):
+        return "App-G3_devicetype-5.0"
+
     async def command(self, command, payload=b""):
         self.calls.append((command, payload))
         if command == Command(4712, 1):
             self.values[Command(4712, 0), b""] = payload
+            return b""
+        if command in (Command(4716, 1), Command(4716, 3)):
+            self.values[Command(4716, command.operation - 1), b""] = payload
             return b""
         try:
             return self.values[command, payload]
@@ -95,7 +105,14 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
 
     await coordinator.async_refresh_optional()
     detected = {entity.key: entity for entity in entities}
-    assert set(detected) == {"eco_mode", "drive_past_wire", "starting_point_1_distance"}
+    assert set(detected) == {
+        "eco_mode",
+        "drive_past_wire",
+        "starting_point_1_distance",
+        "reversing_distance",
+        "sector_1_start_angle",
+        "sector_1_end_angle",
+    }
     assert (Command(4422, 2), b"") not in client.calls
     assert coordinator.device_info["model"] == "Automower 420"
     assert detected["starting_point_1_distance"].native_value == 150
@@ -108,6 +125,20 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     await wire.async_set_native_value(320)
     assert wire.native_value == 320
     assert (Command(4712, 1), U16.pack(320)) in client.calls
+    reverse = detected["reversing_distance"]
+    assert (
+        reverse.native_min_value,
+        reverse.native_max_value,
+        reverse.native_step,
+    ) == (150, 3000, 10)
+    await reverse.async_set_native_value(650)
+    assert reverse.native_value == 650
+    sector = detected["sector_1_start_angle"]
+    with pytest.raises(HomeAssistantError, match="at or below"):
+        await sector.async_set_native_value(215)
+    assert (Command(4716, 3), U16.pack(215)) not in client.calls
+    await sector.async_set_native_value(175)
+    assert sector.native_value == 175
     await coordinator.async_shutdown()
 
 

@@ -17,7 +17,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Altura de corte y reducción automática | 4422 | Ajustes con detección |
 | ECO y estación | 4692 | Ajustes de ECO y caseta con detección |
 | Faros | 4722 | Ajustes con detección |
-| Distancias de cable y marcha atrás | 4712, 4716 | Distancia sobre el cable editable con rangos por modelo. Marcha atrás de solo lectura |
+| Distancias de cable, marcha atrás y ángulos de salida | 4712, 4716 | Rangos por modelo o versión del nodo. Las operaciones de lectura confirman cada control |
 | Puntos de partida y pasillos | 4706 | Habilitación, proporción, distancia, guía y corte en pasillos según modelo |
 | Búsqueda de la estación | 4708 | Métodos, retardos y alcance con detección |
 | Navegación asistida y obstáculos | 4732, 5356 | Ajustes con detección |
@@ -25,8 +25,10 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Estadísticas y desgaste de cuchillas | 4726 | Lecturas implementadas |
 | Historial de avisos | 4730 | Lectura paginada |
 | Corte localizado | 4710, 4658, 4586 | Inicio con detección de disponibilidad. Pendiente verificar variantes de firmware |
-| Áreas de trabajo | 5604, 4658 | Lista e inicio de corte por área. Edición y geometría pendientes |
+| Áreas de trabajo | 5604, 4658 | Lista, inicio de corte, cambio de nombre y habilitación según firmware. Geometría pendiente |
 | Posición GPS | 5264 | Lectura del dispositivo y entidad de ubicación opcional |
 | Accesorios avanzados, GeoFence, perfiles y actualización de firmware | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
 
 Las entradas implementadas identifican código y evidencia estática. La verificación con un robot físico se registra por modelo y firmware cuando existan resultados.
+
+La app lee la versión del nodo principal por BLE (`GetVersionString`, familia 96, operación 0) y busca el perfil correspondiente. REA localizó el envío en `ev_4ed95968cd8768f561ae97ffb22a93ce031875f446081a5a47c39feb89ac0f0a`, el receptor en `ev_b3916f62dbc81c6cbcbb5c2734e14bdde2beb156f5c2e8bc6be000d84ff226e5` y la resolución por familia en `ev_128d9d5f2a362e6f6ac9c7cbb0260fe668bdcd67a330a7065efbe99de16ebea5`. El constructor DEX confirma el envío enlazado con familia 96 y operación 0. El catálogo de la integración contiene los rangos numéricos y permite regenerarlos a partir del APK con `tools/extract_installation_profiles.py`. Para la identidad G3 `5.0`, la app apunta al perfil 31.7, con 150–3000 mm de marcha atrás y 45–315° de salida.

@@ -52,6 +52,8 @@ class FakeGatt:
                     result = ResponseResult.INVALID_PIN
             elif (family, operation) == (4698, 9):
                 value = b"\x05\x00"
+            elif (family, operation) == (96, 0):
+                value = b"App-G3_devicetype-5.0\x00"
             else:
                 result = ResponseResult.INVALID_ID
             payload = (
@@ -81,6 +83,7 @@ async def test_authenticated_gatt_exchange(monkeypatch, pin, result):
     client = AutomowerClient("00:11:22:33:44:55", pin)
     assert await client.connect(SimpleNamespace(name="Automower 420")) == result
     if result == ResponseResult.OK:
+        assert await client.main_node_version() == "App-G3_devicetype-5.0"
         assert await client.command(Command(4698, 9)) == b"\x05\x00"
         with pytest.raises(CommandRejected, match="INVALID_ID"):
             await client.command(Command(4722, 2))

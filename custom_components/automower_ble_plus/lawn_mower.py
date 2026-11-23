@@ -96,3 +96,11 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
     async def async_get_work_areas(self, offset: int, limit: int) -> dict:
         """Return available work areas and their device-assigned IDs."""
         return await self.coordinator.async_read_work_areas(offset, limit)
+
+    async def async_update_work_area(
+        self, mission_id: int, name: str | None = None, enabled: bool | None = None
+    ) -> None:
+        """Rename or enable/disable an area when supported by the mower."""
+        await self.coordinator.async_change_work_area(
+            mission_id, name=name, enabled=enabled
+        )

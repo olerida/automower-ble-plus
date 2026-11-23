@@ -14,6 +14,7 @@ from .wire import Command, Frame, FrameError, pop_frame
 SERVICE_UUID = "98bd0001-0b0e-421a-84e5-ddbf75dc6de4"
 _LOGIN = Command(4664, 4)
 _KEEP_ALIVE = Command(4674, 2)
+_GET_MAIN_NODE_VERSION = Command(96, 0)
 _RESPONSE_TIMEOUT = 12
 _GATT_WRITE_SIZE = 17
 
@@ -73,11 +74,17 @@ class AutomowerClient(BLEClient):
             while not self.queue.empty():
                 self.queue.get_nowait()
 
-    async def command(self, command: Command, payload: bytes = b"") -> bytes:
+    async def command(
+        self,
+        command: Command,
+        payload: bytes = b"",
+        *,
+        timeout: float = _RESPONSE_TIMEOUT,
+    ) -> bytes:
         """Return the response payload or raise with the mower's result code."""
         request = command.request(self.channel_id, payload)
         try:
-            async with self.lock, asyncio.timeout(_RESPONSE_TIMEOUT):
+            async with self.lock, asyncio.timeout(timeout):
                 async for frame in self._read_reply(request.encode()):
                     reply = command.response(self.channel_id, frame)
                     if reply is None:
@@ -97,6 +104,11 @@ class AutomowerClient(BLEClient):
     async def keep_alive(self) -> None:
         """Keep the authenticated link available between polls."""
         await self.command(_KEEP_ALIVE)
+
+    async def main_node_version(self) -> str:
+        """Read the linked node version used by Automower Connect to select a TIF."""
+        payload = await self.command(_GET_MAIN_NODE_VERSION, timeout=4)
+        return payload.partition(b"\0")[0].decode("ascii")
 
     async def _request_response(self, request_data: bytearray) -> bytes:
         """Read the response to the library's channel setup and login frames."""

@@ -144,6 +144,24 @@
       },
       "station_search_guide_3_delay": {
         "name": "Retardo de búsqueda por guía 3"
+      },
+      "reversing_distance": {
+        "name": "Distancia de marcha atrás"
+      },
+      "sector_1_start_angle": {
+        "name": "Ángulo inicial del sector 1"
+      },
+      "sector_1_end_angle": {
+        "name": "Ángulo final del sector 1"
+      },
+      "sector_2_start_angle": {
+        "name": "Ángulo inicial del sector 2"
+      },
+      "sector_2_end_angle": {
+        "name": "Ángulo final del sector 2"
+      },
+      "sector_1_proportion": {
+        "name": "Proporción del sector 1"
       }
     },
     "select": {
@@ -311,6 +329,24 @@
         "limit": {
           "name": "Límite",
           "description": "Número máximo de avisos devueltos."
+        }
+      }
+    },
+    "update_work_area": {
+      "name": "Actualizar área de trabajo",
+      "description": "Cambia el nombre de un área existente o su estado de habilitación.",
+      "fields": {
+        "mission_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID devuelto por Leer áreas de trabajo."
+        },
+        "name": {
+          "name": "Nombre",
+          "description": "Nuevo nombre del área de trabajo."
+        },
+        "enabled": {
+          "name": "Habilitada",
+          "description": "Indica si el cortacésped puede utilizar el área."
         }
       }
     }

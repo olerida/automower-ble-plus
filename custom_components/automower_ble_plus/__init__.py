@@ -60,6 +60,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "replace_schedule": {vol.Required("intervals"): [interval_schema]},
         "get_message_history": page_schema,
         "get_work_areas": page_schema,
+        "update_work_area": {
+            vol.Required("mission_id"): _bounded_integer(0, 0xFFFFFFFF),
+            vol.Exclusive("name", "work_area_change"): cv.string,
+            vol.Exclusive("enabled", "work_area_change"): cv.boolean,
+        },
     }
     for action, schema in schemas.items():
         async_register_platform_entity_service(
