@@ -114,3 +114,11 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         await self.coordinator.async_change_work_area(
             mission_id, name=name, enabled=enabled
         )
+
+    async def async_get_installations(self, offset: int, limit: int) -> dict:
+        """List the available installation profiles on the mower."""
+        return await self.coordinator.async_read_installations(offset, limit)
+
+    async def async_rename_installation(self, site_id: int, name: str) -> None:
+        """Rename the active installation after verifying the site ID."""
+        await self.coordinator.async_change_installation_name(site_id, name)

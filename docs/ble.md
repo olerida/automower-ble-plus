@@ -26,8 +26,9 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Historial de avisos | 4730 | Lectura paginada |
 | Corte localizado | 4710, 4658, 4586 | Inicio con detección de disponibilidad. Pendiente verificar variantes de firmware |
 | Áreas de trabajo | 5604, 4658 | Lista, inicio de corte, cambio de nombre y habilitación según firmware. Geometría pendiente |
+| Perfiles de instalación | 5900, 5896, 5578 | Lista, identificación y cambio de nombre del perfil activo, e indicadores de mapas disponibles |
 | Posición GPS | 5264 | Lectura del dispositivo y entidad de ubicación opcional |
-| Accesorios avanzados, GeoFence, perfiles y actualización de firmware | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
+| Accesorios avanzados, GeoFence y actualización de firmware | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
 
 Las entradas implementadas identifican código y evidencia estática. La verificación con un robot físico se registra por modelo y firmware cuando existan resultados.
 
@@ -36,3 +37,5 @@ La app lee la versión del nodo principal por BLE (`GetVersionString`, familia 9
 Para el área secundaria, la app valida una conexión Bluetooth, selecciona `MANUAL`, escribe la duración y envía `StartTrigger`. La duración `0` corresponde al modo manual hasta batería baja. REA confirmó las variantes sin límite, temporizada y por área en `ev_44df46e896eb5c23d7a045befff9dc6ab19994fd3f18f06e11d882a458166e00`, `ev_3dc2ecad36bca062908f4f2c62fdd951e40b025d4e966158bba0cc886157da85` y `ev_af8e361a634f46949d5c53ce1d224e164efe4602b6f5623875cb5d6f010cd98a`.
 
 REA siguió el reinicio del contador de cuchillas hasta `MowerBluetoothDataSourceImpl` en `ev_395604821ec534bd4bdcc33a21f773fec59c26ae808e728d72846041db9bcb0b`. En los TIF de la familia 4726 aparecen los pares 7/8 y 13/14. La integración selecciona el par por firmware y muestra el botón después de leer su contador.
+
+`SiteManager` resuelve la lista de instalaciones mediante `GetNumberOfSites` y `GetIdListEntry` (`ev_95e5f935eba43867cff0ead95dc1fb48605e8c1eb2841e11c0fdecca210cc6b0`). La integración confirma el ID activo antes de aplicar `Site.SetName` y comprueba el nombre y el ID después de la escritura. Los indicadores de `SiteMap` informan de la disponibilidad de los mapas.

@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 from struct import Struct
 
 from automower_ble.error_codes import ErrorCodes
-from automower_ble.protocol import ResponseResult
 
 from .features import U32
-from .transport import AutomowerClient, CommandRejected
+from .indexed import async_indexed_page
+from .transport import AutomowerClient
 from .wire import Command
 
 _COUNT = Command(4730, 0)
@@ -44,26 +44,10 @@ async def async_get_message_history(
 ) -> dict:
     """Read a page in the mower's index order."""
     count = U32.unpack(await client.command(_COUNT))[0]
-    end = min(count, offset + limit)
-    messages: list[dict] = []
-    result = {"total": count, "offset": offset, "messages": messages}
-    if offset >= end:
-        return result
-    try:
-        first = await client.command(_MESSAGE, U32.pack(0))
-    except CommandRejected as err:
-        if err.result not in (
-            ResponseResult.INVALID_ID,
-            ResponseResult.OUT_OF_RANGE,
-            ResponseResult.INVALID_VALUE,
-        ):
-            raise
-        origin = 1
-    else:
-        origin = 0
-        if offset == 0:
-            messages.append(_decode_message(0, first))
-    for index in range(offset + len(messages), end):
-        raw = await client.command(_MESSAGE, U32.pack(index + origin))
-        messages.append(_decode_message(index, raw))
-    return result
+    messages = [
+        _decode_message(index, raw)
+        async for index, raw in async_indexed_page(
+            client, _MESSAGE, count, offset, limit
+        )
+    ]
+    return {"total": count, "offset": offset, "messages": messages}

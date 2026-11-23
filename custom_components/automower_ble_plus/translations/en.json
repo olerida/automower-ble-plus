@@ -369,6 +369,34 @@
           "description": "Optional ID from Read work areas."
         }
       }
+    },
+    "get_installations": {
+      "name": "Read installation profiles",
+      "description": "Read the mower’s stored installation profiles and available maps.",
+      "fields": {
+        "offset": {
+          "name": "Offset",
+          "description": "Number of entries to skip."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Maximum number of entries to return."
+        }
+      }
+    },
+    "rename_installation": {
+      "name": "Rename active installation",
+      "description": "Change the name of the active installation.",
+      "fields": {
+        "site_id": {
+          "name": "Site ID",
+          "description": "ID of the active installation returned by Read installation profiles."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New installation name."
+        }
+      }
     }
   }
 }

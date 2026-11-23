@@ -64,6 +64,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "replace_schedule": {vol.Required("intervals"): [interval_schema]},
         "get_message_history": page_schema,
         "get_work_areas": page_schema,
+        "get_installations": page_schema,
+        "rename_installation": {
+            vol.Required("site_id"): _bounded_integer(0, 0xFFFFFFFF),
+            vol.Required("name"): cv.string,
+        },
         "update_work_area": {
             vol.Required("mission_id"): _bounded_integer(0, 0xFFFFFFFF),
             vol.Exclusive("name", "work_area_change"): cv.string,

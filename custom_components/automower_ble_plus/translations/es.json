@@ -369,6 +369,34 @@
           "description": "ID opcional devuelto por Leer áreas de trabajo."
         }
       }
+    },
+    "get_installations": {
+      "name": "Leer perfiles de instalación",
+      "description": "Lee los perfiles de instalación que guarda el cortacésped y los mapas disponibles.",
+      "fields": {
+        "offset": {
+          "name": "Desplazamiento",
+          "description": "Número de avisos que se omiten al principio."
+        },
+        "limit": {
+          "name": "Límite",
+          "description": "Número máximo de avisos devueltos."
+        }
+      }
+    },
+    "rename_installation": {
+      "name": "Renombrar instalación activa",
+      "description": "Cambia el nombre del perfil de instalación activo.",
+      "fields": {
+        "site_id": {
+          "name": "ID de instalación",
+          "description": "ID del perfil activo devuelto por Leer perfiles de instalación."
+        },
+        "name": {
+          "name": "Nombre",
+          "description": "Nuevo nombre de la instalación."
+        }
+      }
     }
   }
 }

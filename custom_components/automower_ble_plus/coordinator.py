@@ -54,6 +54,7 @@ from .schedule import (
     async_get_schedule_limits,
     async_replace_schedule,
 )
+from .sites import async_get_installations, async_rename_installation
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
 from .wire import Command
 from .work_areas import async_get_work_areas, async_update_work_area
@@ -550,4 +551,36 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             ) as err:
                 raise HomeAssistantError(
                     f"Could not update the work area: {err}"
+                ) from err
+
+    async def async_read_installations(self, offset: int, limit: int) -> dict:
+        """Read the installation profiles via the current authenticated connection."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                return await async_get_installations(self.client, offset, limit)
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not read the mower installations: {err}"
+                ) from err
+
+    async def async_change_installation_name(self, site_id: int, name: str) -> None:
+        """Update the active installation where the mower allows profile editing."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                await async_rename_installation(self.client, site_id, name)
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not change the mower installation name: {err}"
                 ) from err
