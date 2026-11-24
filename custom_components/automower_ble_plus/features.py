@@ -122,6 +122,8 @@ _SETTINGS = (
     Setting("gps_assisted_navigation", (_variant(4732, 2, 1, available=0),)),
     Setting("obstacle_avoidance", (_variant(5356, 4, 3, available=2),)),
     Setting("obstacle_avoidance_at_boundary", (_variant(5356, 6, 5, available=2),)),
+    Setting("ultrasonic", (_variant(4728, 1, 2, available=0),)),
+    Setting("edge_cut", (_variant(6690, 2, 1, available=3),)),
     Setting(
         "headlight_schedule",
         (_variant(4722, 2, 1, available=0),),

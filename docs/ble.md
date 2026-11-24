@@ -21,6 +21,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Puntos de partida y pasillos | 4706 | Habilitación, proporción, distancia, guía y corte en pasillos según modelo |
 | Búsqueda de la estación | 4708 | Métodos, retardos y alcance con detección |
 | Navegación asistida y obstáculos | 4732, 5356 | Ajustes con detección |
+| Corte de bordes y ultrasonidos | 6690, 4728 | Activación cuando el cortacésped anuncia cada función |
 | Protección contra heladas | 5370, 5412 | Ajuste con detección de variantes |
 | Estadísticas y desgaste de cuchillas | 4726 | Lecturas y reinicio del contador por perfil de firmware |
 | Historial de avisos | 4730 | Lectura paginada |
@@ -45,3 +46,5 @@ REA siguió el reinicio del contador de cuchillas hasta `MowerBluetoothDataSourc
 La app lee por BLE la suma de comprobación del mapa activo y recupera la geometría de su caché o del servidor (`ev_399d1f0af547570ccf17d7f7c44029f5b1c9c088bdde53c040b777b92f10f935`). Los TIF declaran los atributos 100 y 101 de `SiteMap` como SVG legible por `NativeAttributes.GetRaw`. Para subir la geometría, la app serializa polígonos y líneas en SVG (`ev_21eefa8d76472a52a8195a83b1b8dfe0a0ebb72a1ffd47685c281b40d880a179`), usa GZIP y CRC32 para transferirla (`ev_692ad27c006213d64d6f040235177f16d22567c27db0fd6e353fbb43775abd33`, `ev_44753a99b47edacf59c23507baf3cbb41a8ada36fccaf4d21d0cbb1a8d36eacb`) y publica el MD5 del SVG tras el último fragmento (`ev_9b8c838b03440c9f763aa613bdcc68c0d1ea77e81b08fd8d2034f6f36f399b99`, `ev_5d487bd75f9af263575d117aee0cfb8fec03d28aa69233f9757475f5e7236bee`).
 
 REA localizó el cambio del centro de GeoFence (`ev_b0392b33703ebe84b62c72825bf368ac0e5e0da6158561ce61363280d17d749e`) y los dos procedimientos de activación, con PIN (`ev_2e3391b8870b25a8f77ee77d58f20f3934a4f5c1662805c288e16170a9b8773c`) y con el comando que admite la sesión BLE existente (`ev_ea93b78641d83d26f468c86e91d66b764427336137556c2cf7086d8bf346d4c4`). El catálogo de TIF proporciona los límites del radio cuando el firmware los declara. Las coordenadas del centro se devuelven como enteros del firmware.
+
+Los controles de corte de bordes (`ev_57d5396fbb4053a2b2a6012b16a6c44ff85ae6210651ebbd2b596d91485f07cb`) y ultrasonidos (`ev_f88be4afd15e7f7ce92f0413811d73240df10bebe195e6b2b9c90377d09a00ed`) usan un valor booleano. Cada interruptor requiere una respuesta afirmativa a su operación de disponibilidad y una lectura válida del ajuste.

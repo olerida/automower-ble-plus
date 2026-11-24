@@ -127,6 +127,12 @@
       },
       "geofence_enabled": {
         "name": "GeoFence"
+      },
+      "edge_cut": {
+        "name": "Edge cutting"
+      },
+      "ultrasonic": {
+        "name": "Ultrasonic obstacle detection"
       }
     },
     "number": {

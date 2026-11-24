@@ -145,6 +145,45 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_accessory_switches_require_mower_availability(tmp_path, monkeypatch):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    ultrasonic = Command(4728, 1)
+    edge_cut = Command(6690, 2)
+    client.values.update(
+        {
+            (Command(4728, 0), b""): b"\x01",
+            (ultrasonic, b""): b"\0",
+            (Command(6690, 3), b""): b"\0",
+            (edge_cut, b""): b"\0",
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == Command(4728, 2) and payload == b"\x01":
+            client.values[ultrasonic, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    await switch.async_setup_entry(coordinator.hass, entry, entities.extend)
+    await coordinator.async_refresh_optional()
+    detected = {entity.key: entity for entity in entities}
+    assert "edge_cut" not in detected
+    assert (edge_cut, b"") not in client.calls
+    await detected["ultrasonic"].async_turn_on()
+    assert detected["ultrasonic"].is_on
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
 async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkeypatch):
     integrations = Path(__file__).resolve().parents[1] / "custom_components"
     (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
