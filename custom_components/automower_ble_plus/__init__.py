@@ -50,6 +50,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         vol.Optional("offset", default=0): _bounded_integer(0, 0xFFFFFFFF),
         vol.Optional("limit", default=20): _bounded_integer(1, 100),
     }
+    angle = vol.All(vol.Coerce(float), vol.Range(min=-360, max=360))
+    mission = _bounded_integer(0, 0xFFFFFFFF)
     schemas = {
         "mow_for": {
             vol.Required("minutes"): duration,
@@ -64,6 +66,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "replace_schedule": {vol.Required("intervals"): [interval_schema]},
         "get_message_history": page_schema,
         "get_work_areas": page_schema,
+        "get_work_area_mowing": {vol.Required("mission_id"): mission},
         "get_installations": page_schema,
         "get_geofence": {},
         "get_map": {vol.Optional("generated", default=False): cv.boolean},
@@ -79,6 +82,17 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Required("mission_id"): _bounded_integer(0, 0xFFFFFFFF),
             vol.Exclusive("name", "work_area_change"): cv.string,
             vol.Exclusive("enabled", "work_area_change"): cv.boolean,
+        },
+        "set_work_area_mowing": {
+            vol.Required("mission_id"): mission,
+            vol.Exclusive("mowing_pattern", "mowing_change"): vol.In(
+                ("random", "systematic")
+            ),
+            vol.Exclusive("orientation", "mowing_change"): angle,
+            vol.Exclusive("orientation_shift", "mowing_change"): angle,
+            vol.Exclusive("boundary_mowing", "mowing_change"): cv.boolean,
+            vol.Exclusive("cutting_height", "mowing_change"): _bounded_integer(0, 100),
+            vol.Exclusive("use_global_cutting_height", "mowing_change"): cv.boolean,
         },
     }
     for action, schema in schemas.items():

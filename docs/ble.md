@@ -27,6 +27,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Historial de avisos | 4730 | Lectura paginada |
 | Corte localizado | 4710, 4658, 4586 | Inicio con detección de disponibilidad. Pendiente verificar variantes de firmware |
 | Áreas de trabajo | 5604, 4658 | Lista, inicio de corte, cambio de nombre y habilitación según firmware |
+| Ajustes de corte por área | 5582, 5604 | Patrón, dirección, variación, perímetro y altura según área y firmware |
 | Perfiles de instalación | 5900, 5896, 5578 | Lista, identificación y cambio de nombre del perfil activo, e indicadores de mapas disponibles |
 | Geometría del mapa | 5578, 5786 | Descarga directa del SVG en los firmwares que admiten `GetRaw`. Carga del mapa activo con comprobación de la revisión |
 | Posición GPS | 5264 | Lectura del dispositivo y entidad de ubicación opcional |
@@ -48,3 +49,5 @@ La app lee por BLE la suma de comprobación del mapa activo y recupera la geomet
 REA localizó el cambio del centro de GeoFence (`ev_b0392b33703ebe84b62c72825bf368ac0e5e0da6158561ce61363280d17d749e`) y los dos procedimientos de activación, con PIN (`ev_2e3391b8870b25a8f77ee77d58f20f3934a4f5c1662805c288e16170a9b8773c`) y con el comando que admite la sesión BLE existente (`ev_ea93b78641d83d26f468c86e91d66b764427336137556c2cf7086d8bf346d4c4`). El catálogo de TIF proporciona los límites del radio cuando el firmware los declara. Las coordenadas del centro se devuelven como enteros del firmware.
 
 Los controles de corte de bordes (`ev_57d5396fbb4053a2b2a6012b16a6c44ff85ae6210651ebbd2b596d91485f07cb`) y ultrasonidos (`ev_f88be4afd15e7f7ce92f0413811d73240df10bebe195e6b2b9c90377d09a00ed`) usan un valor booleano. Cada interruptor requiere una respuesta afirmativa a su operación de disponibilidad y una lectura válida del ajuste.
+
+La app escribe el patrón, la orientación y el ajuste de perímetro mediante `SetMissionPattern` (`ev_ca00b3b57f0bb24e32d86f74c7acd1339b2aa10fe881ce7e5d113cac1296ba5d`). El protocolo usa décimas de grado para los ángulos. La altura por área puede ser un nivel del 1 al 9 o un porcentaje (`ev_9392f199a6777106a194920df1794203d9e8b0f42139beb04d80516300e898ed`). La integración habilita su edición cuando identifica el formato en el perfil exacto del firmware y puede leer la altura del área.

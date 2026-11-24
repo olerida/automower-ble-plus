@@ -448,6 +448,58 @@
     "get_geofence": {
       "name": "Read GeoFence",
       "description": "Read the mower’s local GeoFence settings and status."
+    },
+    "get_work_area_mowing": {
+      "name": "Read work area mowing settings",
+      "description": "Read the mowing settings available in the selected area.",
+      "fields": {
+        "mission_id": {
+          "name": "Work area ID",
+          "description": "ID returned by Read work areas."
+        }
+      }
+    },
+    "set_work_area_mowing": {
+      "name": "Change work area mowing settings",
+      "description": "Change one setting listed as editable for the selected area.",
+      "fields": {
+        "mission_id": {
+          "name": "Work area ID",
+          "description": "ID returned by Read work areas."
+        },
+        "mowing_pattern": {
+          "name": "Mowing pattern",
+          "description": "Select random or systematic mowing."
+        },
+        "orientation": {
+          "name": "Mowing direction",
+          "description": "The direction of the systematic cutting lines, in degrees."
+        },
+        "orientation_shift": {
+          "name": "Direction shift",
+          "description": "The change in direction between cuts, in degrees."
+        },
+        "boundary_mowing": {
+          "name": "Boundary mowing",
+          "description": "Enable cutting along the boundary of the work area."
+        },
+        "cutting_height": {
+          "name": "Cutting height",
+          "description": "Use the level or percentage reported by Read work area mowing settings."
+        },
+        "use_global_cutting_height": {
+          "name": "Use global cutting height",
+          "description": "Use the mower’s global height setting for this work area."
+        }
+      }
+    }
+  },
+  "selector": {
+    "mowing_pattern": {
+      "options": {
+        "random": "Random",
+        "systematic": "Systematic"
+      }
     }
   }
 }

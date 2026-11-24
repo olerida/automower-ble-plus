@@ -448,6 +448,58 @@
     "get_geofence": {
       "name": "Leer GeoFence",
       "description": "Lee la configuración local y el estado de GeoFence del cortacésped."
+    },
+    "get_work_area_mowing": {
+      "name": "Leer ajustes de corte del área",
+      "description": "Lee los ajustes de corte disponibles en el área seleccionada.",
+      "fields": {
+        "mission_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID devuelto por Leer áreas de trabajo."
+        }
+      }
+    },
+    "set_work_area_mowing": {
+      "name": "Cambiar ajuste de corte del área",
+      "description": "Cambia un ajuste de los que el área seleccionada indica como editables.",
+      "fields": {
+        "mission_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID devuelto por Leer áreas de trabajo."
+        },
+        "mowing_pattern": {
+          "name": "Patrón de corte",
+          "description": "Selecciona corte aleatorio o sistemático."
+        },
+        "orientation": {
+          "name": "Dirección de corte",
+          "description": "Dirección de las líneas de corte sistemático, en grados."
+        },
+        "orientation_shift": {
+          "name": "Variación de dirección",
+          "description": "Variación de la dirección entre cortes, en grados."
+        },
+        "boundary_mowing": {
+          "name": "Corte del perímetro",
+          "description": "Activa el corte a lo largo del perímetro del área."
+        },
+        "cutting_height": {
+          "name": "Altura de corte",
+          "description": "Usa el nivel o el porcentaje devuelto por Leer ajustes de corte del área."
+        },
+        "use_global_cutting_height": {
+          "name": "Usar altura de corte global",
+          "description": "Usa la altura de corte general del cortacésped en esta área."
+        }
+      }
+    }
+  },
+  "selector": {
+    "mowing_pattern": {
+      "options": {
+        "random": "Aleatorio",
+        "systematic": "Sistemático"
+      }
     }
   }
 }

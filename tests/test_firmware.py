@@ -15,7 +15,7 @@ def test_legacy_profile_requires_the_mower_to_report_the_same_model():
 
 def test_exact_release_precedes_family_and_unknown_versions_stay_unknown():
     assert get_firmware_profile((26, 1), "40.1_Main-App-P25_26.19") == FirmwareProfile(
-        150, 3000, 0, 0, 7, 8, 3, 0, 0, 0
+        150, 3000, 0, 0, 7, 8, 3, 0, 0, 0, 9
     )
     assert get_firmware_profile((26, 1), "40.1_Main-App-P25_other") == FirmwareProfile(
         600, 5000, 0, 0, 7, 8, 15, 100, 5000, 0

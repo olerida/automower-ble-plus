@@ -13,6 +13,7 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
     methods = {}
     blade_operations = {}
     geofence_operations = {}
+    area_height_methods = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -21,6 +22,12 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
             blade_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "GeoFence" and protocol.get("msgType") == "4734":
             geofence_operations[method["command"]] = protocol.get("subCmd")
+        if (
+            method["family"] == "Missions"
+            and protocol.get("msgType") == "5604"
+            and method["command"] in ("GetCuttingHeight", "SetCuttingHeight")
+        ):
+            area_height_methods[method["command"]] = (protocol.get("subCmd"), method)
     types = {item["name"]: item for item in profile.get("types", ())}
 
     def value_range(name: str) -> tuple[int, int]:
@@ -76,7 +83,25 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
         geofence_operations.get("GetSensitivity") == "7"
         and geofence_operations.get("SetSensitivity") == "8"
     )
-    result = (*reverse, *angles, *blade_ids, enable, *radius, sensitivity)
+    area_height_max = 0
+    get_id, get_height = area_height_methods.get("GetCuttingHeight", (None, None))
+    set_id, set_height = area_height_methods.get("SetCuttingHeight", (None, None))
+    if get_id == "9" and set_id == "10":
+        get_type = get_height["outParams"][0]["type"]
+        set_type = set_height["inParams"][1]["type"]
+        if get_type == set_type == "tPercentage":
+            area_height_max = 100
+        elif get_type == set_type == "tICuttingHeight_HeightPrescaled":
+            area_height_max = 9
+    result = (
+        *reverse,
+        *angles,
+        *blade_ids,
+        enable,
+        *radius,
+        sensitivity,
+        area_height_max,
+    )
     return result if any(result) else None
 
 

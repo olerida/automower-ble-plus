@@ -2,7 +2,7 @@
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
 
@@ -24,6 +24,7 @@ class FirmwareProfile:
     geofence_radius_min: int = 0
     geofence_radius_max: int = 0
     geofence_sensitivity: int = 0
+    work_area_height_max: int = 0
 
 
 @cache
@@ -38,6 +39,7 @@ def get_firmware_profile(
     if not node_version:
         return None
     catalog = _catalog()
+    exact = True
     if node_version in catalog["release"]:
         profile = catalog["release"][node_version]
     elif match := _LEGACY.search(node_version):
@@ -47,8 +49,11 @@ def get_firmware_profile(
         profile = catalog["legacy"].get(f"{device}.{variant}")
     elif match := _FAMILY.match(node_version):
         profile = catalog["family"].get(match[1])
+        exact = False
     else:
         return None
-    return (
-        FirmwareProfile(*catalog["profiles"][profile]) if profile is not None else None
-    )
+    if profile is None:
+        return None
+    result = FirmwareProfile(*catalog["profiles"][profile])
+    # Releases in one family can use either a percentage or a 1–9 height.
+    return result if exact else replace(result, work_area_height_max=0)

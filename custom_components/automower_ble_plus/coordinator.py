@@ -64,7 +64,12 @@ from .schedule import (
 from .sites import async_get_installations, async_rename_installation
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
 from .wire import Command
-from .work_areas import async_get_work_areas, async_update_work_area
+from .work_areas import (
+    async_get_area_mowing_settings,
+    async_get_work_areas,
+    async_set_area_mowing_setting,
+    async_update_work_area,
+)
 
 type MowerEntry = ConfigEntry[MowerCoordinator]
 type MowerData = dict[str, int]
@@ -589,6 +594,51 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             ) as err:
                 raise HomeAssistantError(
                     f"Could not update the work area: {err}"
+                ) from err
+
+    async def async_read_work_area_mowing(self, mission_id: int) -> dict:
+        """Read the settings for an individual mowing area."""
+        profile = self.firmware_profile
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                return await async_get_area_mowing_settings(
+                    self.client,
+                    mission_id,
+                    profile.work_area_height_max if profile else 0,
+                )
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not read work area mowing settings: {err}"
+                ) from err
+
+    async def async_write_work_area_mowing(
+        self, mission_id: int, changes: dict
+    ) -> None:
+        """Write one mowing setting for an individual area."""
+        profile = self.firmware_profile
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                await async_set_area_mowing_setting(
+                    self.client,
+                    mission_id,
+                    profile.work_area_height_max if profile else 0,
+                    changes,
+                )
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not update work area mowing settings: {err}"
                 ) from err
 
     async def async_read_installations(self, offset: int, limit: int) -> dict:

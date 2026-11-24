@@ -135,6 +135,70 @@ update_work_area:
     enabled:
       selector:
         boolean:
+get_work_area_mowing:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    mission_id:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+set_work_area_mowing:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    mission_id:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+    mowing_pattern:
+      selector:
+        select:
+          translation_key: mowing_pattern
+          options:
+            - random
+            - systematic
+    orientation:
+      selector:
+        number:
+          min: -360
+          max: 360
+          step: 0.1
+          unit_of_measurement: "°"
+          mode: box
+    orientation_shift:
+      selector:
+        number:
+          min: -360
+          max: 360
+          step: 0.1
+          unit_of_measurement: "°"
+          mode: box
+    boundary_mowing:
+      selector:
+        boolean:
+    cutting_height:
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: box
+    use_global_cutting_height:
+      selector:
+        boolean:
 get_installations:
   target:
     entity:

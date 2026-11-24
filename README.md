@@ -16,6 +16,7 @@ Incluye el estado del cortacésped, inicio, pausa, aparcamiento, reanudación de
 - `get_message_history` devuelve una página de avisos del cortacésped.
 - `mow_secondary_area` inicia el modo de área secundaria. Si omites `minutes`, el cortacésped trabaja hasta que baja la batería.
 - `get_work_areas` devuelve los nombres e identificadores de las áreas en modelos compatibles. Puedes pasar `mission_id` a `mow_for` para cortar en esa área o a `update_work_area` para cambiar su nombre o estado.
+- `get_work_area_mowing` consulta el patrón, la dirección, el corte del perímetro y la altura de una zona según su compatibilidad. `set_work_area_mowing` cambia uno de los ajustes que aparecen en `editable`. La altura usa la unidad que indica la lectura, porcentaje o nivel del 1 al 9.
 - `get_installations` devuelve los perfiles y el ID activo en modelos compatibles. `rename_installation` cambia el nombre del perfil activo tras comprobar el ID.
 - `get_map` lee el SVG del mapa activo y su suma de comprobación en firmwares compatibles. `replace_map` carga un SVG con el formato de Automower. Pásale como `expected_checksum` el valor `checksum` que devolvió `get_map` para proteger la revisión que estás editando.
 - `get_geofence` lee el estado de GeoFence. El interruptor, el radio, la sensibilidad y el botón para centrarla en la posición actual aparecen según las funciones y la versión del cortacésped. Los controles que requieren el PIN del cortacésped solo aparecen si lo configuraste en Home Assistant.

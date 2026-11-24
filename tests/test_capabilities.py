@@ -24,7 +24,7 @@ from homeassistant.helpers import (
 from custom_components.automower_ble_plus import button, number, select, switch
 from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
-from custom_components.automower_ble_plus.features import U16, U32
+from custom_components.automower_ble_plus.features import I16, U16, U32
 from custom_components.automower_ble_plus.firmware import get_firmware_profile
 from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command
@@ -200,9 +200,19 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
         label_registry.async_load(hass),
     )
     hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    client = FakeAutomower420()
+    area = U32.pack(12)
+    client.values.update(
+        {
+            (Command(5604, 20), b""): b"\x01",
+            (Command(5604, 13), area): b"\x02",
+            (Command(5582, 0), b""): b"\x01",
+            (Command(5582, 3), area): I16.pack(450),
+        }
+    )
     monkeypatch.setattr(
         "custom_components.automower_ble_plus.coordinator.AutomowerClient",
-        lambda *args: FakeAutomower420(),
+        lambda *args: client,
     )
     try:
         async with asyncio.timeout(15):
@@ -213,6 +223,22 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert entry.state == ConfigEntryState.LOADED
             assert hass.states.get("lawn_mower.automower_420").state == "docked"
             assert hass.services.has_service(DOMAIN, "get_schedule")
+            target = {"entity_id": "lawn_mower.automower_420", "mission_id": 12}
+            response = await hass.services.async_call(
+                DOMAIN,
+                "get_work_area_mowing",
+                target,
+                blocking=True,
+                return_response=True,
+            )
+            assert response[target["entity_id"]]["settings"]["orientation"] == 45
+            await hass.services.async_call(
+                DOMAIN,
+                "set_work_area_mowing",
+                {**target, "orientation": 45},
+                blocking=True,
+            )
+            assert (Command(5582, 4), area + I16.pack(450)) not in client.calls
             assert await hass.config_entries.async_unload(entry.entry_id)
             assert entry.state == ConfigEntryState.NOT_LOADED
     finally:

@@ -107,6 +107,14 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         """Return available work areas and their device-assigned IDs."""
         return await self.coordinator.async_read_work_areas(offset, limit)
 
+    async def async_get_work_area_mowing(self, mission_id: int) -> dict:
+        """Return the supported settings for one mowing area."""
+        return await self.coordinator.async_read_work_area_mowing(mission_id)
+
+    async def async_set_work_area_mowing(self, mission_id: int, **changes) -> None:
+        """Change one supported setting for a mowing area."""
+        await self.coordinator.async_write_work_area_mowing(mission_id, changes)
+
     async def async_update_work_area(
         self, mission_id: int, name: str | None = None, enabled: bool | None = None
     ) -> None:
