@@ -65,6 +65,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "get_message_history": page_schema,
         "get_work_areas": page_schema,
         "get_installations": page_schema,
+        "get_geofence": {},
         "get_map": {vol.Optional("generated", default=False): cv.boolean},
         "replace_map": {
             vol.Required("svg"): cv.string,

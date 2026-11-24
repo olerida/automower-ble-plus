@@ -46,6 +46,12 @@ from .features import (
     settings_for_model,
 )
 from .firmware import FirmwareProfile, get_firmware_profile
+from .geofence import (
+    GEOFENCE_AVAILABLE,
+    GEOFENCE_CENTER_SETTABLE,
+    async_get_geofence,
+    async_recenter_geofence,
+)
 from .history import async_get_message_history
 from .mapfiles import async_get_map, async_replace_map
 from .models import STARTING_POINT_COUNTS
@@ -159,7 +165,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self.firmware_profile = await self.hass.async_add_executor_job(
             get_firmware_profile, model_id, node_version
         )
-        self.settings = settings_for_model(model_id, guide_count, self.firmware_profile)
+        self.settings = settings_for_model(
+            model_id,
+            guide_count,
+            self.firmware_profile,
+            has_pin=self._configured_pin is not None,
+        )
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, self.address)},
             name=self.config_entry.title,
@@ -231,6 +242,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             if key not in setting_keys
         )
         probes.extend((("statistics", None), ("position", None)))
+        if self._configured_pin is not None:
+            probes.append(("geofence_center_settable", None))
         if (profile := self.firmware_profile) and profile.blade_usage_reset:
             probes.append(
                 (
@@ -265,6 +278,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         raw = await self.client.command(GET_STATISTICS)
                         values.update(
                             zip(STATISTIC_KEYS, STATISTICS.unpack(raw), strict=True)
+                        )
+                    elif key == "geofence_center_settable":
+                        available = (
+                            await self._read(Reading(GEOFENCE_AVAILABLE, U8)) == 1
+                        )
+                        values[key] = (
+                            await self._read(Reading(GEOFENCE_CENTER_SETTABLE, U8))
+                            if available
+                            else 0
                         )
                     else:
                         values.pop("latitude", None)
@@ -310,6 +332,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             try:
                 await self._async_connect()
                 payload = setting.encode(variant, value)
+                if variant.requires_pin:
+                    payload = self._pin_payload() + payload
                 if (
                     maximum := _SECTOR_MAXIMUM.get(variant.write)
                 ) and value > await self._read(Reading(maximum, U16)):
@@ -327,6 +351,17 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             except (CommandRejected, MowerConnectionError, ValueError) as err:
                 raise HomeAssistantError(f"Could not set {setting.key}: {err}") from err
             self.async_set_updated_data({**self.data, setting.key: actual})
+
+    @property
+    def _configured_pin(self) -> int | None:
+        pin = self.config_entry.data.get(CONF_PIN)
+        return int(pin) if pin is not None and pin != "" else None
+
+    def _pin_payload(self) -> bytes:
+        pin = self._configured_pin
+        if pin is None:
+            raise ValueError("This operation needs the configured mower PIN")
+        return U16.pack(pin)
 
     async def _async_run(self, commands: CommandBatch) -> None:
         for command, payload in commands:
@@ -400,6 +435,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     await self.client.command(_SET_MODE, b"\x02")
                 elif action == "reset_blade_usage":
                     await self._async_reset_blade_usage()
+                elif action == "recenter_geofence":
+                    await async_recenter_geofence(self.client, self._pin_payload())
                 elif action == "mow_secondary_area":
                     ModeOfOperation(await self._read(READINGS["operation_mode"]))
                     if mission_id is not None:
@@ -600,6 +637,22 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             ) as err:
                 raise HomeAssistantError(
                     f"Could not read the mower map: {err}"
+                ) from err
+
+    async def async_read_geofence(self) -> dict:
+        """Read the available local GeoFence settings."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                return await async_get_geofence(self.client)
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not read the mower GeoFence: {err}"
                 ) from err
 
     async def async_write_map(self, svg: str, expected_checksum: str) -> dict:

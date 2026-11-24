@@ -29,7 +29,8 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Perfiles de instalación | 5900, 5896, 5578 | Lista, identificación y cambio de nombre del perfil activo, e indicadores de mapas disponibles |
 | Geometría del mapa | 5578, 5786 | Descarga directa del SVG en los firmwares que admiten `GetRaw`. Carga del mapa activo con comprobación de la revisión |
 | Posición GPS | 5264 | Lectura del dispositivo y entidad de ubicación opcional |
-| Accesorios avanzados, GeoFence y actualización de firmware | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
+| GeoFence | 4734 | Lectura de estado, activación, radio, sensibilidad y cambio de centro según firmware |
+| Accesorios avanzados y actualización de firmware | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
 
 Las entradas implementadas identifican código y evidencia estática. La verificación con un robot físico se registra por modelo y firmware cuando existan resultados.
 
@@ -42,3 +43,5 @@ REA siguió el reinicio del contador de cuchillas hasta `MowerBluetoothDataSourc
 `SiteManager` resuelve la lista de instalaciones mediante `GetNumberOfSites` y `GetIdListEntry` (`ev_95e5f935eba43867cff0ead95dc1fb48605e8c1eb2841e11c0fdecca210cc6b0`). La integración confirma el ID activo antes de aplicar `Site.SetName` y comprueba el nombre y el ID después de la escritura. Los indicadores de `SiteMap` informan de la disponibilidad de los mapas.
 
 La app lee por BLE la suma de comprobación del mapa activo y recupera la geometría de su caché o del servidor (`ev_399d1f0af547570ccf17d7f7c44029f5b1c9c088bdde53c040b777b92f10f935`). Los TIF declaran los atributos 100 y 101 de `SiteMap` como SVG legible por `NativeAttributes.GetRaw`. Para subir la geometría, la app serializa polígonos y líneas en SVG (`ev_21eefa8d76472a52a8195a83b1b8dfe0a0ebb72a1ffd47685c281b40d880a179`), usa GZIP y CRC32 para transferirla (`ev_692ad27c006213d64d6f040235177f16d22567c27db0fd6e353fbb43775abd33`, `ev_44753a99b47edacf59c23507baf3cbb41a8ada36fccaf4d21d0cbb1a8d36eacb`) y publica el MD5 del SVG tras el último fragmento (`ev_9b8c838b03440c9f763aa613bdcc68c0d1ea77e81b08fd8d2034f6f36f399b99`, `ev_5d487bd75f9af263575d117aee0cfb8fec03d28aa69233f9757475f5e7236bee`).
+
+REA localizó el cambio del centro de GeoFence (`ev_b0392b33703ebe84b62c72825bf368ac0e5e0da6158561ce61363280d17d749e`) y los dos procedimientos de activación, con PIN (`ev_2e3391b8870b25a8f77ee77d58f20f3934a4f5c1662805c288e16170a9b8773c`) y con el comando que admite la sesión BLE existente (`ev_ea93b78641d83d26f468c86e91d66b764427336137556c2cf7086d8bf346d4c4`). El catálogo de TIF proporciona los límites del radio cuando el firmware los declara. Las coordenadas del centro se devuelven como enteros del firmware.

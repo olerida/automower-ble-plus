@@ -54,6 +54,9 @@
       },
       "reset_blade_usage": {
         "name": "Reiniciar tiempo de uso de las cuchillas"
+      },
+      "geofence_center_settable": {
+        "name": "Centrar GeoFence aquí"
       }
     },
     "binary_sensor": {
@@ -121,6 +124,9 @@
       },
       "station_search_direct": {
         "name": "Buscar la estación por señal de la estación"
+      },
+      "geofence_enabled": {
+        "name": "GeoFence"
       }
     },
     "number": {
@@ -168,6 +174,9 @@
       },
       "sector_1_proportion": {
         "name": "Proporción del sector 1"
+      },
+      "geofence_radius": {
+        "name": "Radio de GeoFence"
       }
     },
     "select": {
@@ -206,6 +215,14 @@
           "minimum": "Mínimo",
           "medium": "Medio",
           "maximum": "Máximo"
+        }
+      },
+      "geofence_sensitivity": {
+        "name": "Sensibilidad de GeoFence",
+        "state": {
+          "low": "Baja",
+          "medium": "Media",
+          "high": "Alta"
         }
       }
     },
@@ -421,6 +438,10 @@
           "description": "Valor checksum devuelto al leer el mapa activo."
         }
       }
+    },
+    "get_geofence": {
+      "name": "Leer GeoFence",
+      "description": "Lee la configuración local y el estado de GeoFence del cortacésped."
     }
   }
 }

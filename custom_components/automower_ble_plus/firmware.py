@@ -20,6 +20,10 @@ class FirmwareProfile:
     angle_max: int
     blade_usage_read: int
     blade_usage_reset: int
+    geofence_enable: int = 0
+    geofence_radius_min: int = 0
+    geofence_radius_max: int = 0
+    geofence_sensitivity: int = 0
 
 
 @cache

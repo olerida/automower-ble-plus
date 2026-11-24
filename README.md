@@ -18,6 +18,7 @@ Incluye el estado del cortacésped, inicio, pausa, aparcamiento, reanudación de
 - `get_work_areas` devuelve los nombres e identificadores de las áreas en modelos compatibles. Puedes pasar `mission_id` a `mow_for` para cortar en esa área o a `update_work_area` para cambiar su nombre o estado.
 - `get_installations` devuelve los perfiles y el ID activo en modelos compatibles. `rename_installation` cambia el nombre del perfil activo tras comprobar el ID.
 - `get_map` lee el SVG del mapa activo y su suma de comprobación en firmwares compatibles. `replace_map` carga un SVG con el formato de Automower. Pásale como `expected_checksum` el valor `checksum` que devolvió `get_map` para proteger la revisión que estás editando.
+- `get_geofence` lee el estado de GeoFence. El interruptor, el radio, la sensibilidad y el botón para centrarla en la posición actual aparecen según las funciones y la versión del cortacésped. Los controles que requieren el PIN del cortacésped solo aparecen si lo configuraste en Home Assistant.
 - Cuando el robot proporciona una posición válida, la entidad de ubicación se puede habilitar en Home Assistant.
 
 El Automower 420 es el modelo de referencia. Las pruebas automatizadas reproducen el emparejamiento y la detección de funciones con un dispositivo simulado. El [inventario de BLE](docs/ble.md) recoge la cobertura y las funciones pendientes de comprobar.

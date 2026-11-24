@@ -21,7 +21,7 @@ from homeassistant.helpers import (
     label_registry,
 )
 
-from custom_components.automower_ble_plus import button, number, switch
+from custom_components.automower_ble_plus import button, number, select, switch
 from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import U16, U32
@@ -73,14 +73,14 @@ class FakeAutomower420:
         pass
 
 
-def _entry():
+def _entry(pin=None):
     return ConfigEntry(
         domain=DOMAIN,
         title="Automower 420",
         version=1,
         minor_version=1,
         source=SOURCE_USER,
-        data={"address": "00:11:22:33:44:55"},
+        data={"address": "00:11:22:33:44:55", "pin": pin},
         discovery_keys=MappingProxyType({}),
         options={},
         pref_disable_new_entities=False,
@@ -258,4 +258,79 @@ async def test_blade_reset_uses_the_builds_command_after_confirming_the_counter(
     assert coordinator.data["blade_usage_time"] == 1240
     await reset_button.async_press()
     assert coordinator.data["blade_usage_time"] == 0
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("version", "pin", "enable_operation"),
+    [
+        ("App-G3_devicetype-5.0", "0042", 3),
+        ("40.1_Main-App-P25_other", None, 15),
+    ],
+)
+async def test_geofence_controls_follow_firmware_and_use_the_operator_pin(
+    tmp_path, version, pin, enable_operation, monkeypatch
+):
+    entry = _entry(pin)
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    monkeypatch.setattr(client, "main_node_version", lambda: asyncio.sleep(0, version))
+    enabled = Command(4734, 2)
+    sensitivity = Command(4734, 7)
+    radius = Command(4734, 10)
+    recenter = Command(4734, 6)
+    client.values.update(
+        {
+            (Command(4734, 0), b""): b"\x01",
+            (enabled, b""): b"\0",
+            (Command(4734, 5), b""): b"\x01",
+            (sensitivity, b""): b"\x06",
+            (radius, b""): U16.pack(250),
+            (recenter, U16.pack(42)): b"",
+        }
+    )
+    enable = Command(4734, enable_operation)
+    pin_payload = U16.pack(42) if pin else b""
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == enable and payload == pin_payload + b"\x01":
+            client.values[enabled, b""] = b"\x01"
+            return b""
+        if operation == Command(4734, 8) and payload == U16.pack(42) + b"\x04":
+            client.values[sensitivity, b""] = b"\x04"
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    for platform in (switch, number, select, button):
+        await platform.async_setup_entry(coordinator.hass, entry, entities.extend)
+    assert not any(entity.key.startswith("geofence") for entity in entities)
+
+    await coordinator.async_refresh_optional()
+    detected = {entity.key: entity for entity in entities}
+    await detected["geofence_enabled"].async_turn_on()
+    assert detected["geofence_enabled"].is_on
+    fence = await coordinator.async_read_geofence()
+    assert fence["enabled"] is True
+    assert fence["radius_m"] == 250
+    if pin:
+        assert "geofence_radius" not in detected
+        setting = detected["geofence_sensitivity"]
+        assert setting.current_option is None
+        await setting.async_select_option("high")
+        assert setting.current_option == "high"
+        await detected["geofence_center_settable"].async_press()
+        assert (recenter, U16.pack(42)) in client.calls
+    else:
+        assert "geofence_sensitivity" not in detected
+        assert "geofence_center_settable" not in detected
+        control = detected["geofence_radius"]
+        assert (control.native_min_value, control.native_max_value) == (100, 5000)
     await coordinator.async_shutdown()

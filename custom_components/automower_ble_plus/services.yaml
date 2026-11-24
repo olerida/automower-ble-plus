@@ -185,6 +185,11 @@ get_map:
       default: false
       selector:
         boolean:
+get_geofence:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
 replace_map:
   target:
     entity:

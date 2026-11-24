@@ -34,13 +34,16 @@ class AutomowerSelect(MowerSettingEntity, SelectEntity):
     def __init__(self, coordinator: MowerCoordinator, setting: Setting) -> None:
         super().__init__(coordinator, setting)
         self._attr_options = list(setting.options)
+        self._option_values = setting.option_values or tuple(
+            range(len(setting.options))
+        )
 
     @property
     def current_option(self) -> str | None:
         value = self.value
-        if value is None or not 0 <= value < len(self.options):
+        if value is None or value not in self._option_values:
             return None
-        return self.options[value]
+        return self.options[self._option_values.index(value)]
 
     async def async_select_option(self, option: str) -> None:
-        await self.async_set_value(self.options.index(option))
+        await self.async_set_value(self._option_values[self.options.index(option)])

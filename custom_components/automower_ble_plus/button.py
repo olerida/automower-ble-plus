@@ -30,6 +30,13 @@ async def async_setup_entry(
         lambda _key, _: AutomowerButton(entry.runtime_data, "mow_secondary_area"),
     )
     profile = entry.runtime_data.firmware_profile
+    async_add_detected(
+        entry,
+        add_entities,
+        {"geofence_center_settable": None},
+        lambda key, _: RecenterGeoFenceButton(entry.runtime_data, key),
+        require_true=True,
+    )
     if profile and profile.blade_usage_reset:
         async_add_detected(
             entry,
@@ -55,3 +62,14 @@ class SpotCutButton(MowerValueEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_mower_action("spot_cut")
+
+
+class RecenterGeoFenceButton(MowerValueEntity, ButtonEntity):
+    """Move the fence centre to the mower's current position."""
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.value == 1
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_mower_action("recenter_geofence")

@@ -12,16 +12,19 @@ FAMILY_ID = "4716"
 def capabilities(profile: dict) -> tuple[int, ...] | None:
     methods = {}
     blade_operations = {}
+    geofence_operations = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
             methods[method["command"]] = protocol.get("subCmd")
         if method["family"] == "Statistics" and protocol.get("msgType") == "4726":
             blade_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "GeoFence" and protocol.get("msgType") == "4734":
+            geofence_operations[method["command"]] = protocol.get("subCmd")
     types = {item["name"]: item for item in profile.get("types", ())}
 
     def value_range(name: str) -> tuple[int, int]:
-        bounds = types.get(f"tI{FAMILY}_{name}", {}).get("range", {})
+        bounds = types.get(name, {}).get("range", {})
         low, high = bounds.get("start"), bounds.get("stop")
         if isinstance(low, int) and isinstance(high, int) and 0 <= low < high <= 65535:
             return low, high
@@ -33,7 +36,7 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
         methods.get("GetReversingDistance") == "0"
         and methods.get("SetReversingDistance") == "1"
     ):
-        reverse = value_range("ReversingDistance")
+        reverse = value_range(f"tI{FAMILY}_ReversingDistance")
     angle_methods = {
         "GetMinAngleSector1": "2",
         "SetMinAngleSector1": "3",
@@ -47,7 +50,7 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
         "SetSector1Proportion": "11",
     }
     if all(methods.get(name) == opcode for name, opcode in angle_methods.items()):
-        low, high = value_range("Angle")
+        low, high = value_range(f"tI{FAMILY}_Angle")
         if max(45, low) < min(315, high):
             angles = max(45, low), min(315, high)
     blade = (
@@ -57,7 +60,23 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
     blade_ids = (
         tuple(map(int, blade)) if blade in (("7", "8"), ("13", "14")) else (0, 0)
     )
-    result = (*reverse, *angles, *blade_ids)
+    enable = 0
+    if geofence_operations.get("GetEnabled") == "2":
+        if geofence_operations.get("SetEnabledNoPin") == "15":
+            enable = 15
+        elif geofence_operations.get("SetEnabled") == "3":
+            enable = 3
+    radius = (0, 0)
+    if (
+        geofence_operations.get("GetRadius") == "10"
+        and geofence_operations.get("SetRadius") == "11"
+    ):
+        radius = value_range("tGeoFenceTif_GeoFenceRadius")
+    sensitivity = int(
+        geofence_operations.get("GetSensitivity") == "7"
+        and geofence_operations.get("SetSensitivity") == "8"
+    )
+    result = (*reverse, *angles, *blade_ids, enable, *radius, sensitivity)
     return result if any(result) else None
 
 

@@ -52,6 +52,7 @@ class SettingVariant:
     read: Reading
     write: Command
     availability: Command | None = None
+    requires_pin: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +68,7 @@ class Setting:
     step: int = 1
     translation_key: str | None = None
     index: int | None = None
+    option_values: tuple[int, ...] = ()
 
     def encode(self, variant: SettingVariant, value: int) -> bytes:
         """Check the app's value range before sending a new setting."""
@@ -76,6 +78,8 @@ class Setting:
             )
         if (value - self.minimum) % self.step:
             raise ValueError(f"{self.key} must be set in steps of {self.step}")
+        if self.option_values and value not in self.option_values:
+            raise ValueError(f"{self.key} does not accept {value}")
         return variant.read.arguments + variant.read.codec.pack(value)
 
 
@@ -87,11 +91,13 @@ def _variant(
     available: int | None = None,
     codec: Struct = U8,
     arguments: bytes = b"",
+    requires_pin: bool = False,
 ) -> SettingVariant:
     return SettingVariant(
         Reading(Command(family, get), codec, arguments),
         Command(family, set_),
         Command(family, available) if available is not None else None,
+        requires_pin,
     )
 
 
@@ -141,10 +147,41 @@ def settings_for_model(
     model: tuple[int, int],
     guide_count: int | None,
     limits: FirmwareProfile | None = None,
+    *,
+    has_pin: bool = False,
 ) -> tuple[Setting, ...]:
     """Select settings with verified value ranges for this mower model."""
     bounds = BOUNDARY_RANGES.get(model)
     settings = list(_SETTINGS)
+    if limits:
+        enable = limits.geofence_enable
+        if enable == 15 or (enable == 3 and has_pin):
+            settings.append(
+                Setting(
+                    "geofence_enabled",
+                    (_variant(4734, 2, enable, available=0, requires_pin=enable == 3),),
+                )
+            )
+        if limits.geofence_radius_max:
+            settings.append(
+                Setting(
+                    "geofence_radius",
+                    (_variant(4734, 10, 11, available=0, codec=U16),),
+                    minimum=limits.geofence_radius_min,
+                    maximum=limits.geofence_radius_max,
+                    unit="m",
+                )
+            )
+        if limits.geofence_sensitivity and has_pin:
+            settings.append(
+                Setting(
+                    "geofence_sensitivity",
+                    (_variant(4734, 7, 8, available=0, requires_pin=True),),
+                    options=("low", "medium", "high"),
+                    maximum=6,
+                    option_values=(2, 3, 4),
+                )
+            )
     if limits and limits.reverse_max:
         settings.append(
             Setting(

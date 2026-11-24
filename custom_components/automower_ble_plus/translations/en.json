@@ -54,6 +54,9 @@
       },
       "reset_blade_usage": {
         "name": "Reset blade usage time"
+      },
+      "geofence_center_settable": {
+        "name": "Recenter GeoFence"
       }
     },
     "binary_sensor": {
@@ -121,6 +124,9 @@
       },
       "station_search_direct": {
         "name": "Find station by station signal"
+      },
+      "geofence_enabled": {
+        "name": "GeoFence"
       }
     },
     "number": {
@@ -168,6 +174,9 @@
       },
       "sector_1_proportion": {
         "name": "Sector 1 proportion"
+      },
+      "geofence_radius": {
+        "name": "GeoFence radius"
       }
     },
     "select": {
@@ -206,6 +215,14 @@
           "minimum": "Minimum",
           "medium": "Medium",
           "maximum": "Maximum"
+        }
+      },
+      "geofence_sensitivity": {
+        "name": "GeoFence sensitivity",
+        "state": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High"
         }
       }
     },
@@ -421,6 +438,10 @@
           "description": "Checksum returned by reading the active map."
         }
       }
+    },
+    "get_geofence": {
+      "name": "Read GeoFence",
+      "description": "Read the mower’s local GeoFence settings and status."
     }
   }
 }
