@@ -32,7 +32,8 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Geometría del mapa | 5578, 5786 | Descarga directa del SVG en los firmwares que admiten `GetRaw`. Carga del mapa activo con comprobación de la revisión |
 | Posición GPS | 5264 | Lectura del dispositivo y entidad de ubicación opcional |
 | GeoFence | 4734 | Lectura de estado, activación, radio, sensibilidad y cambio de centro según firmware |
-| Accesorios avanzados y actualización de firmware | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
+| Actualización de firmware | 5296, 6244, 4698, 6552 | Entidades del cortacésped y la estación con detección, búsqueda de actualizaciones e instalación de la versión descargada |
+| Accesorios avanzados | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
 
 Las entradas implementadas identifican código y evidencia estática. La verificación con un robot físico se registra por modelo y firmware cuando existan resultados.
 
@@ -51,3 +52,5 @@ REA localizó el cambio del centro de GeoFence (`ev_b0392b33703ebe84b62c72825bf3
 Los controles de corte de bordes (`ev_57d5396fbb4053a2b2a6012b16a6c44ff85ae6210651ebbd2b596d91485f07cb`) y ultrasonidos (`ev_f88be4afd15e7f7ce92f0413811d73240df10bebe195e6b2b9c90377d09a00ed`) usan un valor booleano. Cada interruptor requiere una respuesta afirmativa a su operación de disponibilidad y una lectura válida del ajuste.
 
 La app escribe el patrón, la orientación y el ajuste de perímetro mediante `SetMissionPattern` (`ev_ca00b3b57f0bb24e32d86f74c7acd1339b2aa10fe881ce7e5d113cac1296ba5d`). El protocolo usa décimas de grado para los ángulos. La altura por área puede ser un nivel del 1 al 9 o un porcentaje (`ev_9392f199a6777106a194920df1794203d9e8b0f42139beb04d80516300e898ed`). La integración habilita su edición cuando identifica el formato en el perfil exacto del firmware y puede leer la altura del área.
+
+REA localizó las órdenes BLE de instalación para el cortacésped (`ev_7192095d433119df061d28ef9d374817c98a00c869be1ab10577a3848eeadc33`) y para la estación (`ev_c18c2d79950de1684156894069a854d5f1840304dcc7ca1c8bb3efb3e72851fd`), y la comprobación de que esté aparcado o cargando en la app (`ev_23b232712c38d23bfcb0be7582df2b3ebd9f576edc9dc721dc60adc51e7af712`). La integración verifica que la versión elegida siga lista para instalar y que el cortacésped esté aparcado o cargando antes de enviar la orden. El ajuste de búsqueda automática de la app usa el atributo `Enabled` en las familias Fota y CSFota (`ev_1dabb550495df6b4706ad6dc8ecf87f1c732c76a56a8cc94afddfb2481702bc4`, `ev_678596f071ffa15ea0a27becb0543ae7c5790cd92f317cce5a144ef121db82f1`, `ev_6108243aa59c4feca3b86c5b8de7bc40c1480ff1fbe8e4ca4058dca3664105f7`).

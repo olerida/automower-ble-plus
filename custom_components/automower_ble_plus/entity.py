@@ -65,7 +65,8 @@ class MowerValueEntity(MowerEntity):
     @property
     def value(self) -> int | None:
         """Return the last value reported by the mower."""
-        return self.coordinator.data.get(self.key)
+        value = self.coordinator.data.get(self.key)
+        return value if isinstance(value, int) else None
 
 
 class MowerSettingEntity(MowerValueEntity):

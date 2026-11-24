@@ -20,6 +20,7 @@ Incluye el estado del cortacésped, inicio, pausa, aparcamiento, reanudación de
 - `get_installations` devuelve los perfiles y el ID activo en modelos compatibles. `rename_installation` cambia el nombre del perfil activo tras comprobar el ID.
 - `get_map` lee el SVG del mapa activo y su suma de comprobación en firmwares compatibles. `replace_map` carga un SVG con el formato de Automower. Pásale como `expected_checksum` el valor `checksum` que devolvió `get_map` para proteger la revisión que estás editando.
 - `get_geofence` lee el estado de GeoFence. El interruptor, el radio, la sensibilidad y el botón para centrarla en la posición actual aparecen según las funciones y la versión del cortacésped. Los controles que requieren el PIN del cortacésped solo aparecen si lo configuraste en Home Assistant.
+- En equipos compatibles con FOTA, Home Assistant muestra el firmware del cortacésped o de la estación y permite buscar e instalar la actualización preparada por el equipo. La orden se envía por Bluetooth. El equipo descarga su firmware mediante la conectividad que admite su modelo. [Guía de firmware de Husqvarna](https://www.husqvarna.com/uk/support/how-to-update-your-automower-firmware-ka-01099/)
 - Cuando el robot proporciona una posición válida, la entidad de ubicación se puede habilitar en Home Assistant.
 
 El Automower 420 es el modelo de referencia. Las pruebas automatizadas reproducen el emparejamiento y la detección de funciones con un dispositivo simulado. El [inventario de BLE](docs/ble.md) recoge la cobertura y las funciones pendientes de comprobar.

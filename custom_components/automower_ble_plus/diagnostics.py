@@ -1,8 +1,11 @@
 """Downloadable support information for Automower BLE Plus."""
 
+from dataclasses import asdict
+
 from homeassistant.core import HomeAssistant
 
 from .coordinator import MowerEntry
+from .fota import FirmwareStatus
 
 
 async def async_get_config_entry_diagnostics(
@@ -17,7 +20,7 @@ async def async_get_config_entry_diagnostics(
         "connected": coordinator.client.is_connected(),
         "available_settings": sorted(coordinator.setting_variants),
         "telemetry": {
-            key: value
+            key: asdict(value) if isinstance(value, FirmwareStatus) else value
             for key, value in coordinator.data.items()
             if key not in ("latitude", "longitude")
         },

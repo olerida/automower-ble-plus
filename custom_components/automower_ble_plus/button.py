@@ -4,8 +4,9 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import MowerEntry
+from .coordinator import MowerCoordinator, MowerEntry
 from .entity import MowerEntity, MowerValueEntity, async_add_detected
+from .fota import FIRMWARE_TARGETS, UpdatePhase
 
 
 async def async_setup_entry(
@@ -44,6 +45,12 @@ async def async_setup_entry(
             {"blade_reset_available": None},
             lambda _key, _: AutomowerButton(entry.runtime_data, "reset_blade_usage"),
         )
+    async_add_detected(
+        entry,
+        add_entities,
+        FIRMWARE_TARGETS,
+        lambda key, _: FirmwareCheckButton(entry.runtime_data, key),
+    )
 
 
 class AutomowerButton(MowerEntity, ButtonEntity):
@@ -73,3 +80,23 @@ class RecenterGeoFenceButton(MowerValueEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_mower_action("recenter_geofence")
+
+
+class FirmwareCheckButton(MowerEntity, ButtonEntity):
+    """Ask the mower or station to check for its vendor firmware."""
+
+    def __init__(self, coordinator: MowerCoordinator, target: str) -> None:
+        super().__init__(coordinator, f"{target}_check")
+        self.target = target
+
+    @property
+    def available(self) -> bool:
+        status = self.coordinator.firmware_status(self.target)
+        return (
+            super().available
+            and status is not None
+            and status.phase == UpdatePhase.IDLE
+        )
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_firmware_action(self.target, check=True)

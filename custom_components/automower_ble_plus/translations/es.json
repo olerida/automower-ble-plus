@@ -57,6 +57,12 @@
       },
       "geofence_center_settable": {
         "name": "Centrar GeoFence aquí"
+      },
+      "mower_firmware_update_check": {
+        "name": "Buscar firmware del cortacésped"
+      },
+      "station_firmware_update_check": {
+        "name": "Buscar firmware de la estación de carga"
       }
     },
     "binary_sensor": {
@@ -133,6 +139,12 @@
       },
       "ultrasonic": {
         "name": "Detección de obstáculos por ultrasonidos"
+      },
+      "mower_firmware_auto_check": {
+        "name": "Buscar firmware del cortacésped automáticamente"
+      },
+      "station_firmware_auto_check": {
+        "name": "Buscar firmware de la estación automáticamente"
       }
     },
     "number": {
@@ -291,6 +303,14 @@
     "device_tracker": {
       "latitude": {
         "name": "Posición del cortacésped"
+      }
+    },
+    "update": {
+      "mower_firmware_update": {
+        "name": "Firmware del cortacésped"
+      },
+      "station_firmware_update": {
+        "name": "Firmware de la estación de carga"
       }
     }
   },

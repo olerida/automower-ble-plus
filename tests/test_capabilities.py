@@ -21,7 +21,7 @@ from homeassistant.helpers import (
     label_registry,
 )
 
-from custom_components.automower_ble_plus import button, number, select, switch
+from custom_components.automower_ble_plus import button, number, select, switch, update
 from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import I16, U16, U32
@@ -180,6 +180,77 @@ async def test_accessory_switches_require_mower_availability(tmp_path, monkeypat
     assert (edge_cut, b"") not in client.calls
     await detected["ultrasonic"].async_turn_on()
     assert detected["ultrasonic"].is_on
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("key", "family", "state_id", "version_id", "check_id", "install_id", "installed"),
+    [
+        ("mower_firmware_update", 5296, 6, 9, 8, 10, Command(4698, 22)),
+        ("station_firmware_update", 6244, 4, 7, 6, 8, Command(6552, 13)),
+    ],
+)
+async def test_firmware_controls_require_model_support_and_a_ready_vendor_update(
+    tmp_path, key, family, state_id, version_id, check_id, install_id, installed
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    state = Command(family, state_id)
+    version = Command(family, version_id)
+    check = Command(family, check_id)
+    install = Command(family, install_id)
+    activity = Command(4586, 3)
+    client.values.update(
+        {
+            (Command(family, 1), b""): b"\x01",
+            (state, b""): b"\x01",
+            (installed, b""): b"1.0\0",
+            (check, b""): b"",
+            (install, b""): b"",
+        }
+    )
+
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    buttons = []
+    entities = []
+    await button.async_setup_entry(coordinator.hass, entry, buttons.extend)
+    await update.async_setup_entry(coordinator.hass, entry, entities.extend)
+    assert not entities
+    await coordinator.async_refresh_optional()
+    assert [entity.key for entity in entities] == [key]
+    updater = entities[0]
+    assert updater.installed_version == updater.latest_version == "1.0"
+    probe = next(entity for entity in buttons if entity.key == f"{key}_check")
+    assert probe.available
+    await probe.async_press()
+    assert (check, b"") in client.calls
+
+    client.values[state, b""] = b"\x04"
+    client.values[version, b""] = b"2.0\0"
+    await coordinator.async_refresh_optional()
+    assert updater.has_update
+    assert updater.latest_version == "2.0"
+    assert not probe.available
+    with pytest.raises(HomeAssistantError, match="changed"):
+        await updater.async_install("1.9", False)
+    client.values[activity, b""] = b"\x03"
+    with pytest.raises(HomeAssistantError, match="charging station"):
+        await updater.async_install(None, False)
+    assert (install, b"") not in client.calls
+    client.values[activity, b""] = b"\x05"
+    await updater.async_install(None, False)
+    assert (install, b"") in client.calls
+    assert updater.in_progress
+    client.values[state, b""] = b"\x01"
+    client.values[installed, b""] = b"2.0\0"
+    await coordinator.async_refresh_optional()
+    assert updater.installed_version == updater.latest_version == "2.0"
+    assert not updater.in_progress
     await coordinator.async_shutdown()
 
 

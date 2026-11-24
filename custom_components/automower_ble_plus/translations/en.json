@@ -57,6 +57,12 @@
       },
       "geofence_center_settable": {
         "name": "Recenter GeoFence"
+      },
+      "mower_firmware_update_check": {
+        "name": "Check for mower firmware"
+      },
+      "station_firmware_update_check": {
+        "name": "Check for charging station firmware"
       }
     },
     "binary_sensor": {
@@ -133,6 +139,12 @@
       },
       "ultrasonic": {
         "name": "Ultrasonic obstacle detection"
+      },
+      "mower_firmware_auto_check": {
+        "name": "Check for mower firmware automatically"
+      },
+      "station_firmware_auto_check": {
+        "name": "Check for station firmware automatically"
       }
     },
     "number": {
@@ -291,6 +303,14 @@
     "device_tracker": {
       "latitude": {
         "name": "Mower position"
+      }
+    },
+    "update": {
+      "mower_firmware_update": {
+        "name": "Mower firmware"
+      },
+      "station_firmware_update": {
+        "name": "Charging station firmware"
       }
     }
   },

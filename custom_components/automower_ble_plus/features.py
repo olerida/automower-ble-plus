@@ -124,6 +124,8 @@ _SETTINGS = (
     Setting("obstacle_avoidance_at_boundary", (_variant(5356, 6, 5, available=2),)),
     Setting("ultrasonic", (_variant(4728, 1, 2, available=0),)),
     Setting("edge_cut", (_variant(6690, 2, 1, available=3),)),
+    Setting("mower_firmware_auto_check", (_variant(5296, 3, 2, available=1),)),
+    Setting("station_firmware_auto_check", (_variant(6244, 3, 2, available=1),)),
     Setting(
         "headlight_schedule",
         (_variant(4722, 2, 1, available=0),),

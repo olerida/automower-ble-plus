@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from datetime import timedelta
 from struct import error as StructError
 
@@ -46,6 +47,12 @@ from .features import (
     settings_for_model,
 )
 from .firmware import FirmwareProfile, get_firmware_profile
+from .fota import (
+    FIRMWARE_TARGETS,
+    FirmwareStatus,
+    UpdatePhase,
+    async_read_firmware_status,
+)
 from .geofence import (
     GEOFENCE_AVAILABLE,
     GEOFENCE_CENTER_SETTABLE,
@@ -72,7 +79,7 @@ from .work_areas import (
 )
 
 type MowerEntry = ConfigEntry[MowerCoordinator]
-type MowerData = dict[str, int]
+type MowerData = dict[str, int | FirmwareStatus]
 type CommandBatch = Iterable[tuple[Command, bytes]]
 
 _CLEAR_OVERRIDE = Command(4658, 6)
@@ -247,6 +254,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             if key not in setting_keys
         )
         probes.extend((("statistics", None), ("position", None)))
+        probes.extend((key, None) for key in FIRMWARE_TARGETS)
         if self._configured_pin is not None:
             probes.append(("geofence_center_settable", None))
         if (profile := self.firmware_profile) and profile.blade_usage_reset:
@@ -293,6 +301,14 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                             if available
                             else 0
                         )
+                    elif key in FIRMWARE_TARGETS:
+                        status = await async_read_firmware_status(
+                            self.client, FIRMWARE_TARGETS[key]
+                        )
+                        if status is None:
+                            values.pop(key, None)
+                        else:
+                            values[key] = status
                     else:
                         values.pop("latitude", None)
                         values.pop("longitude", None)
@@ -309,6 +325,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 except CommandRejected as err:
                     if err.unsupported:
                         self._unsupported.add(key)
+                        if key in FIRMWARE_TARGETS:
+                            values.pop(key, None)
                 except ValueError, StructError:
                     LOGGER.debug("Unexpected response while reading %s", key)
                 except MowerConnectionError:
@@ -325,6 +343,53 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 await self.client.keep_alive()
             except CommandRejected, MowerConnectionError:
                 LOGGER.debug("Automower keepalive failed")
+
+    def firmware_status(self, key: str) -> FirmwareStatus | None:
+        """Return the latest firmware update information for this recipient."""
+        status = self.data.get(key)
+        return status if isinstance(status, FirmwareStatus) else None
+
+    async def async_firmware_action(
+        self, key: str, *, check: bool = False, expected_version: str | None = None
+    ) -> None:
+        """Check for vendor firmware or install the package confirmed by the user."""
+        target = FIRMWARE_TARGETS[key]
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                status = await async_read_firmware_status(self.client, target)
+                if status is None:
+                    raise ValueError("This device does not report firmware updates")
+                if check:
+                    if status.phase != UpdatePhase.IDLE:
+                        raise ValueError("The firmware updater is not idle")
+                    await self.client.command(
+                        Command(target.family, target.check_operation)
+                    )
+                    return
+
+                if status.phase != UpdatePhase.READY or not expected_version:
+                    raise ValueError("There is no downloaded firmware ready to install")
+                if (
+                    status.offered != expected_version
+                    or status.installed == expected_version
+                ):
+                    raise ValueError("The offered firmware version has changed")
+                activity = await self._read(Reading(GET_ACTIVITY, U8))
+                if activity not in (MowerActivity.PARKED, MowerActivity.CHARGING):
+                    raise ValueError(
+                        "Park the mower in its charging station before updating"
+                    )
+                await self.client.command(
+                    Command(target.family, target.install_operation)
+                )
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Firmware update request failed: {err}"
+                ) from err
+            self.async_set_updated_data(
+                {**self.data, key: replace(status, phase=UpdatePhase.INSTALLING)}
+            )
 
     async def async_set_setting(self, setting: Setting, value: int) -> None:
         """Change a supported setting and retrieve the value stored by the mower."""
