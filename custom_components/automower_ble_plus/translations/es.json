@@ -68,6 +68,15 @@
     "binary_sensor": {
       "charging": {
         "name": "En carga"
+      },
+      "theft_motion_alarm": {
+        "name": "Alarma por movimiento"
+      },
+      "theft_geofence_alarm": {
+        "name": "Alarma GeoFence"
+      },
+      "theft_stop_alarm": {
+        "name": "Alarma del botón STOP"
       }
     },
     "switch": {
@@ -145,6 +154,27 @@
       },
       "station_firmware_auto_check": {
         "name": "Buscar firmware de la estación automáticamente"
+      },
+      "spiral_cutting": {
+        "name": "Corte en espiral"
+      },
+      "stop_pin_required": {
+        "name": "Pedir PIN al pulsar STOP"
+      },
+      "theft_time_lock": {
+        "name": "Bloqueo periódico con PIN"
+      },
+      "theft_alarm_on_stop": {
+        "name": "Alarma al pulsar STOP"
+      },
+      "theft_alarm_on_lift": {
+        "name": "Alarma al levantar"
+      },
+      "theft_alarm_on_tilt": {
+        "name": "Alarma al inclinar"
+      },
+      "theft_alarm_on_motion": {
+        "name": "Alarma por movimiento"
       }
     },
     "number": {
@@ -195,6 +225,12 @@
       },
       "geofence_radius": {
         "name": "Radio de GeoFence"
+      },
+      "theft_alarm_duration": {
+        "name": "Duración de la alarma antirrobo"
+      },
+      "theft_time_lock_duration": {
+        "name": "Intervalo del bloqueo con PIN"
       }
     },
     "select": {
@@ -241,6 +277,16 @@
           "low": "Baja",
           "medium": "Media",
           "high": "Alta"
+        }
+      },
+      "spiral_cutting_sensitivity": {
+        "name": "Intensidad del corte en espiral",
+        "state": {
+          "very_low": "Muy baja",
+          "low": "Baja",
+          "medium": "Media",
+          "high": "Alta",
+          "very_high": "Muy alta"
         }
       }
     },

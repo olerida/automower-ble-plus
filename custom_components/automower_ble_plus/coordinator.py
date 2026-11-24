@@ -38,6 +38,7 @@ from .features import (
     READINGS,
     STATISTIC_KEYS,
     STATISTICS,
+    THEFT_STATUS_READINGS,
     U8,
     U16,
     U32,
@@ -343,6 +344,23 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 await self.client.keep_alive()
             except CommandRejected, MowerConnectionError:
                 LOGGER.debug("Automower keepalive failed")
+                return
+            data = dict(self.data)
+            for key, reading in THEFT_STATUS_READINGS.items():
+                if key not in data:
+                    continue
+                try:
+                    data[key] = await self._read(reading)
+                except CommandRejected as err:
+                    if err.unsupported:
+                        self._unsupported.add(key)
+                        data.pop(key, None)
+                except ValueError:
+                    LOGGER.debug("Unexpected response while reading %s", key)
+                except MowerConnectionError:
+                    return
+            if data != self.data:
+                self.async_set_updated_data(data)
 
     def firmware_status(self, key: str) -> FirmwareStatus | None:
         """Return the latest firmware update information for this recipient."""
@@ -525,7 +543,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         await self._async_mow_for(duration, mission_id)
                     else:
                         await self.client.command(_PARK_FOR, U32.pack(duration))
-                elif action == "spot_cut" and self.data.get("spot_cut_available") == 1:
+                elif (
+                    action == "spot_cut"
+                    and self.firmware_profile is not None
+                    and self.firmware_profile.spot_cut_trigger
+                    and self.data.get("spot_cut_available") == 1
+                ):
                     await self.client.command(_PAUSE)
                     await self._async_clear_override()
                     await self._async_run(

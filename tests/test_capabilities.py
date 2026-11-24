@@ -21,7 +21,14 @@ from homeassistant.helpers import (
     label_registry,
 )
 
-from custom_components.automower_ble_plus import button, number, select, switch, update
+from custom_components.automower_ble_plus import (
+    binary_sensor,
+    button,
+    number,
+    select,
+    switch,
+    update,
+)
 from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import I16, U16, U32
@@ -70,6 +77,9 @@ class FakeAutomower420:
             raise CommandRejected(command, 7) from err
 
     async def disconnect(self):
+        pass
+
+    async def keep_alive(self):
         pass
 
 
@@ -180,6 +190,102 @@ async def test_accessory_switches_require_mower_availability(tmp_path, monkeypat
     assert (edge_cut, b"") not in client.calls
     await detected["ultrasonic"].async_turn_on()
     assert detected["ultrasonic"].is_on
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_legacy_420_reports_spiral_settings_without_manual_spot_trigger(
+    tmp_path, monkeypatch
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    sensitivity = Command(4710, 3)
+    client.values.update(
+        {
+            (Command(4710, 0), b""): b"\x01",
+            (Command(4710, 1), b""): b"\x01",
+            (sensitivity, b""): b"\x02",
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == Command(4710, 4) and payload == b"\x04":
+            client.values[sensitivity, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    for platform in (button, switch, select):
+        await platform.async_setup_entry(coordinator.hass, entry, entities.extend)
+    await coordinator.async_refresh_optional()
+    detected = {entity.key: entity for entity in entities}
+    assert detected["spiral_cutting"].is_on
+    assert "spot_cut_available" not in detected
+    await detected["spiral_cutting_sensitivity"].async_select_option("very_high")
+    assert detected["spiral_cutting_sensitivity"].current_option == "very_high"
+    with pytest.raises(HomeAssistantError, match="Unsupported mower action"):
+        await coordinator.async_mower_action("spot_cut")
+    assert (Command(4710, 7), b"") not in client.calls
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pin", [None, "0042"])
+async def test_theft_alarm_configuration_requires_the_operator_pin(
+    tmp_path, pin, monkeypatch
+):
+    entry = _entry(pin)
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    duration = Command(4736, 15)
+    client.values.update(
+        {
+            (duration, b""): U32.pack(120),
+            (Command(4736, 7), b""): b"\x01",
+            (Command(4736, 13), b""): b"\x01",
+            (Command(4736, 26), b""): b"\x02",
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == Command(4736, 16) and payload == U32.pack(180):
+            client.values[duration, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    for platform in (binary_sensor, number, switch):
+        await platform.async_setup_entry(coordinator.hass, entry, entities.extend)
+    await coordinator.async_refresh_optional()
+    detected = {entity.key: entity for entity in entities}
+    assert detected["theft_stop_alarm"].is_on
+    client.values[Command(4736, 26), b""] = b"\x04"
+    await coordinator.async_keep_alive()
+    assert not detected["theft_stop_alarm"].is_on
+    assert "theft_alarm_on_motion" not in detected
+    if pin:
+        assert detected["theft_alarm_on_stop"].is_on
+        alarm_duration = detected["theft_alarm_duration"]
+        assert alarm_duration.native_value == 120
+        await alarm_duration.async_set_native_value(180)
+        assert alarm_duration.native_value == 180
+    else:
+        assert "theft_alarm_on_stop" not in detected
+        assert "theft_alarm_duration" not in detected
+        assert (duration, b"") not in client.calls
     await coordinator.async_shutdown()
 
 

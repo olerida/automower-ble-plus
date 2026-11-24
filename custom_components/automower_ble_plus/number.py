@@ -1,6 +1,6 @@
 """Number entities for supported mower settings."""
 
-from homeassistant.components.number import NumberEntity
+from homeassistant.components.number import NumberDeviceClass, NumberEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
@@ -38,6 +38,8 @@ class AutomowerNumber(MowerSettingEntity, NumberEntity):
         self._attr_native_max_value = setting.maximum
         self._attr_native_unit_of_measurement = setting.unit
         self._attr_native_step = setting.step
+        if setting.unit == "s":
+            self._attr_device_class = NumberDeviceClass.DURATION
 
     @property
     def native_value(self) -> int | None:

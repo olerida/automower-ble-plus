@@ -14,6 +14,7 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
     blade_operations = {}
     geofence_operations = {}
     area_height_methods = {}
+    spot_cut_operations = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -22,6 +23,8 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
             blade_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "GeoFence" and protocol.get("msgType") == "4734":
             geofence_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "SpotCutting" and protocol.get("msgType") == "4710":
+            spot_cut_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "Missions"
             and protocol.get("msgType") == "5604"
@@ -93,6 +96,7 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
             area_height_max = 100
         elif get_type == set_type == "tICuttingHeight_HeightPrescaled":
             area_height_max = 9
+    spot_cut_trigger = int(spot_cut_operations.get("StartTrigger") == "7")
     result = (
         *reverse,
         *angles,
@@ -101,6 +105,7 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
         *radius,
         sensitivity,
         area_height_max,
+        spot_cut_trigger,
     )
     return result if any(result) else None
 

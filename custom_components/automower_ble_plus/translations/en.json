@@ -68,6 +68,15 @@
     "binary_sensor": {
       "charging": {
         "name": "Charging"
+      },
+      "theft_motion_alarm": {
+        "name": "Movement alarm"
+      },
+      "theft_geofence_alarm": {
+        "name": "GeoFence alarm"
+      },
+      "theft_stop_alarm": {
+        "name": "STOP alarm"
       }
     },
     "switch": {
@@ -145,6 +154,27 @@
       },
       "station_firmware_auto_check": {
         "name": "Check for station firmware automatically"
+      },
+      "spiral_cutting": {
+        "name": "Spiral cutting"
+      },
+      "stop_pin_required": {
+        "name": "Require PIN after STOP"
+      },
+      "theft_time_lock": {
+        "name": "Periodic PIN lock"
+      },
+      "theft_alarm_on_stop": {
+        "name": "Alarm on STOP"
+      },
+      "theft_alarm_on_lift": {
+        "name": "Alarm on lifting"
+      },
+      "theft_alarm_on_tilt": {
+        "name": "Alarm on tilting"
+      },
+      "theft_alarm_on_motion": {
+        "name": "Alarm on movement"
       }
     },
     "number": {
@@ -195,6 +225,12 @@
       },
       "geofence_radius": {
         "name": "GeoFence radius"
+      },
+      "theft_alarm_duration": {
+        "name": "Theft alarm duration"
+      },
+      "theft_time_lock_duration": {
+        "name": "Periodic PIN lock interval"
       }
     },
     "select": {
@@ -241,6 +277,16 @@
           "low": "Low",
           "medium": "Medium",
           "high": "High"
+        }
+      },
+      "spiral_cutting_sensitivity": {
+        "name": "Spiral cutting intensity",
+        "state": {
+          "very_low": "Very low",
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "very_high": "Very high"
         }
       }
     },

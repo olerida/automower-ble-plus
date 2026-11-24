@@ -5,7 +5,12 @@ from struct import Struct
 from struct import error as StructError
 
 from .firmware import FirmwareProfile
-from .models import BOUNDARY_RANGES, STARTING_POINT_COUNTS
+from .models import (
+    BOUNDARY_RANGES,
+    LIFT_TILT_ALARM_MODELS,
+    MOTION_ALARM_MODELS,
+    STARTING_POINT_COUNTS,
+)
 from .wire import Command
 
 U8 = Struct("<B")
@@ -105,6 +110,13 @@ _SETTINGS = (
     Setting("eco_mode", (_variant(4692, 6, 5),)),
     Setting("mower_house", (_variant(4692, 4, 3),)),
     Setting("weather_timer", (_variant(4460, 4, 5, available=2),)),
+    Setting("spiral_cutting", (_variant(4710, 1, 2, available=0),)),
+    Setting(
+        "spiral_cutting_sensitivity",
+        (_variant(4710, 3, 4, available=0),),
+        options=("very_low", "low", "medium", "high", "very_high"),
+        maximum=4,
+    ),
     Setting(
         "weather_timer_sensitivity",
         (_variant(4460, 6, 7, available=2),),
@@ -147,6 +159,29 @@ _SETTINGS = (
 )
 
 
+_THEFT_SETTINGS = (
+    Setting("stop_pin_required", (_variant(4736, 1, 2),)),
+    Setting("theft_time_lock", (_variant(4736, 5, 6),)),
+    Setting("theft_alarm_on_stop", (_variant(4736, 7, 8),)),
+    Setting(
+        "theft_alarm_duration",
+        (_variant(4736, 15, 16, codec=U32),),
+        minimum=60,
+        maximum=600,
+        unit="s",
+        step=60,
+    ),
+    Setting(
+        "theft_time_lock_duration",
+        (_variant(4736, 3, 4, codec=U32),),
+        minimum=86400,
+        maximum=8640000,
+        unit="s",
+        step=86400,
+    ),
+)
+
+
 def settings_for_model(
     model: tuple[int, int],
     guide_count: int | None,
@@ -157,6 +192,17 @@ def settings_for_model(
     """Select settings with verified value ranges for this mower model."""
     bounds = BOUNDARY_RANGES.get(model)
     settings = list(_SETTINGS)
+    if has_pin:
+        settings.extend(_THEFT_SETTINGS)
+        if model in LIFT_TILT_ALARM_MODELS:
+            settings.extend(
+                (
+                    Setting("theft_alarm_on_lift", (_variant(4736, 9, 10),)),
+                    Setting("theft_alarm_on_tilt", (_variant(4736, 11, 12),)),
+                )
+            )
+        if model in MOTION_ALARM_MODELS:
+            settings.append(Setting("theft_alarm_on_motion", (_variant(4736, 13, 14),)))
     if limits:
         enable = limits.geofence_enable
         if enable == 15 or (enable == 3 and has_pin):
@@ -295,6 +341,12 @@ def settings_for_model(
     return tuple(settings)
 
 
+THEFT_STATUS_READINGS = {
+    "theft_motion_alarm": Reading(Command(4736, 24), U8),
+    "theft_geofence_alarm": Reading(Command(4736, 25), U8),
+    "theft_stop_alarm": Reading(Command(4736, 26), U8),
+}
+
 READINGS = {
     "charging": Reading(Command(4106, 21), U8),
     "remaining_charging_time": Reading(Command(4106, 22), U32),
@@ -308,6 +360,7 @@ READINGS = {
     "drive_past_wire": Reading(Command(4712, 0), U16),
     "reversing_distance": Reading(Command(4716, 0), U16),
     "spot_cut_available": Reading(Command(4710, 0), U8),
+    **THEFT_STATUS_READINGS,
 }
 
 STATISTIC_KEYS = (

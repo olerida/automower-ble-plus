@@ -25,13 +25,14 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Protección contra heladas | 5370, 5412 | Ajuste con detección de variantes |
 | Estadísticas y desgaste de cuchillas | 4726 | Lecturas y reinicio del contador por perfil de firmware |
 | Historial de avisos | 4730 | Lectura paginada |
-| Corte localizado | 4710, 4658, 4586 | Inicio con detección de disponibilidad. Pendiente verificar variantes de firmware |
+| Corte en espiral y corte localizado | 4710, 4658, 4586 | Activación e intensidad del corte en espiral. Inicio manual de corte localizado cuando el perfil declara esa orden |
 | Áreas de trabajo | 5604, 4658 | Lista, inicio de corte, cambio de nombre y habilitación según firmware |
 | Ajustes de corte por área | 5582, 5604 | Patrón, dirección, variación, perímetro y altura según área y firmware |
 | Perfiles de instalación | 5900, 5896, 5578 | Lista, identificación y cambio de nombre del perfil activo, e indicadores de mapas disponibles |
 | Geometría del mapa | 5578, 5786 | Descarga directa del SVG en los firmwares que admiten `GetRaw`. Carga del mapa activo con comprobación de la revisión |
 | Posición GPS | 5264 | Lectura del dispositivo y entidad de ubicación opcional |
 | GeoFence | 4734 | Lectura de estado, activación, radio, sensibilidad y cambio de centro según firmware |
+| Protección antirrobo | 4736 | Ajustes con sesión de operador y sensores de alarma según modelo y firmware |
 | Actualización de firmware | 5296, 6244, 4698, 6552 | Entidades del cortacésped y la estación con detección, búsqueda de actualizaciones e instalación de la versión descargada |
 | Accesorios avanzados | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
 
@@ -54,3 +55,7 @@ Los controles de corte de bordes (`ev_57d5396fbb4053a2b2a6012b16a6c44ff85ae62106
 La app escribe el patrón, la orientación y el ajuste de perímetro mediante `SetMissionPattern` (`ev_ca00b3b57f0bb24e32d86f74c7acd1339b2aa10fe881ce7e5d113cac1296ba5d`). El protocolo usa décimas de grado para los ángulos. La altura por área puede ser un nivel del 1 al 9 o un porcentaje (`ev_9392f199a6777106a194920df1794203d9e8b0f42139beb04d80516300e898ed`). La integración habilita su edición cuando identifica el formato en el perfil exacto del firmware y puede leer la altura del área.
 
 REA localizó las órdenes BLE de instalación para el cortacésped (`ev_7192095d433119df061d28ef9d374817c98a00c869be1ab10577a3848eeadc33`) y para la estación (`ev_c18c2d79950de1684156894069a854d5f1840304dcc7ca1c8bb3efb3e72851fd`), y la comprobación de que esté aparcado o cargando en la app (`ev_23b232712c38d23bfcb0be7582df2b3ebd9f576edc9dc721dc60adc51e7af712`). La integración verifica que la versión elegida siga lista para instalar y que el cortacésped esté aparcado o cargando antes de enviar la orden. El ajuste de búsqueda automática de la app usa el atributo `Enabled` en las familias Fota y CSFota (`ev_1dabb550495df6b4706ad6dc8ecf87f1c732c76a56a8cc94afddfb2481702bc4`, `ev_678596f071ffa15ea0a27becb0543ae7c5790cd92f317cce5a144ef121db82f1`, `ev_6108243aa59c4feca3b86c5b8de7bc40c1480ff1fbe8e4ca4058dca3664105f7`).
+
+El panel de la app llama «corte en espiral» a los ajustes de `SpotCutting` (`ev_46e6738081dcf287782384e11cb8fe3ca4a29353b2b95bbbe9781c8e27a49b98`, `ev_bece35ee572f766ee94f88a9ebe05da400d3c31bd361837f4708f0a363afab47`, `ev_0df7d226f6850dc837e3e1db461b61e2c75376aec8d1f1bdacd28017f8252559`). El perfil G3 que la app asigna al 420 declara la activación y sensibilidad. El botón manual requiere además `StartTrigger`, que ese perfil no declara.
+
+REA confirmó los formatos de las escrituras antirrobo y los intervalos usados por la app (`ev_e44b63c08fee3d74bb161255991980922d2abe8cbb588165de791ab79fd94c7c`). La configuración distingue las alarmas de elevación, inclinación y movimiento con los indicadores por modelo (`ev_1783f2f3502c34150046f6bc8d08900d1a970bec31ac9c6753f45a7b538a4f2c`, `ev_0bf13ed7d130e9120113da4e0dfa2bb57eec4b4b32a623e740deccddd1343b5d`). Los sensores detectados consultan el estado por BLE durante el mantenimiento de la conexión.

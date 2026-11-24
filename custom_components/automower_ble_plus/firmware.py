@@ -25,6 +25,7 @@ class FirmwareProfile:
     geofence_radius_max: int = 0
     geofence_sensitivity: int = 0
     work_area_height_max: int = 0
+    spot_cut_trigger: int = 0
 
 
 @cache
@@ -55,5 +56,7 @@ def get_firmware_profile(
     if profile is None:
         return None
     result = FirmwareProfile(*catalog["profiles"][profile])
-    # Releases in one family can use either a percentage or a 1–9 height.
-    return result if exact else replace(result, work_area_height_max=0)
+    # Releases in one family can differ in their height encoding and spot trigger.
+    return (
+        result if exact else replace(result, work_area_height_max=0, spot_cut_trigger=0)
+    )

@@ -12,6 +12,8 @@ Integración de Home Assistant para cortacéspedes Husqvarna Automower que admit
 
 Incluye el estado del cortacésped, inicio, pausa, aparcamiento, reanudación del horario y órdenes temporizadas. Las entidades de batería, estadísticas, modo ECO, temporizador climático, protección contra heladas, altura de corte, faros, instalación y otros ajustes aparecen si el firmware admite la función. La detección comienza después de la primera conexión.
 
+En firmwares compatibles también aparecen la activación y la intensidad del corte en espiral, y los sensores de alarma antirrobo que el cortacésped puede reportar. Para editar los ajustes antirrobo configura el PIN de operador al añadir la integración.
+
 - `get_schedule` lee los intervalos semanales y sus límites. `replace_schedule` guarda el nuevo horario y lo vuelve a leer. Cada intervalo usa `start` (hora local), `duration_minutes`, `weekdays` (`mon` a `sun`) y, si procede, `mission_id`.
 - `get_message_history` devuelve una página de avisos del cortacésped.
 - `mow_secondary_area` inicia el modo de área secundaria. Si omites `minutes`, el cortacésped trabaja hasta que baja la batería.
