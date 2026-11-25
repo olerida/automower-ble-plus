@@ -81,6 +81,8 @@ La app consulta por BLE el estado y resultado de la instalación de la base (`ev
 
 La pantalla de anchura de pasillo usa los intervalos 1–9 para el delimitador y 0–9 para cada guía (`ev_6b301f9b87505ceb9e6e381f421014dab519902b5647fd6bcb2e35f7145257b0`). El perfil 31.7 del 420 declara `GetGuideCorridor` y `SetGuideCorridor` (4706:2 y 4706:3). La integración lee el número de guías y crea un control por cada guía cuya anchura pueda leer.
 
+En el 420, la anchura del pasillo delimitador se guarda como un par mínimo/máximo (4706:0 y 4706:1). Al cambiar el máximo se conserva el mínimo leído. Los identificadores 4706:24 y 4706:25 corresponden al corte por punto de partida en ese firmware y a la anchura máxima en la mayoría de los perfiles recientes. REA siguió la selección y serialización de ambas variantes en la app (`ev_1833524a3520ed3d02e57d4e7c6c1c50a4d9e67031a41ce600076f4edecffedd`).
+
 La sección de accesorios guarda el ajuste FlexiFence mediante `MobileLoop.Enabled` (`ev_980da380e3e068697a159431114b342149fcc332f6cfb6236dd77d6d19fee2ad`, `ev_daf03529ad8af72c3eba9cd87d424098569fd48f213f57e399bbdf73f4e8fb65`). El TIF del 420 declara la familia 5926. Hay otras variantes con la familia 6050. En ambos casos, la integración espera que `MobileLoop.Available` devuelva verdadero.
 
 La app representa la hora del calendario como segundos Unix más el desfase de la zona local (`ev_04c1b5a7f1b575dfaa8da7398ae38285c56fdba47c3b85652b1d418da28431f0`). Los 166 TIF declaran `Calendar.GetTime` y `Calendar.SetTime` (4690:2 y 4690:3). En los firmwares con la familia `Clock`, la integración usa la zona configurada en el cortacésped y comprueba el desfase que guarda el equipo. En el perfil 31.7 del 420, usa la zona de Home Assistant y solo escribe `Calendar.SetTime`.

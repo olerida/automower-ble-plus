@@ -32,6 +32,8 @@ GET_BATTERY = Command(4106, 20)
 GET_POSITION_AVAILABLE = Command(5264, 4)
 GET_POSITION = Command(5264, 0)
 GET_GUIDE_COUNT = Command(4706, 14)
+GET_LEGACY_BOUNDARY_CORRIDOR = Command(4706, 0)
+SET_LEGACY_BOUNDARY_CORRIDOR = Command(4706, 1)
 VISION_ACCESSORY_AVAILABLE = Command(7276, 1)
 VISION_OBSTACLE_AVOIDANCE_AVAILABLE = Command(7338, 2)
 BOUNDARY_EDGE_DETECTION_AVAILABLE = Command(7414, 2)
@@ -53,6 +55,9 @@ class Reading:
             return self.codec.unpack(payload)[0]
         except StructError as err:
             raise ValueError(f"Unexpected response size for {self.command}") from err
+
+
+MINIMUM_LEGACY_BOUNDARY_CORRIDOR = Reading(GET_LEGACY_BOUNDARY_CORRIDOR, Struct("<Bx"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +166,6 @@ _SETTINGS = (
     Setting("automatic_clock_sync", (_variant(6746, 7, 8),)),
     Setting("use_24_hour_time", (_variant(5100, 10, 11),)),
     Setting("display_cutting_height_in_inches", (_variant(5100, 8, 9),)),
-    Setting("boundary_corridor", (_variant(4706, 24, 25),), minimum=1, maximum=9),
     Setting("automatic_passage_handling", (_variant(4706, 4, 5),)),
     Setting(
         "station_search_range",
@@ -296,6 +300,19 @@ def settings_for_model(
                 step=10,
             )
         )
+    if limits is not None and limits.boundary_corridor_read >= 0:
+        opcode = limits.boundary_corridor_read
+        codec = (
+            Struct("<xB") if opcode == GET_LEGACY_BOUNDARY_CORRIDOR.operation else U8
+        )
+        settings.append(
+            Setting(
+                "boundary_corridor",
+                (_variant(4706, opcode, opcode + 1, codec=codec),),
+                minimum=1,
+                maximum=9,
+            )
+        )
     for index in range(1, (guide_count or 0) + 1):
         settings.append(
             Setting(
@@ -307,12 +324,15 @@ def settings_for_model(
             )
         )
     for index in range(1, STARTING_POINT_COUNTS.get(model, 0) + 1):
-        for name, get, set_, codec, maximum, unit in (
+        point_settings = [
             ("enabled", 6, 7, U8, 1, None),
             ("distance", 10, 11, U16, 500, "m"),
             ("proportion", 12, 13, U8, 100, "%"),
-            ("passage_cutting", 26, 27, U8, 1, None),
-        ):
+        ]
+        if limits is not None and limits.passage_cutting_read:
+            opcode = limits.passage_cutting_read
+            point_settings.append(("passage_cutting", opcode, opcode + 1, U8, 1, None))
+        for name, get, set_, codec, maximum, unit in point_settings:
             settings.append(
                 Setting(
                     f"starting_point_{index}_{name}",

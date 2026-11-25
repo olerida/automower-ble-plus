@@ -80,6 +80,14 @@ class FakeAutomower420:
             guide, width = payload
             self.values[Command(4706, 2), bytes([guide])] = bytes([width])
             return b""
+        if command == Command(4706, 1):
+            assert len(payload) == 2
+            self.values[Command(4706, 0), b""] = payload
+            return b""
+        if command == Command(4706, 25):
+            point, enabled = payload
+            self.values[Command(4706, 24), bytes([point])] = bytes([enabled])
+            return b""
         try:
             return self.values[command, payload]
         except KeyError as err:
@@ -119,7 +127,8 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
             (Command(4706, 14), b""): b"\x01",
             (Command(4706, 2), b"\x02"): b"\x09",
             (Command(4706, 2), b"\x03"): b"\x09",
-            (Command(4706, 24), b""): b"\x06",
+            (Command(4706, 0), b""): b"\x02\x06",
+            (Command(4706, 24), b"\x01"): b"\0",
         }
     )
     coordinator = MowerCoordinator(hass, entry)
@@ -140,6 +149,7 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
         "drive_past_wire",
         "boundary_corridor",
         "guide_1_corridor",
+        "starting_point_1_passage_cutting",
         "starting_point_1_distance",
         "reversing_distance",
         "sector_1_start_angle",
@@ -149,6 +159,8 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert (Command(6170, 2), b"") not in client.calls
     assert (Command(6170, 8), b"") not in client.calls
     assert (Command(4706, 2), b"\x03") not in client.calls
+    assert (Command(4706, 24), b"") not in client.calls
+    assert (Command(4706, 26), b"\x01") not in client.calls
     assert coordinator.device_info["model"] == "Automower 420"
     assert detected["starting_point_1_distance"].native_value == 150
     wire = detected["drive_past_wire"]
@@ -167,7 +179,14 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert (Command(4706, 3), b"\x02\0") in client.calls
     with pytest.raises(HomeAssistantError, match="between 1 and 9"):
         await detected["boundary_corridor"].async_set_native_value(0)
-    assert (Command(4706, 25), b"\0") not in client.calls
+    with pytest.raises(HomeAssistantError, match="stored minimum"):
+        await detected["boundary_corridor"].async_set_native_value(1)
+    await detected["boundary_corridor"].async_set_native_value(7)
+    assert detected["boundary_corridor"].native_value == 7
+    assert (Command(4706, 1), b"\x02\x07") in client.calls
+    await detected["starting_point_1_passage_cutting"].async_turn_on()
+    assert detected["starting_point_1_passage_cutting"].is_on
+    assert (Command(4706, 25), b"\x01\x01") in client.calls
     reverse = detected["reversing_distance"]
     assert (
         reverse.native_min_value,
@@ -182,6 +201,53 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert (Command(4716, 3), U16.pack(215)) not in client.calls
     await sector.async_set_native_value(175)
     assert sector.native_value == 175
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_recent_firmware_keeps_corridor_and_passage_cutting_separate(
+    tmp_path, monkeypatch
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    monkeypatch.setattr(
+        client, "main_node_version", AsyncMock(return_value="40.3_Main-App-P16_29.47")
+    )
+    client.values[Command(4698, 9), b""] = bytes([23, 1])
+    client.values[Command(4706, 24), b""] = b"\x06"
+    client.values[Command(4706, 26), b"\x01"] = b"\0"
+    send = client.command
+    writes = []
+
+    async def command(operation, payload=b""):
+        if operation == Command(4706, 25):
+            writes.append((operation, payload))
+            client.values[Command(4706, 24), b""] = payload
+            return b""
+        if operation == Command(4706, 27):
+            writes.append((operation, payload))
+            point, enabled = payload
+            client.values[Command(4706, 26), bytes([point])] = bytes([enabled])
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    for platform in (number, switch):
+        await platform.async_setup_entry(coordinator.hass, entry, entities.extend)
+    await coordinator.async_refresh_optional()
+    detected = {entity.key: entity for entity in entities}
+    await detected["boundary_corridor"].async_set_native_value(7)
+    await detected["starting_point_1_passage_cutting"].async_turn_on()
+    assert writes == [(Command(4706, 25), b"\x07"), (Command(4706, 27), b"\x01\x01")]
+    assert (Command(4706, 24), b"\x01") not in client.calls
+    assert detected["boundary_corridor"].native_value == 7
+    assert detected["starting_point_1_passage_cutting"].is_on
     await coordinator.async_shutdown()
 
 

@@ -37,10 +37,12 @@ from .features import (
     GET_POSITION_AVAILABLE,
     GET_STATE,
     GET_STATISTICS,
+    MINIMUM_LEGACY_BOUNDARY_CORRIDOR,
     MODEL,
     POSITION,
     POSITION_SCALE,
     READINGS,
+    SET_LEGACY_BOUNDARY_CORRIDOR,
     STATISTIC_KEYS,
     STATISTICS,
     THEFT_STATUS_READINGS,
@@ -593,6 +595,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             try:
                 await self._async_connect()
                 payload = setting.encode(variant, value)
+                if variant.write == SET_LEGACY_BOUNDARY_CORRIDOR:
+                    minimum_corridor = await self._read(
+                        MINIMUM_LEGACY_BOUNDARY_CORRIDOR
+                    )
+                    if value < minimum_corridor:
+                        raise ValueError(
+                            "The corridor width must be at least its stored minimum"
+                        )
+                    payload = U8.pack(minimum_corridor) + payload[1:]
                 if variant.requires_pin:
                     payload = self._pin_payload() + payload
                 if (

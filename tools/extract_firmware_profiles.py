@@ -19,6 +19,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     station_operations = {}
     site_operations = {}
     vision_operations = {}
+    follow_wire_operations = {}
     message_events = 0
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
@@ -36,6 +37,8 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             station_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "SiteManager" and protocol.get("msgType") == "5900":
             site_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "FollowWire" and protocol.get("msgType") == "4706":
+            follow_wire_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "ObstacleAvoidanceVision"
             and protocol.get("msgType") == "7338"
@@ -166,6 +169,24 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             "IOBSTACLEAVOIDANCEVISION_CFG_PROFILE_HUMAN_AND_WILDLIFE": "1",
         }
     )
+    boundary_corridor = (
+        follow_wire_operations.get("GetBoundaryCorridor"),
+        follow_wire_operations.get("SetBoundaryCorridor"),
+    )
+    boundary_corridor_read = (
+        int(boundary_corridor[0])
+        if boundary_corridor in (("0", "1"), ("24", "25"))
+        else -1
+    )
+    passage_cutting = (
+        follow_wire_operations.get("GetPassageCuttingEnabled"),
+        follow_wire_operations.get("SetPassageCuttingEnabled"),
+    )
+    passage_cutting_read = (
+        int(passage_cutting[0])
+        if passage_cutting in (("24", "25"), ("26", "27"))
+        else 0
+    )
     result = (
         *reverse,
         *angles,
@@ -180,8 +201,14 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         create_empty,
         message_events,
         vision_profile,
+        boundary_corridor_read,
+        passage_cutting_read,
     )
-    return result if any(result) else None
+    return (
+        result
+        if any(result[:-2]) or boundary_corridor_read >= 0 or passage_cutting_read
+        else None
+    )
 
 
 def extract(apk: Path) -> dict:

@@ -31,6 +31,8 @@ class FirmwareProfile:
     installation_create_empty: int = 0
     message_events: int = 0
     vision_obstacle_profile: int = 0
+    boundary_corridor_read: int = -1
+    passage_cutting_read: int = 0
 
 
 @cache

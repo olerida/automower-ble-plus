@@ -8,7 +8,19 @@ from custom_components.automower_ble_plus.firmware import (
 
 def test_legacy_profile_requires_the_mower_to_report_the_same_model():
     assert get_firmware_profile((5, 0), "App-G3_devicetype-5.0") == FirmwareProfile(
-        150, 3000, 45, 315, 7, 8, 3, 0, 0, 1, station_pairing_subscription=1
+        150,
+        3000,
+        45,
+        315,
+        7,
+        8,
+        3,
+        0,
+        0,
+        1,
+        station_pairing_subscription=1,
+        boundary_corridor_read=0,
+        passage_cutting_read=24,
     )
     assert get_firmware_profile((23, 1), "App-G3_devicetype-5.0") is None
 
@@ -29,9 +41,22 @@ def test_exact_release_precedes_family_and_unknown_versions_stay_unknown():
         loop_sensor_positions="front_right front_center front_left rear_right rear_center rear_left",
         station_pairing_subscription=12,
         message_events=1,
+        boundary_corridor_read=24,
     )
     assert get_firmware_profile((26, 1), "40.1_Main-App-P25_other") == FirmwareProfile(
-        600, 5000, 0, 0, 7, 8, 15, 100, 5000, 0, message_events=1
+        600,
+        5000,
+        0,
+        0,
+        7,
+        8,
+        15,
+        100,
+        5000,
+        0,
+        message_events=1,
+        boundary_corridor_read=24,
+        passage_cutting_read=26,
     )
     assert get_firmware_profile((5, 0), "999.1_Main-App-Unrecognized") is None
 
