@@ -110,6 +110,12 @@
       },
       "vision_wet_lens": {
         "name": "Water on lens"
+      },
+      "epos_enabled": {
+        "name": "EPOS enabled"
+      },
+      "epos_dock_by_wire": {
+        "name": "EPOS wire docking"
       }
     },
     "switch": {
@@ -217,6 +223,9 @@
       },
       "vision_keep_running_reduced": {
         "name": "Continue with reduced vision"
+      },
+      "epos_wire_assistance": {
+        "name": "EPOS wire assistance"
       }
     },
     "number": {
@@ -443,6 +452,46 @@
           "message": {
             "name": "Message"
           }
+        }
+      },
+      "epos_reference_station_signal": {
+        "name": "EPOS reference station signal"
+      },
+      "epos_cloud_signal": {
+        "name": "EPOS cloud signal"
+      },
+      "epos_reference_station_distance": {
+        "name": "EPOS reference station distance"
+      },
+      "epos_rtk_solution": {
+        "name": "EPOS RTK solution",
+        "state": {
+          "no_fix": "No fix",
+          "float_fix": "Float",
+          "fixed": "Fixed"
+        }
+      },
+      "epos_installation_state": {
+        "name": "EPOS charging station installation",
+        "state": {
+          "idle": "Idle",
+          "in_operation": "In progress"
+        }
+      },
+      "epos_installation_result": {
+        "name": "EPOS charging station installation result",
+        "state": {
+          "none": "Pending",
+          "success": "Successful",
+          "error": "Failed",
+          "stopped": "Stopped"
+        }
+      },
+      "epos_reference_station_channel": {
+        "name": "EPOS reference station link",
+        "state": {
+          "radio": "Radio",
+          "wifi": "Wi-Fi"
         }
       }
     },

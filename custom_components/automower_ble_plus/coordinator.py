@@ -25,6 +25,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, LOGGER
+from .epos import EPOS_STATUS_KEYS, async_read_epos_status
 from .faults import CONFIRM_ERROR, FAULT_READINGS
 from .features import (
     GET_ACTIVITY,
@@ -362,6 +363,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ("position", None),
                 ("installation_selection", None),
                 ("vision", None),
+                ("epos", None),
             )
         )
         probes.extend((key, None) for key in FIRMWARE_TARGETS)
@@ -430,6 +432,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         for status in VISION_STATUS_KEYS.difference(vision):
                             values.pop(status, None)
                         values.update(vision)
+                    elif key == "epos":
+                        epos = await async_read_epos_status(self.client)
+                        for status in EPOS_STATUS_KEYS.difference(epos):
+                            values.pop(status, None)
+                        values.update(epos)
                     else:
                         values.pop("latitude", None)
                         values.pop("longitude", None)

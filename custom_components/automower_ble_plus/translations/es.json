@@ -110,6 +110,12 @@
       },
       "vision_wet_lens": {
         "name": "Agua en la lente"
+      },
+      "epos_enabled": {
+        "name": "EPOS activado"
+      },
+      "epos_dock_by_wire": {
+        "name": "Acoplamiento EPOS por cable"
       }
     },
     "switch": {
@@ -217,6 +223,9 @@
       },
       "vision_keep_running_reduced": {
         "name": "Seguir con visión reducida"
+      },
+      "epos_wire_assistance": {
+        "name": "Asistencia EPOS por cable"
       }
     },
     "number": {
@@ -443,6 +452,46 @@
           "message": {
             "name": "Aviso"
           }
+        }
+      },
+      "epos_reference_station_signal": {
+        "name": "Señal de la estación de referencia EPOS"
+      },
+      "epos_cloud_signal": {
+        "name": "Señal del servicio EPOS en la nube"
+      },
+      "epos_reference_station_distance": {
+        "name": "Distancia a la estación de referencia EPOS"
+      },
+      "epos_rtk_solution": {
+        "name": "Solución RTK de EPOS",
+        "state": {
+          "no_fix": "Sin solución",
+          "float_fix": "Flotante",
+          "fixed": "Fija"
+        }
+      },
+      "epos_installation_state": {
+        "name": "Instalación EPOS de la base",
+        "state": {
+          "idle": "En espera",
+          "in_operation": "En curso"
+        }
+      },
+      "epos_installation_result": {
+        "name": "Resultado de instalación EPOS de la base",
+        "state": {
+          "none": "Pendiente",
+          "success": "Correcto",
+          "error": "Fallido",
+          "stopped": "Detenido"
+        }
+      },
+      "epos_reference_station_channel": {
+        "name": "Enlace de la estación de referencia EPOS",
+        "state": {
+          "radio": "Radio",
+          "wifi": "Wi-Fi"
         }
       }
     },

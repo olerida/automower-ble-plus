@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import MowerEntry
 from .entity import MowerValueEntity, async_add_detected
+from .epos import EPOS_BINARY_KEYS
 from .vision import VISION_STATUS_KEYS
 
 
@@ -42,8 +43,8 @@ async def async_setup_entry(
     async_add_detected(
         entry,
         add_entities,
-        dict.fromkeys(VISION_STATUS_KEYS | {"is_daylight"}),
-        lambda key, _: VisionStatusSensor(entry.runtime_data, key),
+        dict.fromkeys(VISION_STATUS_KEYS | EPOS_BINARY_KEYS | {"is_daylight"}),
+        lambda key, _: DiagnosticStatusSensor(entry.runtime_data, key),
     )
 
 
@@ -82,8 +83,8 @@ class InChargingStationSensor(MowerValueEntity, BinarySensorEntity):
         return value == 1 if value in (0, 1) else None
 
 
-class VisionStatusSensor(MowerValueEntity, BinarySensorEntity):
-    """A status flag reported by supported vision or daylight hardware."""
+class DiagnosticStatusSensor(MowerValueEntity, BinarySensorEntity):
+    """A status flag reported by supported hardware."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 

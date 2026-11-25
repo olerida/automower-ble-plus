@@ -115,8 +115,8 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     coordinator.async_set_updated_data(await coordinator._async_update_data())
     assert (Command(4730, 4), b"") not in client.calls
     entities = []
-    await switch.async_setup_entry(hass, entry, entities.extend)
-    await number.async_setup_entry(hass, entry, entities.extend)
+    for platform in (switch, number):
+        await platform.async_setup_entry(hass, entry, entities.extend)
     assert not entities
 
     await coordinator.async_refresh_optional()
@@ -130,6 +130,8 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
         "sector_1_end_angle",
     }
     assert (Command(4422, 2), b"") not in client.calls
+    assert (Command(6170, 2), b"") not in client.calls
+    assert (Command(6170, 8), b"") not in client.calls
     assert coordinator.device_info["model"] == "Automower 420"
     assert detected["starting_point_1_distance"].native_value == 150
     wire = detected["drive_past_wire"]
@@ -254,6 +256,86 @@ async def test_vision_settings_and_telemetry_follow_hardware_availability(
     await coordinator.async_refresh_optional()
     assert not detected["vision_obstacle_avoidance_active"].available
     assert not setting.available
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_epos_controls_follow_reported_hardware_and_correction_source(
+    tmp_path, monkeypatch
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    enabled = Command(6170, 2)
+    wire_assistance = Command(6170, 8)
+    cloud = Command(6778, 4)
+    client.values.update(
+        {
+            (Command(6170, 1), b""): b"\x01",
+            (enabled, b""): b"\x01",
+            (Command(6170, 7), b""): b"\x01",
+            (wire_assistance, b""): b"\0",
+            (Command(6170, 10), b""): b"\0",
+            (Command(6170, 11), b""): b"\x01",
+            (Command(4692, 23), b""): U32.pack(0),
+            (Command(4692, 24), b""): U32.pack(1),
+            (Command(5336, 3), b""): b"\x02",
+            (Command(5650, 4), b""): b"\x50",
+            (Command(5650, 17), b""): b"\x01",
+            (Command(5242, 0), b""): pack("<iii", 3000, -4000, 40),
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == Command(6170, 9):
+            assert payload == b"\x01"
+            client.values[wire_assistance, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = {}
+
+    def add_entities(new_entities):
+        entities.update((entity.key, entity) for entity in new_entities)
+
+    for platform in (binary_sensor, sensor, switch):
+        await platform.async_setup_entry(coordinator.hass, entry, add_entities)
+    await coordinator.async_refresh_optional()
+    assert entities["epos_enabled"].is_on
+    assert "epos_dock_by_wire" not in entities
+    assert (Command(6170, 11), b"") not in client.calls
+    assert entities["epos_rtk_solution"].native_value == "fixed"
+    assert entities["epos_installation_state"].native_value == "idle"
+    assert entities["epos_installation_result"].native_value == "success"
+    assert entities["epos_reference_station_channel"].native_value == "wifi"
+    assert entities["epos_reference_station_signal"].native_value == 80
+    assert entities["epos_reference_station_distance"].native_value == 5000
+    assert "epos_cloud_signal" not in entities
+    assert not entities["epos_wire_assistance"].is_on
+    await entities["epos_wire_assistance"].async_turn_on()
+    assert entities["epos_wire_assistance"].is_on
+
+    client.values[cloud, b""] = b"\x01"
+    client.values[Command(6778, 11), b""] = b"\x42"
+    client.values[Command(4692, 23), b""] = b"\x00"
+    client.calls.clear()
+    await coordinator.async_refresh_optional()
+    assert (Command(5650, 4), b"") not in client.calls
+    assert not entities["epos_reference_station_signal"].available
+    assert not entities["epos_installation_state"].available
+    assert entities["epos_cloud_signal"].native_value == 66
+
+    client.values[enabled, b""] = b"\0"
+    await coordinator.async_refresh_optional()
+    assert not entities["epos_enabled"].is_on
+    assert not entities["epos_cloud_signal"].available
+    assert not entities["epos_rtk_solution"].available
     await coordinator.async_shutdown()
 
 

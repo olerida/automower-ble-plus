@@ -143,6 +143,7 @@ _SETTINGS = (
     Setting("edge_cut", (_variant(6690, 2, 1, available=3),)),
     Setting("boundary_edge_detection", (_variant(7414, 5, 4, available=2),)),
     Setting("vision_positioning", (_variant(6170, 15, 16, available=14),)),
+    Setting("epos_wire_assistance", (_variant(6170, 8, 9, available=7),)),
     Setting("vision_keep_running_reduced", (_variant(7338, 8, 7, available=2),)),
     Setting("mower_firmware_auto_check", (_variant(5296, 3, 2, available=1),)),
     Setting("station_firmware_auto_check", (_variant(6244, 3, 2, available=1),)),

@@ -24,6 +24,7 @@ from homeassistant.util import dt as dt_util
 
 from .coordinator import MowerCoordinator, MowerEntry
 from .entity import MowerEntity, MowerValueEntity, async_add_detected
+from .epos import EPOS_ENUM_OPTIONS
 from .faults import FAULT_STATES, message_description
 from .firmware import get_message_key
 
@@ -35,6 +36,7 @@ def _description(
     state_class: SensorStateClass | None = None,
     *,
     enabled: bool = True,
+    options: tuple[str, ...] = (),
 ) -> SensorEntityDescription:
     return SensorEntityDescription(
         key=key,
@@ -44,6 +46,7 @@ def _description(
         native_unit_of_measurement=unit,
         state_class=state_class,
         entity_registry_enabled_default=enabled,
+        options=list(options) if options else None,
     )
 
 
@@ -101,6 +104,20 @@ _DESCRIPTIONS = (
     _description(
         "blade_usage_time", SensorDeviceClass.DURATION, UnitOfTime.SECONDS, _COUNTER
     ),
+    _description(
+        "epos_reference_station_signal", unit=PERCENTAGE, state_class=_MEASUREMENT
+    ),
+    _description("epos_cloud_signal", unit=PERCENTAGE, state_class=_MEASUREMENT),
+    _description(
+        "epos_reference_station_distance",
+        SensorDeviceClass.DISTANCE,
+        UnitOfLength.MILLIMETERS,
+        _MEASUREMENT,
+    ),
+    *(
+        _description(key, SensorDeviceClass.ENUM, options=options)
+        for key, options in EPOS_ENUM_OPTIONS.items()
+    ),
 )
 
 
@@ -140,8 +157,10 @@ class AutomowerSensor(MowerValueEntity, SensorEntity):
         self.entity_description = description
 
     @property
-    def native_value(self) -> int | datetime | None:
+    def native_value(self) -> int | str | datetime | None:
         value = self.value
+        if self.entity_description.options and value is not None:
+            return self.entity_description.options[value]
         if self.key != "next_start" or value is None:
             return value
         if value in (0, 0xFFFFFFFF):
