@@ -12,6 +12,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Actividad, estado, pausa e inicio | 4586 | Incluye inicio en área secundaria en modo manual |
 | Próximo arranque, restricciones y anulaciones del horario | 4658 | Lecturas y acciones puntuales implementadas |
 | Horario semanal | 4690 | Lectura, edición en transacción y verificación posterior |
+| Reloj del horario | 4690, 6746 | Lectura de la hora local, botón de sincronización y corrección automática según capacidades |
 | Identificación y versión de firmware | 4698 | Implementadas |
 | Temporizador climático | 4460 | Ajustes con detección |
 | Altura de corte y reducción automática | 4422 | Ajustes con detección |
@@ -81,3 +82,5 @@ La app consulta por BLE el estado y resultado de la instalación de la base (`ev
 La pantalla de anchura de pasillo usa los intervalos 1–9 para el delimitador y 0–9 para cada guía (`ev_6b301f9b87505ceb9e6e381f421014dab519902b5647fd6bcb2e35f7145257b0`). El perfil 31.7 del 420 declara `GetGuideCorridor` y `SetGuideCorridor` (4706:2 y 4706:3). La integración lee el número de guías y crea un control por cada guía cuya anchura pueda leer.
 
 La sección de accesorios guarda el ajuste FlexiFence mediante `MobileLoop.Enabled` (`ev_980da380e3e068697a159431114b342149fcc332f6cfb6236dd77d6d19fee2ad`, `ev_daf03529ad8af72c3eba9cd87d424098569fd48f213f57e399bbdf73f4e8fb65`). El TIF del 420 declara la familia 5926. Hay otras variantes con la familia 6050. En ambos casos, la integración espera que `MobileLoop.Available` devuelva verdadero.
+
+La app representa la hora del calendario como segundos Unix más el desfase de la zona local (`ev_04c1b5a7f1b575dfaa8da7398ae38285c56fdba47c3b85652b1d418da28431f0`). Los 166 TIF declaran `Calendar.GetTime` y `Calendar.SetTime` (4690:2 y 4690:3). En los firmwares con la familia `Clock`, la integración usa la zona configurada en el cortacésped y comprueba el desfase que guarda el equipo. En el perfil 31.7 del 420, usa la zona de Home Assistant y solo escribe `Calendar.SetTime`.

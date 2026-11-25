@@ -43,6 +43,9 @@
       "resume_schedule": {
         "name": "Reanudar horario"
       },
+      "sync_mower_clock": {
+        "name": "Sincronizar reloj del cortacésped"
+      },
       "park_indefinitely": {
         "name": "Aparcar indefinidamente"
       },
@@ -372,6 +375,9 @@
       },
       "next_start": {
         "name": "Próximo arranque"
+      },
+      "mower_clock": {
+        "name": "Hora local del cortacésped"
       },
       "remaining_charging_time": {
         "name": "Tiempo de carga restante"

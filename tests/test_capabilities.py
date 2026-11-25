@@ -1,6 +1,7 @@
 """Verify that Home Assistant exposes only controls confirmed over BLE."""
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from struct import pack
 from types import MappingProxyType
@@ -26,6 +27,7 @@ from homeassistant.helpers import (
 from custom_components.automower_ble_plus import (
     binary_sensor,
     button,
+    mower_clock,
     number,
     select,
     sensor,
@@ -34,7 +36,7 @@ from custom_components.automower_ble_plus import (
 )
 from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
-from custom_components.automower_ble_plus.features import I16, U16, U32
+from custom_components.automower_ble_plus.features import I16, I32, U16, U32
 from custom_components.automower_ble_plus.firmware import get_firmware_profile
 from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command, Event
@@ -240,6 +242,90 @@ async def test_accessory_switches_require_mower_availability(
     assert not flexifence_switch.is_on
     await flexifence_switch.async_turn_on()
     assert flexifence_switch.is_on
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("zone_response", "expected_offset"),
+    ((None, 7200), (b"America/New_York\0", -14400), (bytes(40), 7200)),
+)
+async def test_synchronize_mower_clock_uses_local_calendar_time(
+    tmp_path, monkeypatch, zone_response, expected_offset
+):
+    now = datetime(2026, 7, 14, 12, tzinfo=UTC)
+    monkeypatch.setattr(
+        mower_clock, "datetime", type("Clock", (), {"now": lambda _: now})
+    )
+    entry = _entry()
+    hass = HomeAssistant(str(tmp_path))
+    hass.config.time_zone = "Europe/Madrid"
+    coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    read_time = Command(4690, 2)
+    set_time = Command(4690, 3)
+    read_zone = Command(6746, 1)
+    set_zone = Command(6746, 2)
+    read_offset = Command(6746, 3)
+    set_offset = Command(6746, 4)
+    automatic = Command(6746, 7)
+    client.values[read_time, b""] = U32.pack(1_700_000_000)
+    if zone_response is not None:
+        client.values[read_zone, b""] = zone_response
+        client.values[read_offset, b""] = I32.pack(0)
+        client.values[automatic, b""] = b"\0"
+    send = client.command
+    writes = []
+    accept_time = True
+
+    async def command(operation, payload=b""):
+        if operation in (set_time, set_zone, set_offset):
+            writes.append((operation, payload))
+            if operation != set_time or accept_time:
+                client.values[
+                    Command(operation.family, operation.operation - 1), b""
+                ] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = {}
+
+    def add_entities(new_entities):
+        entities.update((entity.key, entity) for entity in new_entities)
+
+    for platform in (button, sensor):
+        await platform.async_setup_entry(hass, entry, add_entities)
+    assert "sync_mower_clock" not in entities
+    await coordinator.async_refresh_optional()
+    await entities["sync_mower_clock"].async_press()
+    expected_wall_time = int(now.timestamp()) + expected_offset
+    assert writes[-1] == (set_time, U32.pack(expected_wall_time))
+    assert len(writes) == 1 + (zone_response is not None) + (zone_response == bytes(40))
+    if zone_response == bytes(40):
+        assert writes[0] == (set_zone, b"Europe/Madrid".ljust(40, b"\0"))
+    if zone_response is not None:
+        assert writes[-2] == (set_offset, I32.pack(expected_offset))
+    assert entities["mower_clock"].native_value == datetime.fromtimestamp(
+        expected_wall_time, UTC
+    ).replace(tzinfo=None).isoformat(" ")
+
+    client.values[read_time, b""] = U32.pack(1_700_000_000)
+    accept_time = False
+    with pytest.raises(HomeAssistantError, match="did not confirm"):
+        await entities["sync_mower_clock"].async_press()
+    if zone_response is not None:
+        accept_time = True
+        client.values[automatic, b""] = b"\x01"
+        writes.clear()
+        await coordinator.async_refresh_optional()
+        assert writes == [(set_time, U32.pack(expected_wall_time))]
+        await coordinator.async_refresh_optional()
+        assert len(writes) == 1
     await coordinator.async_shutdown()
 
 

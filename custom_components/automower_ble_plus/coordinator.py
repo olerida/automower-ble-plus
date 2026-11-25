@@ -67,6 +67,7 @@ from .geofence import (
 )
 from .history import async_get_message_history, decode_message_event
 from .mapfiles import async_get_map, async_replace_map
+from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
 from .schedule import (
     ScheduleTask,
     async_get_schedule,
@@ -355,6 +356,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         )
         probes.extend(
             (
+                ("mower_clock", MOWER_CLOCK),
                 ("statistics", None),
                 ("position", None),
                 ("installation_selection", None),
@@ -395,6 +397,22 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                             )
                         else:
                             values[key] = value
+                        if (
+                            key == "mower_clock"
+                            and values.get("automatic_clock_sync") == 1
+                        ):
+                            try:
+                                values[key] = await async_sync_mower_clock(
+                                    self.client,
+                                    self.hass.config.time_zone,
+                                    automatic=True,
+                                    current=value,
+                                )
+                            except CommandRejected, ValueError:
+                                LOGGER.debug(
+                                    "Could not synchronize the mower clock",
+                                    exc_info=True,
+                                )
                     elif key == "statistics":
                         raw = await self.client.command(GET_STATISTICS)
                         values.update(
@@ -549,6 +567,20 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     f"Could not acknowledge the fault: {err}"
                 ) from err
         await self.async_request_refresh()
+
+    async def async_sync_clock(self) -> None:
+        """Set the mower clock and publish its verified local time."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                actual = await async_sync_mower_clock(
+                    self.client, self.hass.config.time_zone
+                )
+            except (MowerConnectionError, CommandRejected, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not synchronize the mower clock: {err}"
+                ) from err
+            self.async_set_updated_data({**self.data, "mower_clock": actual})
 
     async def async_set_setting(self, setting: Setting, value: int) -> None:
         """Change a supported setting and retrieve the value stored by the mower."""

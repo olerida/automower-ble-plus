@@ -75,6 +75,7 @@ _DESCRIPTIONS = (
         _MEASUREMENT,
     ),
     _description("next_start", SensorDeviceClass.TIMESTAMP),
+    _description("mower_clock"),
     _description(
         "remaining_charging_time", SensorDeviceClass.DURATION, UnitOfTime.SECONDS
     ),
@@ -161,6 +162,11 @@ class AutomowerSensor(MowerValueEntity, SensorEntity):
         value = self.value
         if self.entity_description.options and value is not None:
             return self.entity_description.options[value]
+        if self.key == "mower_clock" and value is not None:
+            # Display the wall time reported by the mower, including any clock drift.
+            return (
+                datetime.fromtimestamp(value, UTC).replace(tzinfo=None).isoformat(" ")
+            )
         if self.key != "next_start" or value is None:
             return value
         if value in (0, 0xFFFFFFFF):

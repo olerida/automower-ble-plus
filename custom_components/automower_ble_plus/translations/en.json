@@ -43,6 +43,9 @@
       "resume_schedule": {
         "name": "Resume schedule"
       },
+      "sync_mower_clock": {
+        "name": "Synchronize mower clock"
+      },
       "park_indefinitely": {
         "name": "Park indefinitely"
       },
@@ -372,6 +375,9 @@
       },
       "next_start": {
         "name": "Next start"
+      },
+      "mower_clock": {
+        "name": "Mower local time"
       },
       "remaining_charging_time": {
         "name": "Remaining charging time"
