@@ -70,6 +70,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "get_work_area_mowing": {vol.Required("mission_id"): mission},
         "get_installations": page_schema,
         "get_geofence": {},
+        "get_loop_signals": {},
         "get_map": {vol.Optional("generated", default=False): cv.boolean},
         "replace_map": {
             vol.Required("svg"): cv.string,

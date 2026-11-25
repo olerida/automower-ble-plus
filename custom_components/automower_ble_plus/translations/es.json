@@ -63,6 +63,9 @@
       },
       "station_firmware_update_check": {
         "name": "Buscar firmware de la estación de carga"
+      },
+      "pair_charging_station": {
+        "name": "Emparejar estación de carga"
       }
     },
     "binary_sensor": {
@@ -77,6 +80,9 @@
       },
       "theft_stop_alarm": {
         "name": "Alarma del botón STOP"
+      },
+      "in_charging_station": {
+        "name": "Cortacésped en la estación"
       }
     },
     "switch": {
@@ -558,6 +564,10 @@
           "description": "Usa la altura de corte general del cortacésped en esta área."
         }
       }
+    },
+    "get_loop_signals": {
+      "name": "Leer señales del cable",
+      "description": "Lee las señales de los cables instalados y su calidad en cada sensor compatible."
     }
   },
   "selector": {

@@ -7,6 +7,7 @@ _PREFIX = b"\x02\xfd"
 _HEADER = Struct("<2sHIBB")
 _REQUEST = Struct("<BBHHH")
 _RESPONSE = Struct("<BBHHBH")
+_EVENT = Struct("<BHHH")
 _MIN_FRAME_SIZE = _HEADER.size + 2
 
 
@@ -99,3 +100,23 @@ class Command:
         if len(payload) != size:
             raise FrameError("Invalid HCP response payload length")
         return result, payload
+
+
+@dataclass(frozen=True, slots=True)
+class Event:
+    """A notification emitted by the mower on a linked channel."""
+
+    family: int
+    event_id: int
+    payload: bytes
+
+    @classmethod
+    def decode(cls, frame: Frame) -> "Event":
+        """Decode the event header and verify the declared payload length."""
+        if not frame.linked or len(frame.payload) < _EVENT.size:
+            raise FrameError("Truncated or unlinked HCP event")
+        kind, family, event_id, size = _EVENT.unpack_from(frame.payload)
+        payload = frame.payload[_EVENT.size :]
+        if kind != 2 or size != len(payload):
+            raise FrameError("Invalid HCP event")
+        return cls(family, event_id, payload)

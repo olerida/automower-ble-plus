@@ -26,6 +26,8 @@ class FirmwareProfile:
     geofence_sensitivity: int = 0
     work_area_height_max: int = 0
     spot_cut_trigger: int = 0
+    loop_sensor_positions: str = ""
+    station_pairing_subscription: int = 0
 
 
 @cache
@@ -56,7 +58,15 @@ def get_firmware_profile(
     if profile is None:
         return None
     result = FirmwareProfile(*catalog["profiles"][profile])
-    # Releases in one family can differ in their height encoding and spot trigger.
+    # These operations depend on the exact firmware profile.
     return (
-        result if exact else replace(result, work_area_height_max=0, spot_cut_trigger=0)
+        result
+        if exact
+        else replace(
+            result,
+            work_area_height_max=0,
+            spot_cut_trigger=0,
+            loop_sensor_positions="",
+            station_pairing_subscription=0,
+        )
     )

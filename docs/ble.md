@@ -16,6 +16,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Temporizador climático | 4460 | Ajustes con detección |
 | Altura de corte y reducción automática | 4422 | Ajustes con detección |
 | ECO y estación | 4692 | Ajustes de ECO y caseta con detección |
+| Emparejamiento de estación y diagnóstico de lazos | 4692, 4462 | Emparejamiento con el robot en la estación y confirmación por evento. Lectura de los lazos instalados en los firmwares compatibles |
 | Faros | 4722 | Ajustes con detección |
 | Distancias de cable, marcha atrás y ángulos de salida | 4712, 4716 | Rangos por modelo o versión del nodo. Las operaciones de lectura confirman cada control |
 | Puntos de partida y pasillos | 4706 | Habilitación, proporción, distancia, guía y corte en pasillos según modelo |
@@ -59,3 +60,5 @@ REA localizó las órdenes BLE de instalación para el cortacésped (`ev_7192095
 El panel de la app llama «corte en espiral» a los ajustes de `SpotCutting` (`ev_46e6738081dcf287782384e11cb8fe3ca4a29353b2b95bbbe9781c8e27a49b98`, `ev_bece35ee572f766ee94f88a9ebe05da400d3c31bd361837f4708f0a363afab47`, `ev_0df7d226f6850dc837e3e1db461b61e2c75376aec8d1f1bdacd28017f8252559`). El perfil G3 que la app asigna al 420 declara la activación y sensibilidad. El botón manual requiere además `StartTrigger`, que ese perfil no declara.
 
 REA confirmó los formatos de las escrituras antirrobo y los intervalos usados por la app (`ev_e44b63c08fee3d74bb161255991980922d2abe8cbb588165de791ab79fd94c7c`). La configuración distingue las alarmas de elevación, inclinación y movimiento con los indicadores por modelo (`ev_1783f2f3502c34150046f6bc8d08900d1a970bec31ac9c6753f45a7b538a4f2c`, `ev_0bf13ed7d130e9120113da4e0dfa2bb57eec4b4b32a623e740deccddd1343b5d`). Los sensores detectados consultan el estado por BLE durante el mantenimiento de la conexión.
+
+El emparejamiento con la estación usa `ChargingStation.InitiateNewPairing` y espera un evento de resultado por BLE (`ev_91d13098314f0b91fb6ef04f09aad8ccdc24c3521c6d3c1e640b0371a9b153a2`, `ev_aba4a141e9fe9090a45c6b581942a37a6cb4324aaa4f70e39112d3128e13ce95`, `ev_16d469f2709047308633bcb9b6d9a9fed142b1775b09f9c31da45f25579bdd55`). El perfil identifica la variante de suscripción. La cabecera del evento contiene el tipo, la familia, el identificador y la longitud (`ev_b60f3404cf52918fe7fd994a41eb42575445f60d4d7a5516bd590f7a1653a530`). Los TIF definen los índices de posición para leer señales del cable. El perfil conocido del 420 declara el emparejamiento, pero carece de las lecturas `LoopSystem` que usa el diagnóstico.

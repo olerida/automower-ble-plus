@@ -139,6 +139,10 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         """Read the GeoFence settings that this mower exposes over BLE."""
         return await self.coordinator.async_read_geofence()
 
+    async def async_get_loop_signals(self) -> dict:
+        """Read signal strength where the mower is currently standing."""
+        return await self.coordinator.async_read_loop_signals()
+
     async def async_replace_map(self, svg: str, expected_checksum: str) -> dict:
         """Upload a matching revision of the active installation map."""
         return await self.coordinator.async_write_map(svg, expected_checksum)

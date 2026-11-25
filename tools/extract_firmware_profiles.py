@@ -9,12 +9,14 @@ FAMILY = "LeaveChargingStation"
 FAMILY_ID = "4716"
 
 
-def capabilities(profile: dict) -> tuple[int, ...] | None:
+def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     methods = {}
     blade_operations = {}
     geofence_operations = {}
     area_height_methods = {}
     spot_cut_operations = {}
+    loop_operations = {}
+    station_operations = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -25,6 +27,10 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
             geofence_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "SpotCutting" and protocol.get("msgType") == "4710":
             spot_cut_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "LoopSystem" and protocol.get("msgType") == "4462":
+            loop_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "ChargingStation" and protocol.get("msgType") == "4692":
+            station_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "Missions"
             and protocol.get("msgType") == "5604"
@@ -97,6 +103,34 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
         elif get_type == set_type == "tICuttingHeight_HeightPrescaled":
             area_height_max = 9
     spot_cut_trigger = int(spot_cut_operations.get("StartTrigger") == "7")
+    positions = ""
+    if (
+        loop_operations.get("GetInstalledLoops") == "29"
+        and loop_operations.get("GetLoopSignals") == "13"
+    ):
+        sensors = types.get("tILoopSystem_Sensor", {}).get("enums", ())
+        ordered = sorted(sensors, key=lambda sensor: int(sensor["value"]))
+        if [int(sensor["value"]) for sensor in ordered] == list(range(len(ordered))):
+            positions = " ".join(
+                sensor["key"].removeprefix("LOOPSYSTEM_SENSOR_").lower()
+                for sensor in ordered
+            )
+    station_subscription = 0
+    event_channel = station_operations.get("SubscribeEventChannel")
+    station_events = {
+        event["name"]: {item["key"]: item["value"] for item in event["protocol"]}.get(
+            "eventId"
+        )
+        for event in profile.get("events", ())
+        if event["family"] == "ChargingStation"
+    }
+    if (
+        station_operations.get("InitiateNewPairing") == "2"
+        and event_channel in ("1", "12")
+        and station_events.get("PairingFailed") == "1"
+        and station_events.get("PairingSuccessful") == "2"
+    ):
+        station_subscription = int(event_channel)
     result = (
         *reverse,
         *angles,
@@ -106,6 +140,8 @@ def capabilities(profile: dict) -> tuple[int, ...] | None:
         sensitivity,
         area_height_max,
         spot_cut_trigger,
+        positions,
+        station_subscription,
     )
     return result if any(result) else None
 

@@ -9,7 +9,7 @@ from automower_ble.protocol import BLEClient, ResponseResult
 from bleak import BleakError
 from bleak.backends.device import BLEDevice
 
-from .wire import Command, Frame, FrameError, pop_frame
+from .wire import Command, Event, Frame, FrameError, pop_frame
 
 SERVICE_UUID = "98bd0001-0b0e-421a-84e5-ddbf75dc6de4"
 _LOGIN = Command(4664, 4)
@@ -82,23 +82,60 @@ class AutomowerClient(BLEClient):
         timeout: float = _RESPONSE_TIMEOUT,
     ) -> bytes:
         """Return the response payload or raise with the mower's result code."""
+        response, _ = await self._exchange(command, payload, timeout, ())
+        return response
+
+    async def command_and_wait_for_event(
+        self, command: Command, event_ids: tuple[int, ...], *, timeout: float
+    ) -> Event:
+        """Send a command and wait for both its response and its result event."""
+        _, event = await self._exchange(command, b"", timeout, event_ids)
+        if event is None:
+            raise MowerConnectionError("The mower did not report the command outcome")
+        return event
+
+    async def _exchange(
+        self,
+        command: Command,
+        payload: bytes,
+        timeout: float,
+        event_ids: tuple[int, ...],
+    ) -> tuple[bytes, Event | None]:
         request = command.request(self.channel_id, payload)
+        response = None
+        event = None
         try:
             async with self.lock, asyncio.timeout(timeout):
                 async for frame in self._read_reply(request.encode()):
                     reply = command.response(self.channel_id, frame)
                     if reply is None:
-                        continue
-                    result, data = reply
-                    if result:
-                        raise CommandRejected(command, result)
-                    return data
+                        if event_ids:
+                            candidate = Event.decode(frame)
+                            if (
+                                candidate.family == command.family
+                                and candidate.event_id in event_ids
+                            ):
+                                event = candidate
+                    else:
+                        result, response = reply
+                        if result:
+                            raise CommandRejected(command, result)
+                    if response is not None and (not event_ids or event is not None):
+                        return response, event
         except (BleakError, FrameError, TimeoutError) as err:
             await self.disconnect()
+            if event_ids and response is not None and event is None:
+                raise MowerConnectionError(
+                    "The mower accepted the command, but its result event was not received"
+                ) from err
             raise MowerConnectionError("HCP exchange failed") from err
         except asyncio.CancelledError:
             await self.disconnect()
             raise
+        if event_ids and response is not None and event is None:
+            raise MowerConnectionError(
+                "The mower accepted the command, but its result event was not received"
+            )
         raise MowerConnectionError("The mower closed the HCP channel")
 
     async def keep_alive(self) -> None:

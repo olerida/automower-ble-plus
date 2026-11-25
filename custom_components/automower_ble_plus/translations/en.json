@@ -63,6 +63,9 @@
       },
       "station_firmware_update_check": {
         "name": "Check for charging station firmware"
+      },
+      "pair_charging_station": {
+        "name": "Pair charging station"
       }
     },
     "binary_sensor": {
@@ -77,6 +80,9 @@
       },
       "theft_stop_alarm": {
         "name": "STOP alarm"
+      },
+      "in_charging_station": {
+        "name": "Mower in charging station"
       }
     },
     "switch": {
@@ -558,6 +564,10 @@
           "description": "Use the mower’s global height setting for this work area."
         }
       }
+    },
+    "get_loop_signals": {
+      "name": "Read loop signals",
+      "description": "Read installed loop signals and quality at each supported mower sensor."
     }
   },
   "selector": {

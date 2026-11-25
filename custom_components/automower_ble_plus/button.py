@@ -1,5 +1,6 @@
 """One-shot schedule and parking commands."""
 
+from automower_ble.protocol import MowerActivity
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -46,6 +47,8 @@ async def async_setup_entry(
             {"blade_reset_available": None},
             lambda _key, _: AutomowerButton(entry.runtime_data, "reset_blade_usage"),
         )
+    if profile and profile.station_pairing_subscription:
+        add_entities([PairStationButton(entry.runtime_data, "pair_charging_station")])
     async_add_detected(
         entry,
         add_entities,
@@ -101,3 +104,19 @@ class FirmwareCheckButton(MowerEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_firmware_action(self.target, check=True)
+
+
+class PairStationButton(MowerEntity, ButtonEntity):
+    """Ask the docked mower to generate a new charging-station loop signal."""
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        data = self.coordinator.data
+        if "in_charging_station" in data:
+            return data["in_charging_station"] == 1
+        return data.get("activity") in (MowerActivity.PARKED, MowerActivity.CHARGING)
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_pair_station()

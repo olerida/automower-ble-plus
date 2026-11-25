@@ -70,6 +70,7 @@ from .schedule import (
     async_replace_schedule,
 )
 from .sites import async_get_installations, async_rename_installation
+from .station import async_get_loop_signals, async_pair_charging_station
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
 from .wire import Command
 from .work_areas import (
@@ -791,6 +792,41 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             ) as err:
                 raise HomeAssistantError(
                     f"Could not read the mower GeoFence: {err}"
+                ) from err
+
+    async def async_read_loop_signals(self) -> dict:
+        """Read the installation's wire-loop measurements over Bluetooth."""
+        profile = self.firmware_profile
+        if profile is None or not profile.loop_sensor_positions:
+            return {"available": False}
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                return await async_get_loop_signals(
+                    self.client, profile.loop_sensor_positions
+                )
+            except (MowerConnectionError, CommandRejected, StructError) as err:
+                raise HomeAssistantError(f"Could not read loop signals: {err}") from err
+
+    async def async_pair_station(self) -> None:
+        """Pair with the physical station currently holding the mower."""
+        profile = self.firmware_profile
+        if profile is None or not profile.station_pairing_subscription:
+            raise HomeAssistantError("This mower does not expose station pairing")
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                await async_pair_charging_station(
+                    self.client, profile.station_pairing_subscription
+                )
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not pair the charging station: {err}"
                 ) from err
 
     async def async_write_map(self, svg: str, expected_checksum: str) -> dict:

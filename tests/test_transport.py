@@ -9,6 +9,7 @@ import automower_ble.protocol
 import pytest
 from automower_ble.protocol import ResponseResult
 
+from custom_components.automower_ble_plus.station import async_pair_charging_station
 from custom_components.automower_ble_plus.transport import (
     AutomowerClient,
     CommandRejected,
@@ -29,6 +30,7 @@ class FakeGatt:
         self.is_connected = True
         self.pair = AsyncMock()
         self.pending = bytearray()
+        self.pairing_event = b""
 
     async def start_notify(self, characteristic, callback):
         self.notify = callback
@@ -54,6 +56,17 @@ class FakeGatt:
                 value = b"\x05\x00"
             elif (family, operation) == (96, 0):
                 value = b"App-G3_devicetype-5.0\x00"
+            elif (family, operation) == (4586, 3):
+                value = b"\x05"
+            elif (family, operation) == (4692, 1):
+                assert frame.payload[8:] == b"\x01"
+            elif (family, operation) == (4692, 2):
+                assert frame.payload[8:] == b""
+                if self.pairing_event:
+                    await self.notify(
+                        characteristic,
+                        Frame(frame.channel, True, self.pairing_event).encode(),
+                    )
             else:
                 result = ResponseResult.INVALID_ID
             payload = (
@@ -87,6 +100,11 @@ async def test_authenticated_gatt_exchange(monkeypatch, pin, result):
         assert await client.command(Command(4698, 9)) == b"\x05\x00"
         with pytest.raises(CommandRejected, match="INVALID_ID"):
             await client.command(Command(4722, 2))
+        gatt.pairing_event = bytes.fromhex("02541202000000")
+        await async_pair_charging_station(client, 1)
+        gatt.pairing_event = bytes.fromhex("02541201000000")
+        with pytest.raises(ValueError, match="did not confirm"):
+            await async_pair_charging_station(client, 1)
         assert gatt.is_connected
         await client.disconnect()
     assert not gatt.is_connected

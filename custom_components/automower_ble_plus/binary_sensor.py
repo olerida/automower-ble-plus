@@ -25,6 +25,12 @@ async def async_setup_entry(
     async_add_detected(
         entry,
         add_entities,
+        {"in_charging_station": None},
+        lambda key, _: InChargingStationSensor(entry.runtime_data, key),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
         {
             "theft_motion_alarm": None,
             "theft_geofence_alarm": None,
@@ -55,3 +61,15 @@ class TheftAlarmSensor(MowerValueEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         value = self.value
         return value == 2 if value in (0, 1, 2, 3, 4) else None
+
+
+class InChargingStationSensor(MowerValueEntity, BinarySensorEntity):
+    """Whether the mower is physically in its charging station."""
+
+    _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.value
+        return value == 1 if value in (0, 1) else None

@@ -360,6 +360,7 @@ READINGS = {
     "drive_past_wire": Reading(Command(4712, 0), U16),
     "reversing_distance": Reading(Command(4716, 0), U16),
     "spot_cut_available": Reading(Command(4710, 0), U8),
+    "in_charging_station": Reading(Command(4692, 27), U8),
     **THEFT_STATUS_READINGS,
 }
 
