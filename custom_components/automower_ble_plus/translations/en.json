@@ -86,6 +86,30 @@
       },
       "in_charging_station": {
         "name": "Mower in charging station"
+      },
+      "is_daylight": {
+        "name": "Daylight detected"
+      },
+      "vision_accessory_enabled": {
+        "name": "Vision accessory enabled"
+      },
+      "vision_obstacle_avoidance_enabled": {
+        "name": "Visual obstacle avoidance enabled"
+      },
+      "vision_obstacle_avoidance_active": {
+        "name": "Visual obstacle avoidance active"
+      },
+      "vision_reduced_performance": {
+        "name": "Reduced vision performance"
+      },
+      "vision_inactive_at_night": {
+        "name": "Vision inactive at night"
+      },
+      "vision_dirty_lens": {
+        "name": "Dirty lens"
+      },
+      "vision_wet_lens": {
+        "name": "Water on lens"
       }
     },
     "switch": {
@@ -184,6 +208,15 @@
       },
       "theft_alarm_on_motion": {
         "name": "Alarm on movement"
+      },
+      "boundary_edge_detection": {
+        "name": "Boundary edge detection"
+      },
+      "vision_positioning": {
+        "name": "Vision-assisted positioning"
+      },
+      "vision_keep_running_reduced": {
+        "name": "Continue with reduced vision"
       }
     },
     "number": {
@@ -300,6 +333,13 @@
       },
       "installation_selection": {
         "name": "Active installation"
+      },
+      "vision_obstacle_profile": {
+        "name": "Visual obstacle profile",
+        "state": {
+          "standard": "Standard",
+          "people_and_wildlife": "People and wildlife"
+        }
       }
     },
     "sensor": {
@@ -634,6 +674,54 @@
         "use_global_cutting_height": {
           "name": "Use global cutting height",
           "description": "Use the mower’s global height setting for this work area."
+        },
+        "vision_positioning": {
+          "name": "Vision-assisted positioning",
+          "description": "Use vision to assist the mower’s positioning in this area."
+        },
+        "use_global_vision_positioning": {
+          "name": "Use global setting for vision-assisted positioning",
+          "description": "Use the mower’s general setting in this area."
+        },
+        "daylight_only": {
+          "name": "Mow only in daylight",
+          "description": "Limit mowing in this area to daylight."
+        },
+        "use_global_daylight_only": {
+          "name": "Use global setting for mow only in daylight",
+          "description": "Use the mower’s general setting in this area."
+        },
+        "boundary_edge_detection": {
+          "name": "Boundary edge detection",
+          "description": "Use visual edge detection in this area."
+        },
+        "use_global_boundary_edge_detection": {
+          "name": "Use global setting for boundary edge detection",
+          "description": "Use the mower’s general setting in this area."
+        },
+        "obstacle_avoidance": {
+          "name": "Obstacle avoidance",
+          "description": "Enable obstacle avoidance in this area."
+        },
+        "use_global_obstacle_avoidance": {
+          "name": "Use global setting for obstacle avoidance",
+          "description": "Use the mower’s general setting in this area."
+        },
+        "obstacle_avoidance_at_boundary": {
+          "name": "Obstacle avoidance at boundary",
+          "description": "Use obstacle avoidance along this area’s boundary."
+        },
+        "use_global_obstacle_avoidance_at_boundary": {
+          "name": "Use global setting for obstacle avoidance at boundary",
+          "description": "Use the mower’s general setting in this area."
+        },
+        "vision_obstacle_profile": {
+          "name": "Visual obstacle profile",
+          "description": "Choose the visual obstacle detection profile for this area."
+        },
+        "use_global_vision_obstacle_profile": {
+          "name": "Use global setting for visual obstacle profile",
+          "description": "Use the mower’s general setting in this area."
         }
       }
     },
@@ -685,6 +773,13 @@
       "options": {
         "random": "Random",
         "systematic": "Systematic"
+      }
+    },
+    "area_vision_profile": {
+      "options": {
+        "default_pro": "Professional default",
+        "risk_objects_only": "Risk objects only",
+        "residential_garden": "Residential garden"
       }
     }
   }

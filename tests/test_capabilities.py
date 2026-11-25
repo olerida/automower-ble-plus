@@ -198,6 +198,66 @@ async def test_accessory_switches_require_mower_availability(tmp_path, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_vision_settings_and_telemetry_follow_hardware_availability(
+    tmp_path, monkeypatch
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    monkeypatch.setattr(
+        client, "main_node_version", AsyncMock(return_value="40.14_Main-App-P22_102.14")
+    )
+    available = Command(7338, 2)
+    profile = Command(7338, 6)
+    client.values.update(
+        {
+            (Command(7414, 2), b""): b"\x01",
+            (Command(7414, 5), b""): b"\x01",
+            (Command(6170, 14), b""): b"\0",
+            (Command(6170, 15), b""): b"\x01",
+            (available, b""): b"\x01",
+            (Command(7338, 8), b""): b"\x01",
+            (Command(7338, 10), b""): b"\x01",
+            (Command(7338, 12), b""): b"\0",
+            (profile, b""): U32.pack(0),
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == Command(7338, 5):
+            assert payload == U32.pack(1)
+            client.values[profile, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    for platform in (binary_sensor, switch, select):
+        await platform.async_setup_entry(coordinator.hass, entry, entities.extend)
+    assert not entities
+    await coordinator.async_refresh_optional()
+    detected = {entity.key: entity for entity in entities}
+    assert "vision_positioning" not in detected
+    assert detected["boundary_edge_detection"].is_on
+    assert detected["vision_keep_running_reduced"].is_on
+    assert detected["vision_obstacle_avoidance_active"].is_on
+    assert not detected["vision_dirty_lens"].is_on
+    setting = detected["vision_obstacle_profile"]
+    await setting.async_select_option("people_and_wildlife")
+    assert setting.current_option == "people_and_wildlife"
+    client.values[available, b""] = b"\0"
+    await coordinator.async_refresh_optional()
+    assert not detected["vision_obstacle_avoidance_active"].available
+    assert not setting.available
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
 async def test_confirmable_fault_must_still_match_when_acknowledged(tmp_path):
     entry = _entry()
     coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)

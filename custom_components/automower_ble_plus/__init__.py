@@ -14,6 +14,7 @@ from .config_flow import core_controls_address
 from .const import DOMAIN
 from .coordinator import MowerCoordinator, MowerEntry
 from .schedule import WEEKDAYS
+from .work_areas import AREA_ASSISTANCE_BOOLEAN_SETTINGS, AREA_VISION_PROFILES
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -105,6 +106,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Exclusive("boundary_mowing", "mowing_change"): cv.boolean,
             vol.Exclusive("cutting_height", "mowing_change"): _bounded_integer(0, 100),
             vol.Exclusive("use_global_cutting_height", "mowing_change"): cv.boolean,
+            vol.Exclusive("vision_obstacle_profile", "mowing_change"): vol.In(
+                tuple(AREA_VISION_PROFILES.values())
+            ),
+            **{
+                vol.Exclusive(key, "mowing_change"): cv.boolean
+                for key in sorted(AREA_ASSISTANCE_BOOLEAN_SETTINGS)
+            },
         },
     }
     for action, schema in schemas.items():

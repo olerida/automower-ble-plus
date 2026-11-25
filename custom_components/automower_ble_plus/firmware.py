@@ -30,6 +30,7 @@ class FirmwareProfile:
     station_pairing_subscription: int = 0
     installation_create_empty: int = 0
     message_events: int = 0
+    vision_obstacle_profile: int = 0
 
 
 @cache
@@ -76,5 +77,6 @@ def get_firmware_profile(
             loop_sensor_positions="",
             station_pairing_subscription=0,
             installation_create_empty=0,
+            vision_obstacle_profile=0,
         )
     )

@@ -84,6 +84,7 @@ from .sites import (
 )
 from .station import async_get_loop_signals, async_pair_charging_station
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
+from .vision import VISION_STATUS_KEYS, async_read_vision_telemetry
 from .wire import Command, Event
 from .work_areas import (
     async_get_area_mowing_settings,
@@ -352,7 +353,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             if key not in setting_keys
         )
         probes.extend(
-            (("statistics", None), ("position", None), ("installation_selection", None))
+            (
+                ("statistics", None),
+                ("position", None),
+                ("installation_selection", None),
+                ("vision", None),
+            )
         )
         probes.extend((key, None) for key in FIRMWARE_TARGETS)
         if self._configured_pin is not None:
@@ -415,6 +421,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                             values.pop(key, None)
                         else:
                             values[key] = selection
+                    elif key == "vision":
+                        vision = await async_read_vision_telemetry(self.client)
+                        for status in VISION_STATUS_KEYS.difference(vision):
+                            values.pop(status, None)
+                        values.update(vision)
                     else:
                         values.pop("latitude", None)
                         values.pop("longitude", None)

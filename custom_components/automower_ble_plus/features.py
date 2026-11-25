@@ -32,6 +32,11 @@ GET_BATTERY = Command(4106, 20)
 GET_POSITION_AVAILABLE = Command(5264, 4)
 GET_POSITION = Command(5264, 0)
 GET_GUIDE_COUNT = Command(4706, 14)
+VISION_ACCESSORY_AVAILABLE = Command(7276, 1)
+VISION_OBSTACLE_AVOIDANCE_AVAILABLE = Command(7338, 2)
+BOUNDARY_EDGE_DETECTION_AVAILABLE = Command(7414, 2)
+VISION_POSITIONING_AVAILABLE = Command(6170, 14)
+IS_DAYLIGHT = Command(5472, 2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +141,9 @@ _SETTINGS = (
     Setting("obstacle_avoidance_at_boundary", (_variant(5356, 6, 5, available=2),)),
     Setting("ultrasonic", (_variant(4728, 1, 2, available=0),)),
     Setting("edge_cut", (_variant(6690, 2, 1, available=3),)),
+    Setting("boundary_edge_detection", (_variant(7414, 5, 4, available=2),)),
+    Setting("vision_positioning", (_variant(6170, 15, 16, available=14),)),
+    Setting("vision_keep_running_reduced", (_variant(7338, 8, 7, available=2),)),
     Setting("mower_firmware_auto_check", (_variant(5296, 3, 2, available=1),)),
     Setting("station_firmware_auto_check", (_variant(6244, 3, 2, available=1),)),
     Setting(
@@ -204,6 +212,14 @@ def settings_for_model(
         if model in MOTION_ALARM_MODELS:
             settings.append(Setting("theft_alarm_on_motion", (_variant(4736, 13, 14),)))
     if limits:
+        if limits.vision_obstacle_profile:
+            settings.append(
+                Setting(
+                    "vision_obstacle_profile",
+                    (_variant(7338, 6, 5, available=2, codec=U32),),
+                    options=("standard", "people_and_wildlife"),
+                )
+            )
         enable = limits.geofence_enable
         if enable == 15 or (enable == 3 and has_pin):
             settings.append(
@@ -359,6 +375,7 @@ READINGS = {
     "drive_past_wire": Reading(Command(4712, 0), U16),
     "reversing_distance": Reading(Command(4716, 0), U16),
     "spot_cut_available": Reading(Command(4710, 0), U8),
+    "is_daylight": Reading(IS_DAYLIGHT, U8),
     "in_charging_station": Reading(Command(4692, 27), U8),
     **THEFT_STATUS_READINGS,
 }

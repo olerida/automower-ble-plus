@@ -151,3 +151,39 @@ async def test_mowing_settings_reject_inapplicable_values_before_the_setter(
         Command(5604, 13),
         Command(5582, 0),
     ]
+
+
+@pytest.mark.asyncio
+async def test_area_assistance_uses_available_hardware_and_a_specific_mission():
+    client = AsyncMock()
+    identity = U32.pack(12)
+    daylight = Command(5604, 50)
+    responses = {
+        (Command(5604, 20), b""): b"\x01",
+        (Command(5604, 13), identity): b"\x01",
+        (Command(5472, 2), b""): b"\0",
+        (Command(6170, 14), b""): b"\0",
+        (Command(7338, 2), b""): b"\x01",
+        (daylight, identity): b"\0",
+        (Command(5604, 58), identity): U32.pack(2),
+    }
+
+    async def reply(command, payload=b""):
+        if command == Command(5604, 49):
+            assert payload == identity + b"\x01"
+            responses[daylight, identity] = b"\x01"
+            return b""
+        if (command, payload) not in responses:
+            raise CommandRejected(command, 7)
+        return responses[command, payload]
+
+    client.command.side_effect = reply
+    result = await async_get_area_mowing_settings(client, 12, height_max=0)
+    assert result["settings"] == {
+        "daylight_only": False,
+        "vision_obstacle_profile": "residential_garden",
+    }
+    await async_set_area_mowing_setting(client, 12, 0, {"daylight_only": True})
+    with pytest.raises(ValueError, match="does not support"):
+        await async_set_area_mowing_setting(client, 12, 0, {"vision_positioning": True})
+    assert responses[daylight, identity] == b"\x01"

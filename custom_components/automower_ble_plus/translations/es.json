@@ -86,6 +86,30 @@
       },
       "in_charging_station": {
         "name": "Cortacésped en la estación"
+      },
+      "is_daylight": {
+        "name": "Luz diurna detectada"
+      },
+      "vision_accessory_enabled": {
+        "name": "Accesorio de visión habilitado"
+      },
+      "vision_obstacle_avoidance_enabled": {
+        "name": "Detección visual de obstáculos habilitada"
+      },
+      "vision_obstacle_avoidance_active": {
+        "name": "Detección visual de obstáculos activa"
+      },
+      "vision_reduced_performance": {
+        "name": "Rendimiento de visión reducido"
+      },
+      "vision_inactive_at_night": {
+        "name": "Visión inactiva de noche"
+      },
+      "vision_dirty_lens": {
+        "name": "Lente sucia"
+      },
+      "vision_wet_lens": {
+        "name": "Agua en la lente"
       }
     },
     "switch": {
@@ -184,6 +208,15 @@
       },
       "theft_alarm_on_motion": {
         "name": "Alarma por movimiento"
+      },
+      "boundary_edge_detection": {
+        "name": "Detección de bordes"
+      },
+      "vision_positioning": {
+        "name": "Posicionamiento asistido por visión"
+      },
+      "vision_keep_running_reduced": {
+        "name": "Seguir con visión reducida"
       }
     },
     "number": {
@@ -300,6 +333,13 @@
       },
       "installation_selection": {
         "name": "Instalación activa"
+      },
+      "vision_obstacle_profile": {
+        "name": "Perfil de detección visual",
+        "state": {
+          "standard": "Estándar",
+          "people_and_wildlife": "Personas y fauna"
+        }
       }
     },
     "sensor": {
@@ -634,6 +674,54 @@
         "use_global_cutting_height": {
           "name": "Usar altura de corte global",
           "description": "Usa la altura de corte general del cortacésped en esta área."
+        },
+        "vision_positioning": {
+          "name": "Posicionamiento asistido por visión",
+          "description": "Usa la visión para ayudar al posicionamiento del cortacésped en esta área."
+        },
+        "use_global_vision_positioning": {
+          "name": "Usar ajuste global de posicionamiento asistido por visión",
+          "description": "Usa el ajuste general del cortacésped en esta área."
+        },
+        "daylight_only": {
+          "name": "Cortar solo con luz diurna",
+          "description": "Limita el corte en esta área a las horas con luz diurna."
+        },
+        "use_global_daylight_only": {
+          "name": "Usar ajuste global de cortar solo con luz diurna",
+          "description": "Usa el ajuste general del cortacésped en esta área."
+        },
+        "boundary_edge_detection": {
+          "name": "Detección de bordes",
+          "description": "Usa la detección visual de bordes en esta área."
+        },
+        "use_global_boundary_edge_detection": {
+          "name": "Usar ajuste global de detección de bordes",
+          "description": "Usa el ajuste general del cortacésped en esta área."
+        },
+        "obstacle_avoidance": {
+          "name": "Detección de obstáculos",
+          "description": "Activa la detección de obstáculos en esta área."
+        },
+        "use_global_obstacle_avoidance": {
+          "name": "Usar ajuste global de detección de obstáculos",
+          "description": "Usa el ajuste general del cortacésped en esta área."
+        },
+        "obstacle_avoidance_at_boundary": {
+          "name": "Detección de obstáculos en el perímetro",
+          "description": "Usa la detección de obstáculos en el perímetro de esta área."
+        },
+        "use_global_obstacle_avoidance_at_boundary": {
+          "name": "Usar ajuste global de detección de obstáculos en el perímetro",
+          "description": "Usa el ajuste general del cortacésped en esta área."
+        },
+        "vision_obstacle_profile": {
+          "name": "Perfil de detección visual",
+          "description": "Selecciona el perfil de detección visual de obstáculos para esta área."
+        },
+        "use_global_vision_obstacle_profile": {
+          "name": "Usar ajuste global de perfil de detección visual",
+          "description": "Usa el ajuste general del cortacésped en esta área."
         }
       }
     },
@@ -685,6 +773,13 @@
       "options": {
         "random": "Aleatorio",
         "systematic": "Sistemático"
+      }
+    },
+    "area_vision_profile": {
+      "options": {
+        "default_pro": "Profesional predeterminado",
+        "risk_objects_only": "Solo objetos de riesgo",
+        "residential_garden": "Jardín residencial"
       }
     }
   }

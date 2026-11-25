@@ -199,6 +199,47 @@ set_work_area_mowing:
     use_global_cutting_height:
       selector:
         boolean:
+    vision_positioning:
+      selector:
+        boolean:
+    use_global_vision_positioning:
+      selector:
+        boolean:
+    daylight_only:
+      selector:
+        boolean:
+    use_global_daylight_only:
+      selector:
+        boolean:
+    boundary_edge_detection:
+      selector:
+        boolean:
+    use_global_boundary_edge_detection:
+      selector:
+        boolean:
+    obstacle_avoidance:
+      selector:
+        boolean:
+    use_global_obstacle_avoidance:
+      selector:
+        boolean:
+    obstacle_avoidance_at_boundary:
+      selector:
+        boolean:
+    use_global_obstacle_avoidance_at_boundary:
+      selector:
+        boolean:
+    vision_obstacle_profile:
+      selector:
+        select:
+          translation_key: area_vision_profile
+          options:
+            - default_pro
+            - risk_objects_only
+            - residential_garden
+    use_global_vision_obstacle_profile:
+      selector:
+        boolean:
 get_installations:
   target:
     entity:

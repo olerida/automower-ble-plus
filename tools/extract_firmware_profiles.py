@@ -18,6 +18,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     loop_operations = {}
     station_operations = {}
     site_operations = {}
+    vision_operations = {}
     message_events = 0
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
@@ -35,6 +36,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             station_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "SiteManager" and protocol.get("msgType") == "5900":
             site_operations[method["command"]] = protocol.get("subCmd")
+        if (
+            method["family"] == "ObstacleAvoidanceVision"
+            and protocol.get("msgType") == "7338"
+        ):
+            vision_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "Messages"
             and method["command"] == "SubscribeEvents"
@@ -146,6 +152,20 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         site_operations.get("GetAvailable") == "17"
         and site_operations.get("CreateNewSite") == "24"
     )
+    vision_profile = int(
+        vision_operations.get("GetProfile") == "6"
+        and vision_operations.get("SetProfile") == "5"
+        and {
+            enum["key"]: enum["value"]
+            for enum in types.get("tIObstacleAvoidanceVision_SupportedProfile", {}).get(
+                "enums", ()
+            )
+        }
+        == {
+            "IOBSTACLEAVOIDANCEVISION_CFG_PROFILE_STANDARD": "0",
+            "IOBSTACLEAVOIDANCEVISION_CFG_PROFILE_HUMAN_AND_WILDLIFE": "1",
+        }
+    )
     result = (
         *reverse,
         *angles,
@@ -159,6 +179,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         station_subscription,
         create_empty,
         message_events,
+        vision_profile,
     )
     return result if any(result) else None
 

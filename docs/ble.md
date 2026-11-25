@@ -36,7 +36,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | GeoFence | 4734 | Lectura de estado, activación, radio, sensibilidad y cambio de centro según firmware |
 | Protección antirrobo | 4736 | Ajustes con sesión de operador y sensores de alarma según modelo y firmware |
 | Actualización de firmware | 5296, 6244, 4698, 6552 | Entidades del cortacésped y la estación con detección, búsqueda de actualizaciones e instalación de la versión descargada |
-| Accesorios avanzados | Varias | Pendiente confirmar el alcance de las rutas BLE de la app |
+| Asistencia visual y luz diurna | 6170, 7276, 7338, 7414, 5472, 5604 | Detección de bordes, posicionamiento visual, perfiles de obstáculos, estado del accesorio y ajustes por área según disponibilidad |
 
 Las entradas implementadas identifican código y evidencia estática. La verificación con un robot físico se registra por modelo y firmware cuando existan resultados.
 
@@ -69,3 +69,5 @@ El emparejamiento con la estación usa `ChargingStation.InitiateNewPairing` y es
 La app consulta `MowerApp.IsErrorConfirmable` y envía `ConfirmError` (`ev_94d8513cc810e00823b149492e3fca4760888ee2d7a78fccc5e0e2d55f239e16`, `ev_a72472af0536626f9b7902baa9733a38c5fc983a86d0936ae9d5055f9513a3d1`). La integración vuelve a leer el código y el permiso del firmware antes de confirmar. El catálogo de avisos incluye los identificadores en los que coinciden todos los perfiles que declaran el código. Los casos ambiguos conservan el código numérico.
 
 Los TIF declaran `MowerApp.SubscribeAllEvents` (4586:7) y `Messages.SubscribeEvents` (4730:4) en los firmwares que admiten cada suscripción. En el perfil G3 del 420 está declarada la primera. REA confirmó que el protocolo decodifica los eventos por familia e identificador (`ev_b60f3404cf52918fe7fd994a41eb42575445f60d4d7a5516bd590f7a1653a530`). La integración separa las notificaciones de las respuestas de comandos y vuelve a suscribirse después de reconectar.
+
+La app relaciona la detección de bordes con `BoundaryEdgeDetection.Available` y `Enabled` (`ev_9a1dafe2f019183fe68903285f18d401441ff485ce414097fbe466daac286eb8`, `ev_3f929eab63a965490e3020c55907c90b55dac004f529f13cf7d075eaf96da321`). La opción de seguir funcionando con visión reducida corresponde a `ObstacleAvoidanceVision.KeepRunningWithReducedPerformance` (`ev_b4e003fd1caf1949a4d6be0d60ad4070045ddb009c04e68c06b086dd928027ea`, `ev_ea6255a169b6732b31f92cea53b1cebbc6720550e410e56320a8f0c3ee445d06`). El catálogo define el perfil global de dos opciones en los firmwares que declaran ambas. Los ajustes por área se consultan en `Missions` tras comprobar la capacidad correspondiente y una lectura válida del área.

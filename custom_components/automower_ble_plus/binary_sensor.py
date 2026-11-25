@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import MowerEntry
 from .entity import MowerValueEntity, async_add_detected
+from .vision import VISION_STATUS_KEYS
 
 
 async def async_setup_entry(
@@ -37,6 +38,12 @@ async def async_setup_entry(
             "theft_stop_alarm": None,
         },
         lambda key, _: TheftAlarmSensor(entry.runtime_data, key),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
+        dict.fromkeys(VISION_STATUS_KEYS | {"is_daylight"}),
+        lambda key, _: VisionStatusSensor(entry.runtime_data, key),
     )
 
 
@@ -67,6 +74,17 @@ class InChargingStationSensor(MowerValueEntity, BinarySensorEntity):
     """Whether the mower is physically in its charging station."""
 
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.value
+        return value == 1 if value in (0, 1) else None
+
+
+class VisionStatusSensor(MowerValueEntity, BinarySensorEntity):
+    """A status flag reported by supported vision or daylight hardware."""
+
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
