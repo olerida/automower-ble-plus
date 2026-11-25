@@ -89,6 +89,7 @@ from .station import async_get_loop_signals, async_pair_charging_station
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
 from .vision import VISION_STATUS_KEYS, async_read_vision_telemetry
 from .wire import Command, Event
+from .wire_test import WireTest, WireTestPhase, WireTestRoute
 from .work_areas import (
     async_create_work_area,
     async_delete_work_area,
@@ -152,6 +153,23 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._active_subscriptions: set[Command] = set()
         self._subscription_retry: dict[Command, float] = {}
         self._event_refresh_task: asyncio.Task | None = None
+        self.wire_test: WireTest | None = None
+
+    @property
+    def wire_test_active(self) -> bool:
+        """Whether Home Assistant has an outstanding installation test."""
+        return self.wire_test is not None and self.wire_test.active
+
+    @property
+    def wire_test_distance_saveable(self) -> bool:
+        """Whether the last interrupted outbound test recorded a valid distance."""
+        return (
+            (test := self.wire_test) is not None
+            and test.route.outbound
+            and test.phase is WireTestPhase.ABORTED
+            and test.distance is not None
+            and test.route.capability in self.data
+        )
 
     @property
     def message_signal(self) -> str:
@@ -168,11 +186,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 LOGGER.debug("Ignoring unexpected mower message event")
                 return
             async_dispatcher_send(self.hass, self.message_signal, message)
-        elif (
-            event.family == _MOWER_EVENTS.family
-            and event.event_id in (1, 2, 3)
-            and self.data is not None
-            and (self._event_refresh_task is None or self._event_refresh_task.done())
+        elif self.wire_test is not None and self.wire_test.handle_event(event):
+            self._async_schedule_event_refresh()
+        elif event.family == _MOWER_EVENTS.family and event.event_id in (1, 2, 3):
+            self._async_schedule_event_refresh()
+
+    @callback
+    def _async_schedule_event_refresh(self) -> None:
+        if self.data is not None and (
+            self._event_refresh_task is None or self._event_refresh_task.done()
         ):
             self._event_refresh_task = self.config_entry.async_create_background_task(
                 self.hass,
@@ -307,6 +329,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 data["message_events"] = int(
                     _MESSAGE_EVENTS in self._active_subscriptions
                 )
+                await self._async_refresh_wire_test(data, state, activity)
                 return data
         except (MowerConnectionError, CommandRejected, ValueError) as err:
             raise UpdateFailed("Could not read the mower status") from err
@@ -504,6 +527,99 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     return
             if data != self.data:
                 self.async_set_updated_data(data)
+        if self.wire_test_active:
+            await self.async_request_refresh()
+
+    async def _async_refresh_wire_test(
+        self, data: MowerData, state: int, activity: int
+    ) -> None:
+        if (test := self.wire_test) is None:
+            return
+        try:
+            await test.async_refresh(self.client, state, activity)
+        except CommandRejected, MowerConnectionError, ValueError:
+            LOGGER.debug("Could not refresh the wire test", exc_info=True)
+        data["wire_test_status"] = test.phase
+        if test.distance is not None:
+            data["wire_test_distance"] = test.distance
+
+    async def async_start_wire_test(self, route: WireTestRoute) -> None:
+        """Prepare and request one supervised wire installation test."""
+        async with self._operation_lock:
+            profile = self.firmware_profile
+            if (
+                profile is None
+                or not profile.wire_test_states
+                or route.capability not in self.data
+            ):
+                raise HomeAssistantError(
+                    "This mower does not offer the selected wire test"
+                )
+            if self.wire_test_active:
+                raise HomeAssistantError("A wire test is already active")
+            test = WireTest(route, profile.wire_test_states)
+            try:
+                await self._async_connect()
+                await test.async_prepare(self.client)
+                self.wire_test = test
+                await test.async_start(self.client)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                if self.wire_test is test:
+                    if isinstance(err, CommandRejected) and test.active:
+                        test.phase = WireTestPhase.ERROR
+                    self._async_publish_wire_test(test)
+                raise HomeAssistantError(
+                    f"Could not start the wire test: {err}"
+                ) from err
+            self._async_publish_wire_test(test)
+        await self.async_request_refresh()
+
+    async def async_stop_wire_test(self) -> None:
+        """Stop the wire test by its firmware's normal cancellation path."""
+        async with self._operation_lock:
+            if (test := self.wire_test) is None or not test.active:
+                raise HomeAssistantError("There is no active wire test")
+            try:
+                await self._async_connect()
+                await test.async_stop(self.client)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not stop the wire test: {err}"
+                ) from err
+            self._async_publish_wire_test(test)
+        await self.async_request_refresh()
+
+    async def async_save_wire_test_distance(self) -> None:
+        """Use the recorded distance as the outbound test's starting point."""
+        async with self._operation_lock:
+            test = self.wire_test
+            if (
+                not self.wire_test_distance_saveable
+                or test is None
+                or test.distance is None
+            ):
+                raise HomeAssistantError(
+                    "The last test has no starting-point distance to save"
+                )
+            setting = next(
+                setting
+                for setting in self.settings
+                if setting.key == test.route.capability
+            )
+            actual = await self._async_write_setting(setting, test.distance)
+            if actual != test.distance:
+                raise HomeAssistantError(
+                    "The mower did not confirm the recorded distance"
+                )
+
+    @callback
+    def _async_publish_wire_test(self, test: WireTest) -> None:
+        data = {**self.data, "wire_test_status": test.phase}
+        if test.distance is None:
+            data.pop("wire_test_distance", None)
+        else:
+            data["wire_test_distance"] = test.distance
+        self.async_set_updated_data(data)
 
     def firmware_status(self, key: str) -> FirmwareStatus | None:
         """Return the latest firmware update information for this recipient."""
@@ -587,42 +703,41 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def async_set_setting(self, setting: Setting, value: int) -> None:
         """Change a supported setting and retrieve the value stored by the mower."""
         async with self._operation_lock:
-            variant = self.setting_variants.get(setting.key)
-            if variant is None:
-                raise HomeAssistantError(
-                    "This mower does not report this setting as available"
-                )
-            try:
-                await self._async_connect()
-                payload = setting.encode(variant, value)
-                if variant.write == SET_LEGACY_BOUNDARY_CORRIDOR:
-                    minimum_corridor = await self._read(
-                        MINIMUM_LEGACY_BOUNDARY_CORRIDOR
-                    )
-                    if value < minimum_corridor:
-                        raise ValueError(
-                            "The corridor width must be at least its stored minimum"
-                        )
-                    payload = U8.pack(minimum_corridor) + payload[1:]
-                if variant.requires_pin:
-                    payload = self._pin_payload() + payload
-                if (
-                    maximum := _SECTOR_MAXIMUM.get(variant.write)
-                ) and value > await self._read(Reading(maximum, U16)):
+            await self._async_write_setting(setting, value)
+
+    async def _async_write_setting(self, setting: Setting, value: int) -> int:
+        """Write and read back a setting while the operation lock is held."""
+        variant = self.setting_variants.get(setting.key)
+        if variant is None:
+            raise HomeAssistantError(
+                "This mower does not report this setting as available"
+            )
+        try:
+            await self._async_connect()
+            payload = setting.encode(variant, value)
+            if variant.write == SET_LEGACY_BOUNDARY_CORRIDOR:
+                minimum_corridor = await self._read(MINIMUM_LEGACY_BOUNDARY_CORRIDOR)
+                if value < minimum_corridor:
                     raise ValueError(
-                        "The start angle must be at or below the end angle"
+                        "The corridor width must be at least its stored minimum"
                     )
-                if (
-                    minimum := _SECTOR_MINIMUM.get(variant.write)
-                ) and value < await self._read(Reading(minimum, U16)):
-                    raise ValueError(
-                        "The end angle must be at or above the start angle"
-                    )
-                await self.client.command(variant.write, payload)
-                actual = await self._read(variant.read)
-            except (CommandRejected, MowerConnectionError, ValueError) as err:
-                raise HomeAssistantError(f"Could not set {setting.key}: {err}") from err
-            self.async_set_updated_data({**self.data, setting.key: actual})
+                payload = U8.pack(minimum_corridor) + payload[1:]
+            if variant.requires_pin:
+                payload = self._pin_payload() + payload
+            if (
+                maximum := _SECTOR_MAXIMUM.get(variant.write)
+            ) and value > await self._read(Reading(maximum, U16)):
+                raise ValueError("The start angle must be at or below the end angle")
+            if (
+                minimum := _SECTOR_MINIMUM.get(variant.write)
+            ) and value < await self._read(Reading(minimum, U16)):
+                raise ValueError("The end angle must be at or above the start angle")
+            await self.client.command(variant.write, payload)
+            actual = await self._read(variant.read)
+        except (CommandRejected, MowerConnectionError, ValueError) as err:
+            raise HomeAssistantError(f"Could not set {setting.key}: {err}") from err
+        self.async_set_updated_data({**self.data, setting.key: actual})
+        return actual
 
     @property
     def _configured_pin(self) -> int | None:

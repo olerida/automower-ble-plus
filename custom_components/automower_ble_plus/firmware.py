@@ -33,6 +33,7 @@ class FirmwareProfile:
     vision_obstacle_profile: int = 0
     boundary_corridor_read: int = -1
     passage_cutting_read: int = 0
+    wire_test_states: str = ""
 
 
 @cache
@@ -80,5 +81,6 @@ def get_firmware_profile(
             station_pairing_subscription=0,
             installation_create_empty=0,
             vision_obstacle_profile=0,
+            wire_test_states="",
         )
     )

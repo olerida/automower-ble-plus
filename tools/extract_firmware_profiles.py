@@ -187,6 +187,28 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         if passage_cutting in (("24", "25"), ("26", "27"))
         else 0
     )
+    wire_test_states = ""
+    if all(
+        follow_wire_operations.get(name) == operation
+        for name, operation in (
+            ("TestStartingPoint", "15"),
+            ("GetCurrentDistance", "16"),
+            ("TestFollowIn", "17"),
+        )
+    ):
+        if (
+            follow_wire_operations.get("TestAbort") == "18"
+            and follow_wire_operations.get("GetTestState") == "23"
+        ):
+            states = types.get("tFollowWireTif_TestState", {}).get("enums", ())
+            ordered = sorted(states, key=lambda state: int(state["value"]))
+            if [int(state["value"]) for state in ordered] == list(range(len(ordered))):
+                wire_test_states = " ".join(
+                    state["key"].removeprefix("FOLLOWWIRE_TIF_TEST_STATE_").lower()
+                    for state in ordered
+                )
+        elif "TestAbort" not in follow_wire_operations:
+            wire_test_states = "legacy"
     result = (
         *reverse,
         *angles,
@@ -203,10 +225,14 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         vision_profile,
         boundary_corridor_read,
         passage_cutting_read,
+        wire_test_states,
     )
     return (
         result
-        if any(result[:-2]) or boundary_corridor_read >= 0 or passage_cutting_read
+        if any(result[:-3])
+        or boundary_corridor_read >= 0
+        or passage_cutting_read
+        or wire_test_states
         else None
     )
 

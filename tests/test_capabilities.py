@@ -8,6 +8,7 @@ from types import MappingProxyType
 from unittest.mock import AsyncMock
 
 import pytest
+from automower_ble.protocol import MowerActivity, MowerState
 from homeassistant import loader, setup
 from homeassistant.config_entries import (
     SOURCE_USER,
@@ -248,6 +249,150 @@ async def test_recent_firmware_keeps_corridor_and_passage_cutting_separate(
     assert (Command(4706, 24), b"\x01") not in client.calls
     assert detected["boundary_corridor"].native_value == 7
     assert detected["starting_point_1_passage_cutting"].is_on
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", (True, False))
+async def test_wire_tests_follow_the_firmware_start_stop_and_result_paths(
+    tmp_path, monkeypatch, legacy
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    monkeypatch.setattr(coordinator, "async_request_refresh", AsyncMock())
+    monkeypatch.setattr(coordinator, "_async_schedule_event_refresh", lambda: None)
+    if not legacy:
+        client.values[Command(4698, 9), b""] = bytes([23, 1])
+        monkeypatch.setattr(
+            client,
+            "main_node_version",
+            AsyncMock(return_value="40.3_Main-App-P16_29.47"),
+        )
+        client.values[Command(4706, 23), b""] = b"\0"
+    state = Command(4586, 2)
+    activity = Command(4586, 3)
+    pause = Command(4586, 5)
+    test_starting_point = Command(4706, 15)
+    test_return = Command(4706, 17)
+    test_abort = Command(4706, 18)
+    client.values.update(
+        {
+            (Command(4708, 0), b"\x01"): b"\x01",
+            (Command(4708, 1), b"\x01"): b"\0",
+            (Command(4706, 16), b""): U16.pack(21),
+        }
+    )
+    if not legacy:
+        client.values[Command(4692, 27), b""] = b"\0"
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation in (pause, test_starting_point, test_return, test_abort):
+            client.calls.append((operation, payload))
+            return b""
+        if operation == Command(4706, 11):
+            client.calls.append((operation, payload))
+            client.values[Command(4706, 10), payload[:1]] = payload[1:]
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = {}
+
+    def add_entities(new_entities):
+        entities.update((entity.key, entity) for entity in new_entities)
+
+    for platform in (button, sensor):
+        await platform.async_setup_entry(coordinator.hass, entry, add_entities)
+    await coordinator.async_refresh_optional()
+    assert "test_starting_point_2" not in entities
+    assert "test_return_guide_3" not in entities
+    assert "test_return_boundary_right_0" not in entities
+    start = entities["test_starting_point_1"]
+    guide = entities["test_return_guide_2"]
+    client.values[state, b""] = bytes(
+        [MowerState.STOPPED if legacy else MowerState.PAUSED]
+    )
+    client.values[activity, b""] = bytes([MowerActivity.STOPPED_IN_GARDEN])
+    with pytest.raises(
+        HomeAssistantError, match="Put the mower in the charging station"
+    ):
+        await start.async_press()
+    assert (test_starting_point, b"\x01\x01") not in client.calls
+    if legacy:
+        client.values[activity, b""] = bytes([MowerActivity.NONE])
+    else:
+        client.values[Command(4692, 27), b""] = b"\x01"
+    client.calls.clear()
+    await start.async_press()
+    assert client.calls[-2:] == [(pause, b""), (test_starting_point, b"\x01\x01")]
+    status = entities["wire_test_status"]
+    stop = entities["stop_wire_test"]
+    assert status.native_value == "pending_start"
+    assert stop.available
+    assert not guide.available
+    with pytest.raises(HomeAssistantError, match="already active"):
+        await guide.async_press()
+
+    client.values[state, b""] = bytes([MowerState.IN_OPERATION])
+    client.values[activity, b""] = bytes([MowerActivity.GOING_OUT])
+    if not legacy:
+        client.values[Command(4706, 23), b""] = b"\x02"
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    assert status.native_value == "in_operation"
+    assert entities["wire_test_distance"].native_value == 21
+    if legacy:
+        coordinator._async_on_event(Event(4706, 4, b""))
+        assert coordinator.wire_test_active
+        coordinator._async_on_event(Event(4706, 2, b""))
+    else:
+        client.values[Command(4706, 23), b""] = b"\x03"
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    assert status.native_value == "done"
+    assert not stop.available
+
+    client.values[state, b""] = bytes(
+        [MowerState.STOPPED if legacy else MowerState.PAUSED]
+    )
+    client.values[activity, b""] = bytes([MowerActivity.STOPPED_IN_GARDEN])
+    if not legacy:
+        client.values[Command(4692, 27), b""] = b"\0"
+    client.calls.clear()
+    await guide.async_press()
+    assert client.calls[-2:] == [(pause, b""), (test_return, b"\x02")]
+    assert not entities["wire_test_distance"].available
+    await stop.async_press()
+    assert client.calls[-1] == (pause if legacy else test_abort, b"")
+    assert status.native_value == "aborted"
+    save = entities["save_wire_test_distance"]
+    assert not save.available
+    with pytest.raises(HomeAssistantError, match="no starting-point distance"):
+        await save.async_press()
+
+    client.values[state, b""] = bytes(
+        [MowerState.STOPPED if legacy else MowerState.PAUSED]
+    )
+    if legacy:
+        client.values[activity, b""] = bytes([MowerActivity.PARKED])
+    else:
+        client.values[Command(4692, 27), b""] = b"\x01"
+    await start.async_press()
+    client.values[state, b""] = bytes([MowerState.IN_OPERATION])
+    client.values[activity, b""] = bytes([MowerActivity.GOING_OUT])
+    if not legacy:
+        client.values[Command(4706, 23), b""] = b"\x02"
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    await stop.async_press()
+    assert save.available
+    await save.async_press()
+    assert coordinator.data["starting_point_1_distance"] == 21
+    assert (Command(4706, 11), b"\x01" + U16.pack(21)) in client.calls
+    assert (Command(4586, 4), b"") not in client.calls
     await coordinator.async_shutdown()
 
 

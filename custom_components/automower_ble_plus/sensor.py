@@ -27,6 +27,7 @@ from .entity import MowerEntity, MowerValueEntity, async_add_detected
 from .epos import EPOS_ENUM_OPTIONS
 from .faults import FAULT_STATES, message_description
 from .firmware import get_message_key
+from .wire_test import WIRE_TEST_OPTIONS
 
 
 def _description(
@@ -76,6 +77,8 @@ _DESCRIPTIONS = (
     ),
     _description("next_start", SensorDeviceClass.TIMESTAMP),
     _description("mower_clock"),
+    _description("wire_test_status", SensorDeviceClass.ENUM, options=WIRE_TEST_OPTIONS),
+    _description("wire_test_distance", SensorDeviceClass.DISTANCE, UnitOfLength.METERS),
     _description(
         "remaining_charging_time", SensorDeviceClass.DURATION, UnitOfTime.SECONDS
     ),

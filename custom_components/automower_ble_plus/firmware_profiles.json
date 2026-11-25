@@ -19,7 +19,8 @@
       0,
       0,
       0,
-      24
+      24,
+      "legacy"
     ],
     [
       600,
@@ -40,7 +41,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       700,
@@ -61,7 +63,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       200,
@@ -82,7 +85,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       600,
@@ -103,7 +107,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       600,
@@ -124,7 +129,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       1300,
@@ -145,7 +151,8 @@
       1,
       1,
       -1,
-      0
+      0,
+      ""
     ],
     [
       1300,
@@ -166,7 +173,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       700,
@@ -187,7 +195,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       150,
@@ -208,7 +217,8 @@
       1,
       0,
       24,
-      0
+      0,
+      "idle in_operation done error aborted"
     ],
     [
       150,
@@ -229,7 +239,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       600,
@@ -250,7 +261,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       700,
@@ -271,7 +283,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       1000,
@@ -292,7 +305,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       1000,
@@ -313,7 +327,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       700,
@@ -334,7 +349,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       700,
@@ -355,7 +371,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       700,
@@ -376,7 +393,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       600,
@@ -397,7 +415,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       1300,
@@ -418,7 +437,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       1300,
@@ -439,7 +459,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       1300,
@@ -460,7 +481,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       700,
@@ -481,7 +503,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       700,
@@ -502,7 +525,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       150,
@@ -523,7 +547,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle pending_start in_operation done error aborted"
     ],
     [
       150,
@@ -544,7 +569,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       600,
@@ -565,7 +591,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       600,
@@ -586,7 +613,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       0,
@@ -607,7 +635,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       0,
@@ -628,7 +657,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       700,
@@ -649,7 +679,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       700,
@@ -670,7 +701,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       700,
@@ -691,7 +723,8 @@
       1,
       0,
       -1,
-      0
+      0,
+      ""
     ],
     [
       150,
@@ -712,7 +745,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle pending_start in_operation done error aborted"
     ],
     [
       150,
@@ -733,7 +767,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       150,
@@ -754,7 +789,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       700,
@@ -775,7 +811,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       200,
@@ -796,7 +833,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       600,
@@ -817,7 +855,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       600,
@@ -838,7 +877,8 @@
       1,
       0,
       24,
-      26
+      26,
+      "idle in_operation done error aborted pending_start"
     ],
     [
       150,
@@ -859,7 +899,8 @@
       0,
       0,
       0,
-      26
+      26,
+      "legacy"
     ]
   ],
   "release": {

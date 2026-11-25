@@ -21,6 +21,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Faros | 4722 | Ajustes con detección |
 | Distancias de cable, marcha atrás y ángulos de salida | 4712, 4716 | Rangos por modelo o versión del nodo. Las operaciones de lectura confirman cada control |
 | Puntos de partida y pasillos | 4706 | Habilitación, proporción, distancia, asignación de guía, anchura del pasillo delimitador y de cada guía compatible, y corte en pasillos según modelo |
+| Prueba de salida y retorno por cable | 4706, 4586 | Preparación, estado, distancia, cancelación y uso de la distancia medida como punto de partida |
 | Búsqueda de la estación | 4708 | Métodos, retardos y alcance con detección |
 | Navegación asistida y obstáculos | 4732, 5356 | Ajustes con detección |
 | Corte de bordes y ultrasonidos | 6690, 4728 | Activación cuando el cortacésped anuncia cada función |
@@ -82,6 +83,8 @@ La app consulta por BLE el estado y resultado de la instalación de la base (`ev
 La pantalla de anchura de pasillo usa los intervalos 1–9 para el delimitador y 0–9 para cada guía (`ev_6b301f9b87505ceb9e6e381f421014dab519902b5647fd6bcb2e35f7145257b0`). El perfil 31.7 del 420 declara `GetGuideCorridor` y `SetGuideCorridor` (4706:2 y 4706:3). La integración lee el número de guías y crea un control por cada guía cuya anchura pueda leer.
 
 En el 420, la anchura del pasillo delimitador se guarda como un par mínimo/máximo (4706:0 y 4706:1). Al cambiar el máximo se conserva el mínimo leído. Los identificadores 4706:24 y 4706:25 corresponden al corte por punto de partida en ese firmware y a la anchura máxima en la mayoría de los perfiles recientes. REA siguió la selección y serialización de ambas variantes en la app (`ev_1833524a3520ed3d02e57d4e7c6c1c50a4d9e67031a41ce600076f4edecffedd`).
+
+La app envía una pausa seguida de `FollowWire.TestStartingPoint` o `FollowWire.TestFollowIn` (`ev_02b812dcd873f8af9648f1d1fa3b9c35397e2d8bd6c5830bb33ff4b8734c9ba8`, `ev_a782500e8cabcc50f70e611888571ad15a35ad9551fae922da52e6840374479d`). En los firmwares recientes consulta el estado con 4706:23 y usa la cancelación 4706:18. En el 420 conserva el arranque físico y cancela con la pausa. Los TIF distinguen los eventos de éxito y fallo para salida y retorno, y definen tres variantes de la enumeración de estado. La integración usa la variante del perfil identificado (`ev_421ea268f9c60c83df6273122d84993a65a5116d3f0ac9333dbe6ff81beba942`, `ev_f478079bf872af2bef3b9b14fcca41bdf5ecbd2583255a98733e574b7ad37deb`).
 
 La sección de accesorios guarda el ajuste FlexiFence mediante `MobileLoop.Enabled` (`ev_980da380e3e068697a159431114b342149fcc332f6cfb6236dd77d6d19fee2ad`, `ev_daf03529ad8af72c3eba9cd87d424098569fd48f213f57e399bbdf73f4e8fb65`). El TIF del 420 declara la familia 5926. Hay otras variantes con la familia 6050. En ambos casos, la integración espera que `MobileLoop.Available` devuelva verdadero.
 

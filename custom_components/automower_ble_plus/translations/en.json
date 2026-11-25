@@ -72,6 +72,24 @@
       },
       "confirm_fault": {
         "name": "Acknowledge fault"
+      },
+      "test_starting_point": {
+        "name": "Test starting point {index}"
+      },
+      "test_return_boundary_right": {
+        "name": "Test return along right boundary wire"
+      },
+      "test_return_boundary_left": {
+        "name": "Test return along left boundary wire"
+      },
+      "test_return_guide": {
+        "name": "Test return along guide wire {index}"
+      },
+      "stop_wire_test": {
+        "name": "Stop wire test"
+      },
+      "save_wire_test_distance": {
+        "name": "Save measured starting-point distance"
       }
     },
     "binary_sensor": {
@@ -505,6 +523,21 @@
           "radio": "Radio",
           "wifi": "Wi-Fi"
         }
+      },
+      "wire_test_status": {
+        "name": "Wire test status",
+        "state": {
+          "idle": "Idle",
+          "pending_start": "Waiting for start",
+          "in_operation": "In progress",
+          "done": "Completed",
+          "error": "Failed",
+          "aborted": "Stopped",
+          "unconfirmed": "Result unconfirmed"
+        }
+      },
+      "wire_test_distance": {
+        "name": "Wire test distance"
       }
     },
     "device_tracker": {

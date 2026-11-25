@@ -72,6 +72,24 @@
       },
       "confirm_fault": {
         "name": "Confirmar avería"
+      },
+      "test_starting_point": {
+        "name": "Probar punto de partida {index}"
+      },
+      "test_return_boundary_right": {
+        "name": "Probar retorno por el delimitador derecho"
+      },
+      "test_return_boundary_left": {
+        "name": "Probar retorno por el delimitador izquierdo"
+      },
+      "test_return_guide": {
+        "name": "Probar retorno por el cable guía {index}"
+      },
+      "stop_wire_test": {
+        "name": "Detener prueba de cable"
+      },
+      "save_wire_test_distance": {
+        "name": "Guardar distancia medida del punto de partida"
       }
     },
     "binary_sensor": {
@@ -505,6 +523,21 @@
           "radio": "Radio",
           "wifi": "Wi-Fi"
         }
+      },
+      "wire_test_status": {
+        "name": "Estado de prueba de cable",
+        "state": {
+          "idle": "En espera",
+          "pending_start": "Pendiente de inicio",
+          "in_operation": "En curso",
+          "done": "Completada",
+          "error": "Fallida",
+          "aborted": "Detenida",
+          "unconfirmed": "Resultado sin confirmar"
+        }
+      },
+      "wire_test_distance": {
+        "name": "Distancia recorrida en la prueba"
       }
     },
     "device_tracker": {

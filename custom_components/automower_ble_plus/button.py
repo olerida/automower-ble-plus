@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .coordinator import MowerCoordinator, MowerEntry
 from .entity import MowerEntity, MowerValueEntity, async_add_detected
 from .fota import FIRMWARE_TARGETS, UpdatePhase
+from .wire_test import WireTestRoute
 
 
 async def async_setup_entry(
@@ -51,6 +52,8 @@ async def async_setup_entry(
         )
     if profile and profile.station_pairing_subscription:
         add_entities([PairStationButton(entry.runtime_data, "pair_charging_station")])
+    if profile and profile.wire_test_states:
+        _async_add_wire_test_buttons(entry, add_entities)
     async_add_detected(
         entry,
         add_entities,
@@ -69,6 +72,60 @@ async def async_setup_entry(
         add_entities,
         {"mower_clock": None},
         lambda _key, _: SyncClockButton(entry.runtime_data, "sync_mower_clock"),
+    )
+
+
+def _async_add_wire_test_buttons(
+    entry: MowerEntry, add_entities: AddConfigEntryEntitiesCallback
+) -> None:
+    coordinator = entry.runtime_data
+    routes = [
+        WireTestRoute(
+            setting.key,
+            "test_starting_point",
+            setting.index,
+            outbound=True,
+            placeholder=setting.index,
+        )
+        for setting in coordinator.settings
+        if setting.translation_key == "starting_point_distance"
+        and setting.index is not None
+    ]
+    routes.extend(
+        (
+            WireTestRoute("station_search_boundary", "test_return_boundary_right", 0),
+            WireTestRoute("station_search_boundary", "test_return_boundary_left", 1),
+        )
+    )
+    routes.extend(
+        WireTestRoute(
+            f"station_search_guide_{index}",
+            "test_return_guide",
+            index + 1,
+            placeholder=index,
+        )
+        for index in range(1, 4)
+    )
+    for route in routes:
+        async_add_detected(
+            entry,
+            add_entities,
+            {route.capability: route},
+            lambda _key, test_route: StartWireTestButton(coordinator, test_route),
+        )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"wire_test_status": None},
+        lambda _key, _: StopWireTestButton(coordinator, "stop_wire_test"),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"wire_test_distance": None},
+        lambda _key, _: SaveWireTestDistanceButton(
+            coordinator, "save_wire_test_distance"
+        ),
     )
 
 
@@ -148,6 +205,56 @@ class SyncClockButton(MowerEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_sync_clock()
+
+
+class StartWireTestButton(MowerEntity, ButtonEntity):
+    """Prepare an individual starting-point or return-wire test."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: MowerCoordinator, route: WireTestRoute) -> None:
+        super().__init__(coordinator, f"{route.label}_{route.index}")
+        self._attr_translation_key = route.label
+        if route.placeholder is not None:
+            self._attr_translation_placeholders = {"index": str(route.placeholder)}
+        self.route = route
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.route.capability in self.coordinator.data
+            and not self.coordinator.wire_test_active
+        )
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_start_wire_test(self.route)
+
+
+class StopWireTestButton(MowerEntity, ButtonEntity):
+    """Cancel the test started from this integration."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.wire_test_active
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_stop_wire_test()
+
+
+class SaveWireTestDistanceButton(MowerEntity, ButtonEntity):
+    """Use the measured distance as the tested starting-point setting."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.wire_test_distance_saveable
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_save_wire_test_distance()
 
 
 class ConfirmFaultButton(MowerEntity, ButtonEntity):
