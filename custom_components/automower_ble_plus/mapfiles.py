@@ -3,6 +3,7 @@
 import asyncio
 import gzip
 import re
+from enum import StrEnum
 from hashlib import md5
 from io import BytesIO
 from secrets import randbelow
@@ -18,9 +19,12 @@ from .wire import Command
 _MAP_FAMILY = 5578
 _SITE_MAP = 100
 _GENERATED_MAP = 101
+_ZONE_MAP = 103
 _MAPS_AVAILABLE = Command(_MAP_FAMILY, 0)
 _SITE_MAP_AVAILABLE = Command(_MAP_FAMILY, 40)
 _GENERATED_AVAILABLE = Command(_MAP_FAMILY, 43)
+_ZONE_MAP_AVAILABLE = Command(_MAP_FAMILY, 38)
+MAP_EVENTS = Command(_MAP_FAMILY, 26)
 _GET_CHECKSUM = Command(_MAP_FAMILY, 23)
 _SET_CHECKSUM = Command(_MAP_FAMILY, 24)
 _GET_RAW = Command(5786, 7)
@@ -33,7 +37,7 @@ _FIRST_CHUNK = Struct("<II")
 _CHUNK = Struct("<BI")
 _MAX_MAP_SIZE = 16 * 1024 * 1024
 _MAX_FRAME_CHUNK = 0xFF00
-_SVG_NAMESPACE = "{http://www.w3.org/2000/svg}"
+SVG_NAMESPACE = "{http://www.w3.org/2000/svg}"
 _POINT = re.compile(r"-?[0-9]{1,19},-?[0-9]{1,19}\Z")
 _SHAPE_ATTRIBUTES = {
     "id",
@@ -44,6 +48,32 @@ _SHAPE_ATTRIBUTES = {
     "stroke-width",
     "display",
     "rewildingzone",
+}
+
+
+class MapKind(StrEnum):
+    """The SVG map variants exposed by the mower."""
+
+    SITE = "site"
+    GENERATED = "generated"
+    ZONES = "zones"
+
+    @property
+    def preview_key(self) -> str:
+        return f"map_{self.value}_preview"
+
+
+_MAPS = {
+    MapKind.SITE: (_SITE_MAP, _SITE_MAP_AVAILABLE),
+    MapKind.GENERATED: (_GENERATED_MAP, _GENERATED_AVAILABLE),
+    MapKind.ZONES: (_ZONE_MAP, _ZONE_MAP_AVAILABLE),
+}
+MAP_PREVIEW_KEYS = frozenset(kind.preview_key for kind in MapKind)
+MAP_EVENT_KINDS = {
+    0: MapKind.SITE,
+    5: MapKind.SITE,
+    6: MapKind.GENERATED,
+    8: MapKind.ZONES,
 }
 
 
@@ -67,7 +97,9 @@ def _decode_svg(data: bytes) -> str:
     return data.decode("utf-8")
 
 
-def _parse_svg(svg: str) -> tuple[bytes, ElementTree.Element]:
+def parse_map_svg(
+    svg: str, *, require_unique_ids: bool = True
+) -> tuple[bytes, ElementTree.Element]:
     """Validate the polygons and polylines produced by Automower Connect."""
     raw = svg.encode("utf-8")
     if len(raw) > _MAX_MAP_SIZE or b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
@@ -76,13 +108,13 @@ def _parse_svg(svg: str) -> tuple[bytes, ElementTree.Element]:
         root = ElementTree.fromstring(raw)
     except ElementTree.ParseError as err:
         raise ValueError("The map SVG is invalid") from err
-    if root.tag.removeprefix(_SVG_NAMESPACE) != "svg" or not len(root):
+    if root.tag.removeprefix(SVG_NAMESPACE) != "svg" or not len(root):
         raise ValueError("The map must contain SVG polygons or polylines")
     if root.attrib.keys() - {"version", "viewBox", "width", "height"}:
         raise ValueError("The map has unsupported SVG root attributes")
     ids = set()
     for shape in root:
-        kind = shape.tag.removeprefix(_SVG_NAMESPACE)
+        kind = shape.tag.removeprefix(SVG_NAMESPACE)
         identity = shape.get("id")
         if (
             kind not in ("polygon", "polyline")
@@ -90,7 +122,7 @@ def _parse_svg(svg: str) -> tuple[bytes, ElementTree.Element]:
             or shape.attrib.keys() - _SHAPE_ATTRIBUTES
         ):
             raise ValueError("The map has unsupported SVG elements or attributes")
-        if not identity or identity in ids:
+        if require_unique_ids and (not identity or identity in ids):
             raise ValueError("Every map feature must have a unique ID")
         ids.add(identity)
         points = shape.get("points", "").split()
@@ -112,7 +144,7 @@ def _parse_svg(svg: str) -> tuple[bytes, ElementTree.Element]:
 
 
 def _prepare_map(svg: str) -> tuple[bytes, bytes]:
-    raw, _ = _parse_svg(svg)
+    raw, _ = parse_map_svg(svg)
     return gzip.compress(raw, mtime=0), md5(raw, usedforsecurity=False).digest()
 
 
@@ -152,16 +184,54 @@ async def _async_available(client: AutomowerClient, command: Command) -> bool:
 
 async def async_get_map(client: AutomowerClient, generated: bool) -> dict:
     """Read the site's SVG or the generated map when the mower advertises it."""
+    kind = MapKind.GENERATED if generated else MapKind.SITE
+    return await async_read_map_kind(client, kind)
+
+
+async def async_read_map_status(client: AutomowerClient) -> dict[MapKind, str]:
+    """Read availability plus the active map checksum when available."""
+    if not await _async_available(client, _MAPS_AVAILABLE):
+        return {}
+    maps = {}
+    for kind, (_, availability) in _MAPS.items():
+        if await _async_available(client, availability):
+            maps[kind] = ""
+            if kind is MapKind.SITE:
+                try:
+                    maps[kind] = (await _async_checksum(client)).hex()
+                except CommandRejected as err:
+                    if not err.unsupported:
+                        raise
+    return maps
+
+
+async def async_read_map_kind(
+    client: AutomowerClient, kind: MapKind, *, check_revision: bool = False
+) -> dict:
+    """Read a specific map over the mower's native BLE attributes."""
     if not await _async_available(client, _MAPS_AVAILABLE):
         return {"available": False}
-    availability = _GENERATED_AVAILABLE if generated else _SITE_MAP_AVAILABLE
-    attribute = _GENERATED_MAP if generated else _SITE_MAP
+    attribute, availability = _MAPS[kind]
     available = await _async_available(client, availability)
-    result = {"available": available, "generated": generated}
-    if not generated:
-        result["checksum"] = (await _async_checksum(client)).hex()
+    result = {"available": available}
+    if kind is MapKind.ZONES:
+        result["map_type"] = kind.value
+    else:
+        result["generated"] = kind is MapKind.GENERATED
+    if kind is MapKind.SITE:
+        try:
+            result["checksum"] = (await _async_checksum(client)).hex()
+        except CommandRejected as err:
+            if not check_revision or not err.unsupported:
+                raise
     if available:
         raw = await _async_read_raw_map(client, attribute)
+        if (
+            check_revision
+            and "checksum" in result
+            and (await _async_checksum(client)).hex() != result["checksum"]
+        ):
+            raise ValueError("The map changed during the image download")
         result["svg"] = await asyncio.to_thread(_decode_svg, raw)
     return result
 
@@ -179,9 +249,9 @@ async def async_verify_mowing_area(
         raise ValueError(
             "The active map changed. Read it again before creating an area"
         )
-    _, root = await asyncio.to_thread(_parse_svg, current["svg"])
+    _, root = await asyncio.to_thread(parse_map_svg, current["svg"])
     if not any(
-        shape.tag.removeprefix(_SVG_NAMESPACE) == "polygon"
+        shape.tag.removeprefix(SVG_NAMESPACE) == "polygon"
         and shape.get("id") == area_id
         and shape.get("fill", "").lower() == "green"
         and shape.get("rewildingzone", "").lower() != "true"

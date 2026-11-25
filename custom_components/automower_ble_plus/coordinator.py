@@ -91,7 +91,16 @@ from .identity import (
     decode_mower_name,
     encode_mower_name,
 )
-from .mapfiles import async_get_map, async_replace_map
+from .map_preview import render_map_png
+from .mapfiles import (
+    MAP_EVENT_KINDS,
+    MAP_EVENTS,
+    MAP_PREVIEW_KEYS,
+    MapKind,
+    async_read_map_kind,
+    async_read_map_status,
+    async_replace_map,
+)
 from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
 from .planner import PlannerOverride, async_read_planner_override
 from .position import (
@@ -197,6 +206,7 @@ _MESSAGE_EVENTS = Command(4730, 4)
 _CALENDAR_EVENTS = Command(4690, 0)
 _CALENDAR_TIME_UPDATED = 0
 _CALENDAR_TASKS_UPDATED = 1
+_MAP_PREVIEW_RECHECK_SECONDS = 900
 _DOCKING_INSTALLATION_START_GRACE = 15
 _SECTOR_MAXIMUM = {
     Command(4716, 3): Command(4716, 4),
@@ -249,6 +259,21 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._gps_resync_pending = False
         self._gps_report_pending: dict[str, int] | None = None
         self._gps_report_task: asyncio.Task[None] | None = None
+        self._map_generation = 0
+        self._map_event_payloads: dict[int, bytes] = {}
+        self._map_refresh_pending = False
+
+    @callback
+    def _async_handle_map_update(self, event: Event) -> None:
+        if event.event_id not in MAP_EVENT_KINDS or len(event.payload) != (
+            16 if event.event_id == 0 else U32.size
+        ):
+            return
+        if self._map_event_payloads.get(event.event_id) == event.payload:
+            return
+        self._map_event_payloads[event.event_id] = event.payload
+        self._map_refresh_pending = True
+        self._async_schedule_event_refresh()
 
     @callback
     def async_set_gps_tracking(self, enabled: bool) -> None:
@@ -341,6 +366,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             scan.handle_event(event)
         elif event.family == WIFI_FAMILY and self._wifi_event_listener is not None:
             self._wifi_event_listener(event)
+        elif event.family == MAP_EVENTS.family:
+            self._async_handle_map_update(event)
         elif (
             self._gps_tracking
             and event.family == GPS_POSITION_EVENTS.family
@@ -414,7 +441,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
 
     async def _async_refresh_after_event(self) -> None:
         await self.async_request_refresh()
-        if self._calendar_update_pending and self.client.is_connected():
+        if (
+            self._calendar_update_pending or self._map_refresh_pending
+        ) and self.client.is_connected():
             # An event received during the read still needs a later snapshot.
             await self.async_request_refresh()
 
@@ -438,6 +467,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 f"The mower returned {result.name} while connecting"
             )
         self._active_subscriptions.clear()
+        self._map_generation += 1
+        self._map_event_payloads.clear()
+        self._map_refresh_pending = bool(MAP_PREVIEW_KEYS & (self.data or {}).keys())
         if self.data and "weekly_schedule" in self.data:
             self._calendar_update_pending = True
 
@@ -456,6 +488,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             and self.data.get("gps_position_supported") == 1
         ):
             commands += (GPS_POSITION_EVENTS,)
+        if self.data and MAP_PREVIEW_KEYS & self.data.keys():
+            commands += (MAP_EVENTS,)
         for command in commands:
             if (
                 command in self._unavailable_subscriptions
@@ -589,6 +623,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     self._gps_resync_pending = False
                     with suppress(CommandRejected, MowerConnectionError, ValueError):
                         await self._async_refresh_gps(data)
+                if self._map_refresh_pending and self.client.is_connected():
+                    self._map_refresh_pending = False
+                    with suppress(
+                        CommandRejected, MowerConnectionError, ValueError, StructError
+                    ):
+                        await self._async_refresh_map_previews(data)
                 if "appdrive_state" in data and self.client.is_connected():
                     with suppress(CommandRejected, MowerConnectionError):
                         await self._async_refresh_appdrive(data)
@@ -683,6 +723,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ("position", None),
                 ("local_position", None),
                 ("installation_selection", None),
+                ("map_previews", None),
                 ("vision", None),
                 ("epos", None),
                 ("wifi", None),
@@ -774,6 +815,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                             values.pop(key, None)
                         else:
                             values[key] = selection
+                    elif key == "map_previews":
+                        await self._async_refresh_map_previews(values)
                     elif key == "vision":
                         vision = await async_read_vision_telemetry(self.client)
                         for status in VISION_STATUS_KEYS.difference(vision):
@@ -890,6 +933,20 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         gps = await async_read_gps_position(self.client)
         data.pop("gps_position_supported", None)
         data.update(gps)
+
+    async def _async_refresh_map_previews(self, data: MowerData) -> None:
+        for key in MAP_PREVIEW_KEYS:
+            data.pop(key, None)
+        refresh_interval = int(monotonic() // _MAP_PREVIEW_RECHECK_SECONDS)
+        for kind, checksum in (await async_read_map_status(self.client)).items():
+            events = tuple(
+                self._map_event_payloads.get(event_id, b"").hex()
+                for event_id, event_kind in MAP_EVENT_KINDS.items()
+                if event_kind is kind
+            )
+            data[kind.preview_key] = ":".join(
+                (str(self._map_generation), checksum or str(refresh_interval), *events)
+            )
 
     async def _async_refresh_wire_test(
         self, data: MowerData, state: int, activity: int
@@ -1583,15 +1640,42 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             else:
                 if selection is not None:
                     data["installation_selection"] = selection
+            if operation is async_activate_installation:
+                self._map_generation += 1
+                self._map_event_payloads.clear()
+                with suppress(
+                    CommandRejected, MowerConnectionError, ValueError, StructError
+                ):
+                    await self._async_refresh_map_previews(data)
             self.async_set_updated_data(data)
             return result
 
     async def async_read_map(self, generated: bool) -> dict:
         """Read map geometry from the mower's native BLE attributes."""
+        return await self._async_fetch_map(
+            MapKind.GENERATED if generated else MapKind.SITE
+        )
+
+    async def async_read_zone_map(self) -> dict:
+        """Read the mower's separate zone map when available."""
+        return await self._async_fetch_map(MapKind.ZONES)
+
+    async def async_map_preview(self, kind: MapKind) -> bytes | None:
+        """Download the mower's map and render it off the event loop."""
+        result = await self._async_fetch_map(kind, check_revision=True)
+        if not result["available"]:
+            return None
+        return await self.hass.async_add_executor_job(render_map_png, result["svg"])
+
+    async def _async_fetch_map(
+        self, kind: MapKind, *, check_revision: bool = False
+    ) -> dict:
         async with self._operation_lock:
             try:
                 await self._async_connect()
-                return await async_get_map(self.client, generated)
+                return await async_read_map_kind(
+                    self.client, kind, check_revision=check_revision
+                )
             except (
                 MowerConnectionError,
                 CommandRejected,
@@ -2170,7 +2254,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         async with self._operation_lock:
             try:
                 await self._async_connect()
-                return await async_replace_map(self.client, svg, expected_checksum)
+                result = await async_replace_map(self.client, svg, expected_checksum)
             except (
                 MowerConnectionError,
                 CommandRejected,
@@ -2180,3 +2264,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not update the mower map: {err}"
                 ) from err
+            data = dict(self.data)
+            with suppress(
+                CommandRejected, MowerConnectionError, ValueError, StructError
+            ):
+                await self._async_refresh_map_previews(data)
+            if data != self.data:
+                self.async_set_updated_data(data)
+            return result

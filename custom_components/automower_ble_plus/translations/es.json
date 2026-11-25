@@ -722,6 +722,17 @@
         "name": "Posición del cortacésped"
       }
     },
+    "image": {
+      "map_site_preview": {
+        "name": "Mapa de la instalación"
+      },
+      "map_generated_preview": {
+        "name": "Mapa generado del césped"
+      },
+      "map_zones_preview": {
+        "name": "Mapa de zonas"
+      }
+    },
     "text": {
       "mower_name": {
         "name": "Nombre guardado en el cortacésped"
@@ -895,6 +906,10 @@
           "description": "Lee el mapa generado por el robot."
         }
       }
+    },
+    "get_zone_map": {
+      "name": "Leer mapa de zonas",
+      "description": "Descarga por Bluetooth el mapa de zonas del cortacésped cuando está disponible."
     },
     "replace_map": {
       "name": "Reemplazar mapa Automower",

@@ -1,16 +1,21 @@
 """Verify that Home Assistant exposes only controls confirmed over BLE."""
 
 import asyncio
+import gzip
 from datetime import UTC, datetime, time, timedelta
+from hashlib import md5
 from pathlib import Path
-from struct import pack
+from struct import pack, unpack_from
 from types import MappingProxyType
 from unittest.mock import AsyncMock, Mock
+from zlib import crc32
 from zoneinfo import ZoneInfo
 
 import pytest
 from automower_ble.protocol import MowerActivity, MowerState, ResponseResult
 from homeassistant import auth, loader, setup
+from homeassistant.components.image import async_get_image
+from homeassistant.components.image.const import DATA_COMPONENT as IMAGE_COMPONENT
 from homeassistant.config_entries import (
     SOURCE_USER,
     ConfigEntries,
@@ -1715,6 +1720,7 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert hass.services.has_service(DOMAIN, "get_schedule")
             await entry.runtime_data.async_refresh_optional()
             await hass.async_block_till_done()
+            assert not hass.states.async_entity_ids("image")
             (calendar_id,) = hass.states.async_entity_ids("calendar")
             monday = datetime(2026, 11, 23, tzinfo=UTC)
             calendar_response = await hass.services.async_call(
@@ -1814,6 +1820,74 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
                 blocking=True,
             )
             assert (Command(5582, 4), area + I16.pack(450)) not in client.calls
+            coordinator = entry.runtime_data
+            maps = {
+                100: b'<svg><polygon id="lawn" fill="green" points="0,0 1000,0 0,1000"/></svg>',
+                101: b'<svg><polygon fill="green" points="0,0 1000,0 1000,1000 0,1000"/></svg>',
+                103: b'<svg><polygon fill="red" points="0,0 1000,0 0,1000"/></svg>',
+            }
+            reads = []
+            send = client.command
+
+            async def command(operation, payload=b""):
+                if operation == Command(5578, 23):
+                    return md5(maps[100], usedforsecurity=False).digest()
+                if operation == Command(5786, 7):
+                    family, attribute = unpack_from("<HH", payload)
+                    assert family == 5578
+                    reads.append(attribute)
+                    raw = gzip.compress(maps[attribute])
+                    return pack("<IIBI", crc32(raw), len(raw), 1, len(raw)) + raw
+                return await send(operation, payload)
+
+            monkeypatch.setattr(client, "command", command)
+            client.values.update(
+                {
+                    (Command(5578, 0), b""): b"\x01",
+                    (Command(5578, 26), b""): b"",
+                    (Command(5578, 38), b""): b"\x01",
+                    (Command(5578, 40), b""): b"\x01",
+                    (Command(5578, 43), b""): b"\x01",
+                }
+            )
+            await coordinator.async_refresh_optional()
+            await hass.async_block_till_done()
+            previews = {
+                entity.key: entity for entity in hass.data[IMAGE_COMPONENT].entities
+            }
+            assert set(previews) == {
+                "map_site_preview",
+                "map_generated_preview",
+                "map_zones_preview",
+            }
+            for preview in previews.values():
+                if preview._render_task is not None:
+                    await preview._render_task
+                native = await async_get_image(hass, preview.entity_id)
+                assert native.content_type == "image/png"
+                assert native.content.startswith(b"\x89PNG")
+            assert sorted(reads) == [100, 101, 103]
+            generated = previews["map_generated_preview"]
+            old_image = await generated.async_image()
+            assert await generated.async_image() == old_image
+            assert sorted(reads) == [100, 101, 103]
+
+            maps[101] = maps[101].replace(b'fill="green"', b'fill="red"')
+            coordinator._debounced_refresh.async_cancel()
+            coordinator._async_on_event(Event(5578, 6, U32.pack(crc32(maps[101]))))
+            await coordinator._event_refresh_task
+            if generated._render_task is not None:
+                await generated._render_task
+            assert await generated.async_image() != old_image
+            assert sorted(reads) == [100, 101, 101, 103]
+            zones = await hass.services.async_call(
+                DOMAIN,
+                "get_zone_map",
+                {"entity_id": "lawn_mower.automower_420"},
+                blocking=True,
+                return_response=True,
+            )
+            assert zones["lawn_mower.automower_420"]["svg"] == maps[103].decode()
             reset = (Command(4698, 8), b"")
             client.values[reset] = b""
             flow = await hass.config_entries.options.async_init(entry.entry_id)

@@ -28,6 +28,7 @@ PLATFORMS = [
     Platform.CALENDAR,
     Platform.DEVICE_TRACKER,
     Platform.EVENT,
+    Platform.IMAGE,
     Platform.LAWN_MOWER,
     Platform.NUMBER,
     Platform.SELECT,
@@ -101,6 +102,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "get_position": {},
         "get_loop_signals": {},
         "get_map": {vol.Optional("generated", default=False): cv.boolean},
+        "get_zone_map": {},
         "replace_map": {
             vol.Required("svg"): cv.string,
             vol.Required("expected_checksum"): cv.string,

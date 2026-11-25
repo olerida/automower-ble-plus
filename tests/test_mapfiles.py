@@ -2,14 +2,19 @@
 
 import gzip
 from hashlib import md5
+from io import BytesIO
 from struct import pack, unpack_from
 from unittest.mock import AsyncMock
 from zlib import crc32
 
 import pytest
+from PIL import Image
 
+from custom_components.automower_ble_plus.map_preview import render_map_png
 from custom_components.automower_ble_plus.mapfiles import (
+    MapKind,
     async_get_map,
+    async_read_map_kind,
     async_replace_map,
     async_verify_mowing_area,
 )
@@ -17,6 +22,45 @@ from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command
 
 SVG = '<svg><polygon id="lawn" stroke="green" fill="green" points="0,0 1500,0 0,1200"/></svg>'
+
+
+def test_preview_renders_polygons_paths_and_disabled_areas_as_png():
+    svg = """<svg xmlns="http://www.w3.org/2000/svg">
+      <polygon fill="green" points="0,0 4000,0 4000,4000 0,4000"/>
+      <polygon fill="red" points="1250,1250 2750,1250 2750,2750 1250,2750"/>
+      <polygon fill="red" display="none" points="2900,100 3800,100 3800,1000 2900,1000"/>
+      <polyline stroke="blue" stroke-width="200" points="0,0 2000,800"/>
+      <polyline stroke="yellow" points="2000,800 2000,1000"/>
+    </svg>"""
+    with Image.open(BytesIO(render_map_png(svg))) as image:
+        assert image.format == "PNG"
+        assert image.size == (800, 580)
+        assert image.getpixel((400, 290)) == (234, 198, 187)
+        assert image.getpixel((300, 130)) == (169, 201, 167)
+        assert image.getpixel((580, 470)) == (224, 225, 220)
+        assert image.getpixel((400, 444)) == (173, 114, 27)
+
+    with pytest.raises(ValueError, match="unsupported SVG elements"):
+        render_map_png('<svg><image href="https://example.com/map.png"/></svg>')
+
+
+@pytest.mark.asyncio
+async def test_zone_map_reads_attribute_103_and_checks_firmware_availability():
+    client = AsyncMock()
+    raw = gzip.compress(SVG.encode())
+    client.command.side_effect = [
+        b"\x01",
+        b"\x01",
+        pack("<IIBI", crc32(raw), len(raw), 1, len(raw)) + raw,
+    ]
+    assert await async_read_map_kind(client, MapKind.ZONES) == {
+        "available": True,
+        "map_type": "zones",
+        "svg": SVG,
+    }
+    calls = client.command.await_args_list
+    assert calls[1].args == (Command(5578, 38),)
+    assert unpack_from("<HH", calls[2].args[1]) == (5578, 103)
 
 
 @pytest.mark.asyncio

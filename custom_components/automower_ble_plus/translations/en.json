@@ -722,6 +722,17 @@
         "name": "Mower position"
       }
     },
+    "image": {
+      "map_site_preview": {
+        "name": "Installation map"
+      },
+      "map_generated_preview": {
+        "name": "Generated lawn map"
+      },
+      "map_zones_preview": {
+        "name": "Zone map"
+      }
+    },
     "text": {
       "mower_name": {
         "name": "Name stored on the mower"
@@ -895,6 +906,10 @@
           "description": "Read the generated map instead of the active installation map."
         }
       }
+    },
+    "get_zone_map": {
+      "name": "Read zone map",
+      "description": "Download the mower's zone map directly over Bluetooth when available."
     },
     "replace_map": {
       "name": "Replace Automower map",

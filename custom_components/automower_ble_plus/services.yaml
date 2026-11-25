@@ -412,6 +412,11 @@ get_map:
       default: false
       selector:
         boolean:
+get_zone_map:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
 get_geofence:
   target:
     entity:
