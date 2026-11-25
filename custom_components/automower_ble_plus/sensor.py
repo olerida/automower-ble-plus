@@ -28,6 +28,7 @@ from .epos import EPOS_ENUM_OPTIONS
 from .faults import FAULT_STATES, message_description
 from .firmware import get_message_key
 from .planner import OVERRIDE_OPTIONS, PlannerOverride
+from .reference_station import SCAN_OPTIONS
 from .schedule import WeeklySchedule
 from .wire_test import WIRE_TEST_OPTIONS
 
@@ -119,6 +120,9 @@ _DESCRIPTIONS = (
         SensorDeviceClass.DISTANCE,
         UnitOfLength.MILLIMETERS,
         _MEASUREMENT,
+    ),
+    _description(
+        "epos_reference_scan_status", SensorDeviceClass.ENUM, options=SCAN_OPTIONS
     ),
     *(
         _description(key, SensorDeviceClass.ENUM, options=options)

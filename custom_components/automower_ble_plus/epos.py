@@ -4,6 +4,7 @@ from math import hypot
 from struct import Struct
 
 from .features import U8, U32, Reading
+from .reference_station import async_get_reference_station_id
 from .transport import AutomowerClient, CommandRejected
 from .wire import Command
 
@@ -39,6 +40,7 @@ EPOS_STATUS_KEYS = (
         "epos_reference_station_signal",
         "epos_cloud_signal",
         "epos_reference_station_distance",
+        "epos_reference_station_id",
     }
 )
 
@@ -63,6 +65,8 @@ async def async_read_epos_status(client: AutomowerClient) -> dict[str, int]:
     if enabled not in (0, 1):
         return {}
     data = {"epos_enabled": enabled}
+    if (station_id := await async_get_reference_station_id(client)) is not None:
+        data["epos_reference_station_id"] = station_id
     if not enabled:
         return data
 

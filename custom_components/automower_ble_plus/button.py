@@ -73,6 +73,22 @@ async def async_setup_entry(
         {"mower_clock": None},
         lambda _key, _: SyncClockButton(entry.runtime_data, "sync_mower_clock"),
     )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"epos_reference_station_id": None},
+        lambda _key, _: ScanReferenceStationsButton(
+            entry.runtime_data, "scan_epos_reference_stations"
+        ),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"epos_reference_station_id": None},
+        lambda _key, _: StopReferenceScanButton(
+            entry.runtime_data, "stop_epos_reference_scan"
+        ),
+    )
 
 
 def _async_add_wire_test_buttons(
@@ -242,6 +258,36 @@ class StopWireTestButton(MowerEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_stop_wire_test()
+
+
+class ScanReferenceStationsButton(MowerEntity, ButtonEntity):
+    """Find nearby EPOS stations through the mower's radio."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and "epos_reference_station_id" in self.coordinator.data
+            and not self.coordinator.reference_scan_active
+        )
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_scan_reference_stations()
+
+
+class StopReferenceScanButton(MowerEntity, ButtonEntity):
+    """Stop the current station scan and retain its discoveries."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.reference_scan_active
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_stop_reference_scan()
 
 
 class SaveWireTestDistanceButton(MowerEntity, ButtonEntity):

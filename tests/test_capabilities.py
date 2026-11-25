@@ -39,6 +39,9 @@ from custom_components.automower_ble_plus import (
     text,
     update,
 )
+from custom_components.automower_ble_plus import (
+    coordinator as coordinator_module,
+)
 from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import I16, I32, U16, U32
@@ -164,6 +167,15 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert (Command(4422, 2), b"") not in client.calls
     assert (Command(6170, 2), b"") not in client.calls
     assert (Command(6170, 8), b"") not in client.calls
+    other_entities = []
+    for platform in (button, select):
+        await platform.async_setup_entry(hass, entry, other_entities.extend)
+    assert not {entity.key for entity in other_entities} & {
+        "scan_epos_reference_stations",
+        "stop_epos_reference_scan",
+        "epos_reference_station_id",
+    }
+    assert not any(command.family == 5650 for command, _ in client.calls)
     assert (Command(4706, 2), b"\x03") not in client.calls
     assert (Command(4706, 24), b"") not in client.calls
     assert (Command(4706, 26), b"\x01") not in client.calls
@@ -957,6 +969,117 @@ async def test_epos_controls_follow_reported_hardware_and_correction_source(
     assert not entities["epos_enabled"].is_on
     assert not entities["epos_cloud_signal"].available
     assert not entities["epos_rtk_solution"].available
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("modern", [False, True])
+async def test_scan_and_pair_epos_reference_station(tmp_path, monkeypatch, modern):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    get_id = Command(5650, 1)
+    set_id = Command(5650, 2)
+    start_scan = Command(5650, 3)
+    save_position = Command(5650, 7)
+    stop_scan = Command(5650, 9)
+    client.values.update(
+        {
+            (Command(6170, 1), b""): b"\x01",
+            (Command(6170, 2), b""): b"\0",
+            (get_id, b""): U32.pack(7 if modern else 0xFFFFFFFF),
+            (Command(5650, 0), b""): b"",
+            (start_scan, U32.pack(60)): b"",
+            (save_position, b""): b"",
+            (stop_scan, b""): b"",
+        }
+    )
+    if modern:
+        client.values[Command(5650, 15), b""] = b"\x01"
+
+    send = client.command
+    store_id = False
+
+    async def command(operation, payload=b""):
+        if operation == start_scan:
+            # The mower can discover stations before acknowledging Scan.
+            for station_id in (31, 14, 31, 0, 0xFFFFFFFF):
+                coordinator._async_on_event(
+                    Event(5650, 1, pack("<Iiii", station_id, 111, 222, 333))
+                )
+            coordinator._async_on_event(Event(5650, 1, U32.pack(99)))
+            coordinator._async_on_event(Event(5650, 2, b"\x01"))
+        elif operation == set_id:
+            client.calls.append((operation, payload))
+            if store_id:
+                client.values[get_id, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = {}
+
+    def add_entities(new_entities):
+        entities.update((entity.key, entity) for entity in new_entities)
+
+    for platform in (button, select, sensor):
+        await platform.async_setup_entry(coordinator.hass, entry, add_entities)
+    await coordinator.async_refresh_optional()
+    start = entities["scan_epos_reference_stations"]
+    stop = entities["stop_epos_reference_scan"]
+    station = entities["epos_reference_station_id"]
+    assert start.available
+    assert not stop.available
+    assert station.current_option == ("7" if modern else None)
+
+    await start.async_press()
+    status = entities["epos_reference_scan_status"]
+    assert status.native_value == "scanning"
+    assert not station.available
+    assert not start.available
+    assert stop.available
+    if modern:
+        coordinator._async_on_event(Event(5650, 2, b""))
+    else:
+        await stop.async_press()
+        assert client.calls[-1] == (stop_scan, b"")
+    await coordinator._reference_scan_task
+    assert status.native_value == ("complete" if modern else "stopped")
+    assert station.available
+    assert station.options == (["7", "14", "31"] if modern else ["14", "31"])
+
+    with pytest.raises(ServiceValidationError, match="not available"):
+        await station.async_select_option("99")
+    with pytest.raises(HomeAssistantError, match="did not store"):
+        await station.async_select_option("14")
+    assert (save_position, b"") not in client.calls
+    assert station.current_option == ("7" if modern else None)
+    store_id = True
+    await station.async_select_option("31")
+    assert client.calls[-3:] == [
+        (set_id, U32.pack(31)),
+        (get_id, b""),
+        (save_position, b""),
+    ]
+    assert station.current_option == "31"
+
+    if modern:
+        # A failed position write still leaves the newly stored ID on the mower.
+        del client.values[save_position, b""]
+        with pytest.raises(HomeAssistantError, match="Could not pair"):
+            await station.async_select_option("14")
+        assert station.current_option == "14"
+    else:
+        monkeypatch.setattr(coordinator_module, "REFERENCE_SCAN_TIMEOUT", 0)
+        await start.async_press()
+        await coordinator._reference_scan_task
+        assert status.native_value == "failed"
+        assert station.options == ["31"]
+        assert client.calls[-1] == (stop_scan, b"")
     await coordinator.async_shutdown()
 
 

@@ -7,7 +7,12 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import MowerCoordinator, MowerEntry
-from .entity import MowerEntity, MowerSettingEntity, async_add_detected
+from .entity import (
+    MowerEntity,
+    MowerSettingEntity,
+    MowerValueEntity,
+    async_add_detected,
+)
 from .features import Setting
 from .sites import InstallationSelection
 
@@ -31,6 +36,12 @@ async def async_setup_entry(
         add_entities,
         {"installation_selection": None},
         lambda key, _: ActiveInstallationSelect(entry.runtime_data, key),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"epos_reference_station_id": None},
+        lambda key, _: ReferenceStationSelect(entry.runtime_data, key),
     )
 
 
@@ -102,3 +113,29 @@ class ActiveInstallationSelect(MowerEntity, SelectEntity):
         ):
             raise ServiceValidationError("This installation is no longer available")
         await self.coordinator.async_set_installation(site_id, selection.active_id)
+
+
+class ReferenceStationSelect(MowerValueEntity, SelectEntity):
+    """Pair the mower with one of the EPOS stations it discovered."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        return super().available and not self.coordinator.reference_scan_active
+
+    @property
+    def current_option(self) -> str | None:
+        return str(value) if (value := self.value) else None
+
+    @property
+    def options(self) -> list[str]:
+        stations = set(self.coordinator.reference_candidates)
+        if value := self.value:
+            stations.add(value)
+        return [str(station) for station in sorted(stations)]
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self.options:
+            raise ServiceValidationError("This EPOS reference station is not available")
+        await self.coordinator.async_select_reference_station(int(option))

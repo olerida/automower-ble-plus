@@ -40,6 +40,12 @@
   },
   "entity": {
     "button": {
+      "scan_epos_reference_stations": {
+        "name": "Buscar estaciones de referencia EPOS"
+      },
+      "stop_epos_reference_scan": {
+        "name": "Detener búsqueda de estaciones EPOS"
+      },
       "resume_schedule": {
         "name": "Reanudar horario"
       },
@@ -312,6 +318,9 @@
       }
     },
     "select": {
+      "epos_reference_station_id": {
+        "name": "Estación de referencia EPOS"
+      },
       "headlight_schedule": {
         "name": "Horario de los faros",
         "state": {
@@ -486,6 +495,15 @@
       },
       "epos_reference_station_signal": {
         "name": "Señal de la estación de referencia EPOS"
+      },
+      "epos_reference_scan_status": {
+        "name": "Estado de la búsqueda de estaciones EPOS",
+        "state": {
+          "scanning": "Buscando",
+          "complete": "Finalizada",
+          "stopped": "Detenida",
+          "failed": "Fallida"
+        }
       },
       "epos_cloud_signal": {
         "name": "Señal del servicio EPOS en la nube"

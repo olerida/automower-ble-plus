@@ -78,6 +78,16 @@ from .identity import (
 from .mapfiles import async_get_map, async_replace_map
 from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
 from .planner import PlannerOverride, async_read_planner_override
+from .reference_station import (
+    REFERENCE_SCAN_TIMEOUT,
+    REFERENCE_STATION_EVENTS,
+    STOP_REFERENCE_SCAN,
+    ReferenceScan,
+    ScanStatus,
+    async_get_reference_station_id,
+    async_pair_reference_station,
+    async_start_reference_scan,
+)
 from .schedule import (
     ScheduleTask,
     WeeklySchedule,
@@ -177,6 +187,14 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._calendar_update_pending = False
         self._calendar_time: int | None = None
         self.wire_test: WireTest | None = None
+        self._reference_scan: ReferenceScan | None = None
+        self._reference_scan_task: asyncio.Task[None] | None = None
+        self.reference_candidates: tuple[int, ...] = ()
+
+    @property
+    def reference_scan_active(self) -> bool:
+        """Whether the mower is searching for EPOS stations."""
+        return self._reference_scan is not None
 
     @property
     def wire_test_active(self) -> bool:
@@ -209,6 +227,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 LOGGER.debug("Ignoring unexpected mower message event")
                 return
             async_dispatcher_send(self.hass, self.message_signal, message)
+        elif (
+            event.family == REFERENCE_STATION_EVENTS.family
+            and (scan := self._reference_scan) is not None
+        ):
+            scan.handle_event(event)
         elif (
             event.family == _CALENDAR_EVENTS.family
             and event.event_id in (_CALENDAR_TIME_UPDATED, _CALENDAR_TASKS_UPDATED)
@@ -243,6 +266,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def _async_connect(self) -> None:
         if self.client.is_connected():
             return
+        if (scan := self._reference_scan) is not None:
+            self._async_finish_reference_scan(scan, ScanStatus.FAILED)
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
@@ -1127,8 +1152,16 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
+        if (scan_task := self._reference_scan_task) is not None:
+            scan_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await scan_task
         await super().async_shutdown()
         async with self._operation_lock:
+            if self.reference_scan_active and self.client.is_connected():
+                with suppress(CommandRejected, MowerConnectionError):
+                    await self.client.command(STOP_REFERENCE_SCAN)
+            self._reference_scan = None
             await self.client.disconnect()
 
     async def async_change_work_area(
@@ -1379,6 +1412,141 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not pair the charging station: {err}"
                 ) from err
+
+    async def async_scan_reference_stations(self) -> None:
+        """Start the firmware's scan and collect its discoveries over BLE."""
+        async with self._operation_lock:
+            if self.reference_scan_active:
+                raise HomeAssistantError(
+                    "The mower is already scanning for reference stations"
+                )
+            scan = ReferenceScan()
+            try:
+                await self._async_connect()
+                station_id = await async_get_reference_station_id(self.client)
+                if station_id is None:
+                    raise ValueError(
+                        "This mower does not report an EPOS reference station interface"
+                    )
+                self._reference_scan = scan
+                await async_start_reference_scan(self.client)
+            except asyncio.CancelledError:
+                if self._reference_scan is scan:
+                    self._async_finish_reference_scan(scan, ScanStatus.FAILED)
+                    with suppress(CommandRejected, MowerConnectionError):
+                        await self.client.command(STOP_REFERENCE_SCAN)
+                raise
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                if self._reference_scan is scan:
+                    self._async_finish_reference_scan(scan, ScanStatus.FAILED)
+                raise HomeAssistantError(
+                    f"Could not scan for reference stations: {err}"
+                ) from err
+            self.reference_candidates = ()
+            self.async_set_updated_data(
+                {
+                    **self.data,
+                    "epos_reference_station_id": station_id,
+                    "epos_reference_scan_status": ScanStatus.SCANNING,
+                }
+            )
+            self._reference_scan_task = self.config_entry.async_create_background_task(
+                self.hass,
+                self._async_wait_for_reference_scan(scan),
+                "receive EPOS reference station scan results",
+            )
+
+    async def _async_wait_for_reference_scan(self, scan: ReferenceScan) -> None:
+        try:
+            async with asyncio.timeout(REFERENCE_SCAN_TIMEOUT):
+                await scan.done.wait()
+        except TimeoutError:
+            async with self._operation_lock:
+                if self._reference_scan is scan:
+                    if self.client.is_connected():
+                        with suppress(CommandRejected, MowerConnectionError):
+                            await self.client.command(STOP_REFERENCE_SCAN)
+                    self._async_finish_reference_scan(scan, ScanStatus.FAILED)
+        else:
+            async with self._operation_lock:
+                if self._reference_scan is scan:
+                    self._async_finish_reference_scan(scan, ScanStatus.COMPLETE)
+
+    @callback
+    def _async_finish_reference_scan(
+        self, scan: ReferenceScan, status: ScanStatus
+    ) -> None:
+        self._reference_scan = None
+        self.reference_candidates = (
+            () if status is ScanStatus.FAILED else tuple(sorted(scan.station_ids))
+        )
+        scan.done.set()
+        self.async_set_updated_data(
+            {**(self.data or {}), "epos_reference_scan_status": status}
+        )
+
+    async def async_stop_reference_scan(self) -> None:
+        """Stop scanning and retain the stations already found."""
+        async with self._operation_lock:
+            if (scan := self._reference_scan) is None:
+                return
+            if not self.client.is_connected():
+                self._async_finish_reference_scan(scan, ScanStatus.FAILED)
+                raise HomeAssistantError(
+                    "The mower disconnected during the reference station scan"
+                )
+            try:
+                await self.client.command(STOP_REFERENCE_SCAN)
+            except (CommandRejected, MowerConnectionError) as err:
+                if not self.client.is_connected():
+                    self._async_finish_reference_scan(scan, ScanStatus.FAILED)
+                raise HomeAssistantError(
+                    f"Could not stop the reference station scan: {err}"
+                ) from err
+            self._async_finish_reference_scan(scan, ScanStatus.STOPPED)
+
+    async def async_select_reference_station(self, station_id: int) -> None:
+        """Pair the mower with an EPOS station returned by the last scan."""
+        async with self._operation_lock:
+            if self.reference_scan_active:
+                raise HomeAssistantError(
+                    "Wait for the reference station scan to finish"
+                )
+            try:
+                await self._async_connect()
+                installed = await async_get_reference_station_id(self.client)
+                if installed is None:
+                    raise ValueError(
+                        "This mower does not report an EPOS reference station interface"
+                    )
+                if station_id not in self.reference_candidates:
+                    if station_id == installed:
+                        return
+                    raise ValueError(
+                        "Choose a reference station from the most recent scan"
+                    )
+                await async_pair_reference_station(self.client, station_id)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                # Setting the ID and setting the station position are separate operations.
+                if self.client.is_connected():
+                    with suppress(CommandRejected, MowerConnectionError, ValueError):
+                        actual = await async_get_reference_station_id(self.client)
+                        if actual is not None:
+                            self.async_set_updated_data(
+                                {
+                                    **self.data,
+                                    "epos_reference_station_id": actual,
+                                }
+                            )
+                raise HomeAssistantError(
+                    f"Could not pair the EPOS reference station: {err}"
+                ) from err
+            self.async_set_updated_data(
+                {
+                    **self.data,
+                    "epos_reference_station_id": station_id,
+                }
+            )
 
     async def async_write_map(self, svg: str, expected_checksum: str) -> dict:
         """Replace the prior map revision confirmed by the user."""

@@ -40,6 +40,12 @@
   },
   "entity": {
     "button": {
+      "scan_epos_reference_stations": {
+        "name": "Find EPOS reference stations"
+      },
+      "stop_epos_reference_scan": {
+        "name": "Stop EPOS reference station scan"
+      },
       "resume_schedule": {
         "name": "Resume schedule"
       },
@@ -312,6 +318,9 @@
       }
     },
     "select": {
+      "epos_reference_station_id": {
+        "name": "EPOS reference station"
+      },
       "headlight_schedule": {
         "name": "Headlight schedule",
         "state": {
@@ -486,6 +495,15 @@
       },
       "epos_reference_station_signal": {
         "name": "EPOS reference station signal"
+      },
+      "epos_reference_scan_status": {
+        "name": "EPOS reference station scan status",
+        "state": {
+          "scanning": "Scanning",
+          "complete": "Complete",
+          "stopped": "Stopped",
+          "failed": "Failed"
+        }
       },
       "epos_cloud_signal": {
         "name": "EPOS cloud signal"
