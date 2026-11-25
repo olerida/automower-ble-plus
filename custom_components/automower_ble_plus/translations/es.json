@@ -40,6 +40,12 @@
   },
   "entity": {
     "button": {
+      "start_epos_docking_installation": {
+        "name": "Establecer punto de acoplamiento EPOS"
+      },
+      "stop_epos_docking_installation": {
+        "name": "Detener configuración del punto de acoplamiento EPOS"
+      },
       "scan_epos_reference_stations": {
         "name": "Buscar estaciones de referencia EPOS"
       },

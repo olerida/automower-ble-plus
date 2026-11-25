@@ -54,6 +54,24 @@ async def async_setup_entry(
         add_entities([PairStationButton(entry.runtime_data, "pair_charging_station")])
     if profile and profile.wire_test_states:
         _async_add_wire_test_buttons(entry, add_entities)
+    if profile and profile.docking_pattern:
+        async_add_detected(
+            entry,
+            add_entities,
+            {"epos_installation_state": None},
+            lambda _key, _: EposDockingInstallationButton(
+                entry.runtime_data, "start_epos_docking_installation"
+            ),
+        )
+    if profile and profile.docking_pattern_stop:
+        async_add_detected(
+            entry,
+            add_entities,
+            {"epos_installation_state": None},
+            lambda _key, _: StopEposDockingInstallationButton(
+                entry.runtime_data, "stop_epos_docking_installation"
+            ),
+        )
     async_add_detected(
         entry,
         add_entities,
@@ -275,6 +293,38 @@ class ScanReferenceStationsButton(MowerEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_scan_reference_stations()
+
+
+class EposDockingInstallationButton(MowerEntity, ButtonEntity):
+    """Ask the mower to establish the EPOS docking point from its base."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        data = self.coordinator.data
+        return (
+            super().available
+            and "epos_installation_result" in data
+            and data.get("epos_installation_state") == 0
+            and not self.coordinator.docking_installation_active
+        )
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_start_epos_docking_installation()
+
+
+class StopEposDockingInstallationButton(MowerEntity, ButtonEntity):
+    """Ask compatible firmware to cancel the docking-point procedure."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.docking_installation_active
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_stop_epos_docking_installation()
 
 
 class StopReferenceScanButton(MowerEntity, ButtonEntity):

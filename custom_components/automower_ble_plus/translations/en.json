@@ -40,6 +40,12 @@
   },
   "entity": {
     "button": {
+      "start_epos_docking_installation": {
+        "name": "Set EPOS docking point"
+      },
+      "stop_epos_docking_installation": {
+        "name": "Stop EPOS docking-point setup"
+      },
       "scan_epos_reference_stations": {
         "name": "Find EPOS reference stations"
       },

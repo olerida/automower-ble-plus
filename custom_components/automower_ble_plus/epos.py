@@ -15,6 +15,8 @@ _LOCAL_POSITION = Command(5242, 0)
 _LOCAL_COORDINATES = Struct("<iii")
 _DOCK_BY_WIRE_AVAILABLE = Reading(Command(6170, 10), U8)
 _DOCK_BY_WIRE_ENABLED = Reading(Command(6170, 11), U8)
+RUN_DOCKING_PATTERN = Command(4692, 21)
+STOP_DOCKING_PATTERN = Command(4692, 35)
 
 EPOS_ENUM_OPTIONS = {
     "epos_rtk_solution": ("no_fix", "float_fix", "fixed"),
@@ -22,8 +24,8 @@ EPOS_ENUM_OPTIONS = {
     "epos_installation_result": ("none", "success", "error", "stopped"),
     "epos_reference_station_channel": ("radio", "wifi"),
 }
-_STATUS = {
-    "epos_rtk_solution": Reading(Command(5336, 3), U8),
+_RTK_SOLUTION = Reading(Command(5336, 3), U8)
+_DOCKING_STATUS = {
     "epos_installation_state": Reading(Command(4692, 23), U32),
     "epos_installation_result": Reading(Command(4692, 24), U32),
 }
@@ -57,9 +59,33 @@ async def _read(client: AutomowerClient, reading: Reading) -> int | None:
     return None
 
 
-async def async_read_epos_status(client: AutomowerClient) -> dict[str, int]:
+async def async_read_docking_status(
+    client: AutomowerClient, *, check_epos: bool = False
+) -> dict[str, int]:
+    """Read the state and outcome of the station's docking-point pattern."""
+    if check_epos:
+        available = await _read(client, EPOS_AVAILABLE)
+        if available == 0 or (
+            available == 1 and await _read(client, _EPOS_ENABLED) != 1
+        ):
+            return {}
+    data = {}
+    for key, reading in _DOCKING_STATUS.items():
+        value = await _read(client, reading)
+        if value is not None and 0 <= value < len(EPOS_ENUM_OPTIONS[key]):
+            data[key] = value
+    return data
+
+
+async def async_read_epos_status(
+    client: AutomowerClient, *, docking_pattern: bool = False
+) -> dict[str, int]:
     """Return status for the currently available positioning hardware and source."""
-    if await _read(client, EPOS_AVAILABLE) != 1:
+    available = await _read(client, EPOS_AVAILABLE)
+    if available != 1:
+        # Some EPOS firmware declares the station pattern without an EPOS node.
+        if available is None and docking_pattern:
+            return await async_read_docking_status(client)
         return {}
     enabled = await _read(client, _EPOS_ENABLED)
     if enabled not in (0, 1):
@@ -70,10 +96,10 @@ async def async_read_epos_status(client: AutomowerClient) -> dict[str, int]:
     if not enabled:
         return data
 
-    for key, reading in _STATUS.items():
-        value = await _read(client, reading)
-        if value is not None and 0 <= value < len(EPOS_ENUM_OPTIONS[key]):
-            data[key] = value
+    data.update(await async_read_docking_status(client))
+    solution = await _read(client, _RTK_SOLUTION)
+    if solution in (0, 1, 2):
+        data["epos_rtk_solution"] = solution
 
     if await _read(client, _DOCK_BY_WIRE_AVAILABLE) == 1:
         dock_by_wire = await _read(client, _DOCK_BY_WIRE_ENABLED)

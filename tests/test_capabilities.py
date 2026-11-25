@@ -174,6 +174,8 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
         "scan_epos_reference_stations",
         "stop_epos_reference_scan",
         "epos_reference_station_id",
+        "start_epos_docking_installation",
+        "stop_epos_docking_installation",
     }
     assert not any(command.family == 5650 for command, _ in client.calls)
     assert (Command(4706, 2), b"\x03") not in client.calls
@@ -969,6 +971,115 @@ async def test_epos_controls_follow_reported_hardware_and_correction_source(
     assert not entities["epos_enabled"].is_on
     assert not entities["epos_cloud_signal"].available
     assert not entities["epos_rtk_solution"].available
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("can_stop", [False, True])
+async def test_docking_pattern_checks_the_mower_then_reports_result(
+    tmp_path, monkeypatch, can_stop
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    version = "40.14_Main-App-P22_102.14" if can_stop else "40.9_Main-App-P14.2_54.1"
+    monkeypatch.setattr(client, "main_node_version", AsyncMock(return_value=version))
+    docked = Command(4692, 27)
+    mower_state = Command(4586, 2)
+    pause = Command(4586, 5)
+    begin_pattern = Command(4692, 21)
+    stop_pattern = Command(4692, 35)
+    pattern_state = Command(4692, 23)
+    pattern_result = Command(4692, 24)
+    client.values.update(
+        {
+            (docked, b""): b"\0",
+            (pattern_state, b""): U32.pack(0),
+            (pattern_result, b""): U32.pack(0),
+            (pause, b""): b"",
+            (begin_pattern, b""): b"",
+        }
+    )
+    if can_stop:
+        client.values[Command(6170, 1), b""] = b"\x01"
+        client.values[Command(6170, 2), b""] = b"\0"
+        client.values[stop_pattern, b""] = b""
+    send = client.command
+    accept_pause = False
+
+    async def command(operation, payload=b""):
+        reply = await send(operation, payload)
+        if operation == pause and accept_pause:
+            client.values[mower_state, b""] = b"\x05"
+        elif operation == stop_pattern:
+            client.values[pattern_state, b""] = U32.pack(0)
+            client.values[pattern_result, b""] = U32.pack(3)
+        return reply
+
+    async def refresh():
+        coordinator.async_set_updated_data(await coordinator._async_update_data())
+
+    monkeypatch.setattr(client, "command", command)
+    monkeypatch.setattr(coordinator, "async_request_refresh", refresh)
+    await coordinator._async_setup()
+    await refresh()
+    entities = {}
+
+    def add_entities(new_entities):
+        entities.update((entity.key, entity) for entity in new_entities)
+
+    for platform in (button, sensor):
+        await platform.async_setup_entry(coordinator.hass, entry, add_entities)
+    await coordinator.async_refresh_optional()
+    if can_stop:
+        assert "start_epos_docking_installation" not in entities
+        assert "stop_epos_docking_installation" not in entities
+        client.values[Command(6170, 2), b""] = b"\x01"
+        await coordinator.async_refresh_optional()
+    start = entities["start_epos_docking_installation"]
+    stop = entities.get("stop_epos_docking_installation")
+    assert start.available
+    assert (stop is not None) == can_stop
+    if stop:
+        assert not stop.available
+        client.values[Command(6170, 2), b""] = b"\0"
+        with pytest.raises(HomeAssistantError, match="does not report"):
+            await start.async_press()
+        client.values[Command(6170, 2), b""] = b"\x01"
+    with pytest.raises(HomeAssistantError, match="charging station first"):
+        await start.async_press()
+    assert (pause, b"") not in client.calls
+    client.values[docked, b""] = b"\x01"
+    with pytest.raises(HomeAssistantError, match="paused"):
+        await start.async_press()
+    assert (begin_pattern, b"") not in client.calls
+    accept_pause = True
+    await start.async_press()
+    assert client.calls.count((begin_pattern, b"")) == 1
+    assert client.calls.index((pause, b"")) < client.calls.index((begin_pattern, b""))
+    assert not start.available
+    with pytest.raises(HomeAssistantError, match="starting"):
+        await start.async_press()
+
+    client.values[pattern_state, b""] = U32.pack(1)
+    await coordinator.async_keep_alive()
+    assert entities["epos_installation_state"].native_value == "in_operation"
+    if stop:
+        assert stop.available
+        await stop.async_press()
+        assert client.calls.count((stop_pattern, b"")) == 1
+        assert entities["epos_installation_result"].native_value == "stopped"
+    else:
+        with pytest.raises(HomeAssistantError, match="does not offer"):
+            await coordinator.async_stop_epos_docking_installation()
+        client.values[pattern_state, b""] = U32.pack(0)
+        client.values[pattern_result, b""] = U32.pack(1)
+        await coordinator.async_keep_alive()
+        assert entities["epos_installation_result"].native_value == "success"
+    assert start.available
+    assert not coordinator.docking_installation_active
     await coordinator.async_shutdown()
 
 

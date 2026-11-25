@@ -34,6 +34,8 @@ class FirmwareProfile:
     boundary_corridor_read: int = -1
     passage_cutting_read: int = 0
     wire_test_states: str = ""
+    docking_pattern: int = 0
+    docking_pattern_stop: int = 0
 
 
 @cache
@@ -82,5 +84,6 @@ def get_firmware_profile(
             installation_create_empty=0,
             vision_obstacle_profile=0,
             wire_test_states="",
+            docking_pattern_stop=0,
         )
     )

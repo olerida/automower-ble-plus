@@ -25,7 +25,13 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, LOGGER
-from .epos import EPOS_STATUS_KEYS, async_read_epos_status
+from .epos import (
+    EPOS_STATUS_KEYS,
+    RUN_DOCKING_PATTERN,
+    STOP_DOCKING_PATTERN,
+    async_read_docking_status,
+    async_read_epos_status,
+)
 from .faults import CONFIRM_ERROR, FAULT_READINGS
 from .features import (
     GET_ACTIVITY,
@@ -148,6 +154,7 @@ _MESSAGE_EVENTS = Command(4730, 4)
 _CALENDAR_EVENTS = Command(4690, 0)
 _CALENDAR_TIME_UPDATED = 0
 _CALENDAR_TASKS_UPDATED = 1
+_DOCKING_INSTALLATION_START_GRACE = 15
 _SECTOR_MAXIMUM = {
     Command(4716, 3): Command(4716, 4),
     Command(4716, 7): Command(4716, 8),
@@ -190,6 +197,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._reference_scan: ReferenceScan | None = None
         self._reference_scan_task: asyncio.Task[None] | None = None
         self.reference_candidates: tuple[int, ...] = ()
+        self._docking_installation_start_until = 0.0
+
+    @property
+    def docking_installation_active(self) -> bool:
+        """Whether a docking-point procedure is starting or running."""
+        return (
+            self.data.get("epos_installation_state") == 1
+            or self.data.get("epos_docking_start_pending") == 1
+        )
 
     @property
     def reference_scan_active(self) -> bool:
@@ -421,6 +437,13 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 if self._calendar_update_pending and self.client.is_connected():
                     await self._async_refresh_calendar(data)
                 await self._async_refresh_wire_test(data, state, activity)
+                if (
+                    self.firmware_profile
+                    and self.firmware_profile.docking_pattern
+                    and "epos_installation_state" in data
+                    and self.client.is_connected()
+                ):
+                    await self._async_refresh_epos_docking(data)
                 return data
         except (MowerConnectionError, CommandRejected, ValueError) as err:
             raise UpdateFailed("Could not read the mower status") from err
@@ -598,7 +621,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                             values.pop(status, None)
                         values.update(vision)
                     elif key == "epos":
-                        epos = await async_read_epos_status(self.client)
+                        epos = await async_read_epos_status(
+                            self.client,
+                            docking_pattern=bool(profile and profile.docking_pattern),
+                        )
                         for status in EPOS_STATUS_KEYS.difference(epos):
                             values.pop(status, None)
                         values.update(epos)
@@ -658,8 +684,22 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     return
             if data != self.data:
                 self.async_set_updated_data(data)
-        if self.wire_test_active:
+        if self.wire_test_active or self.docking_installation_active:
             await self.async_request_refresh()
+
+    async def _async_refresh_epos_docking(self, data: MowerData) -> None:
+        try:
+            status = await async_read_docking_status(self.client)
+        except CommandRejected, MowerConnectionError:
+            LOGGER.debug("Could not refresh the EPOS docking installation")
+        else:
+            if status.get("epos_installation_state") == 1 or status.get(
+                "epos_installation_result"
+            ) != data.get("epos_installation_result"):
+                data.pop("epos_docking_start_pending", None)
+            data.update(status)
+        if monotonic() >= self._docking_installation_start_until:
+            data.pop("epos_docking_start_pending", None)
 
     async def _async_refresh_wire_test(
         self, data: MowerData, state: int, activity: int
@@ -1412,6 +1452,80 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not pair the charging station: {err}"
                 ) from err
+
+    async def async_start_epos_docking_installation(self) -> None:
+        """Ask the docked, paused mower to establish its EPOS docking point."""
+        async with self._operation_lock:
+            profile = self.firmware_profile
+            if not profile or not profile.docking_pattern:
+                raise HomeAssistantError(
+                    "This firmware does not offer EPOS docking installation"
+                )
+            if self.data.get("epos_docking_start_pending"):
+                raise HomeAssistantError("The EPOS docking installation is starting")
+            try:
+                await self._async_connect()
+                epos = await async_read_docking_status(self.client, check_epos=True)
+                if "epos_installation_result" not in epos:
+                    raise ValueError(
+                        "The mower does not report an EPOS docking installation"
+                    )
+                if epos.get("epos_installation_state") != 0:
+                    raise ValueError(
+                        "The mower must report that EPOS docking installation is idle"
+                    )
+                try:
+                    docked = await self._read(READINGS["in_charging_station"]) == 1
+                except CommandRejected as err:
+                    if not err.unsupported:
+                        raise
+                    docked = await self._read(Reading(GET_ACTIVITY, U8)) in (
+                        MowerActivity.PARKED,
+                        MowerActivity.CHARGING,
+                    )
+                if not docked:
+                    raise ValueError("Place the mower in the charging station first")
+                state = await self._read(Reading(GET_STATE, U8))
+                if state != MowerState.PAUSED:
+                    await self.client.command(_PAUSE)
+                    if await self._read(Reading(GET_STATE, U8)) != MowerState.PAUSED:
+                        raise ValueError(
+                            "Wait until the mower reports it is paused and retry"
+                        )
+                await self.client.command(RUN_DOCKING_PATTERN)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not start EPOS docking installation: {err}"
+                ) from err
+            self._docking_installation_start_until = (
+                monotonic() + _DOCKING_INSTALLATION_START_GRACE
+            )
+            self.async_set_updated_data({**self.data, "epos_docking_start_pending": 1})
+        await self.async_request_refresh()
+
+    async def async_stop_epos_docking_installation(self) -> None:
+        """Cancel the firmware's current docking-point procedure."""
+        async with self._operation_lock:
+            if (
+                not self.firmware_profile
+                or not self.firmware_profile.docking_pattern_stop
+            ):
+                raise HomeAssistantError(
+                    "This firmware does not offer EPOS docking cancellation"
+                )
+            try:
+                await self._async_connect()
+                status = await async_read_docking_status(self.client)
+                if status.get("epos_installation_state") == 1 or self.data.get(
+                    "epos_docking_start_pending"
+                ):
+                    await self.client.command(STOP_DOCKING_PATTERN)
+                    self._docking_installation_start_until = 0.0
+            except (CommandRejected, MowerConnectionError) as err:
+                raise HomeAssistantError(
+                    f"Could not stop EPOS docking installation: {err}"
+                ) from err
+        await self.async_request_refresh()
 
     async def async_scan_reference_stations(self) -> None:
         """Start the firmware's scan and collect its discoveries over BLE."""

@@ -151,6 +151,17 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         and station_events.get("PairingSuccessful") == "2"
     ):
         station_subscription = int(event_channel)
+    docking_pattern = all(
+        station_operations.get(name) == operation
+        for name, operation in (
+            ("RunInstallationPattern", "21"),
+            ("GetInstallationState", "23"),
+            ("GetInstallationResult", "24"),
+        )
+    )
+    docking_pattern_stop = (
+        docking_pattern and station_operations.get("StopInstallationPattern") == "35"
+    )
     create_empty = int(
         site_operations.get("GetAvailable") == "17"
         and site_operations.get("CreateNewSite") == "24"
@@ -226,13 +237,16 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         boundary_corridor_read,
         passage_cutting_read,
         wire_test_states,
+        int(docking_pattern),
+        int(docking_pattern_stop),
     )
     return (
         result
-        if any(result[:-3])
+        if any(result[:-5])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
+        or docking_pattern
         else None
     )
 
