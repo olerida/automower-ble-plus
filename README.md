@@ -2,9 +2,9 @@
 
 Integración de Home Assistant para cortacéspedes Husqvarna Automower que admiten el servicio Bluetooth LE de Automower Connect. Usa un adaptador Bluetooth de Home Assistant o un proxy ESPHome que admita conexiones activas.
 
-## Instalación mediante HACS
+## Instalación desde Marketplace
 
-1. Una vez publicada la primera versión, añade `olerida/automower-ble-plus` en HACS como repositorio personalizado de tipo **Integración** y descarga **Automower BLE Plus**. Requiere Home Assistant 2026.11.0 o posterior.
+1. En Home Assistant 2026.11.0 o posterior, abre **Ajustes → Marketplace → Añadir desde enlace**. Añade `olerida/automower-ble-plus` como integración e instala **Automower BLE Plus**. [Abrir en Marketplace](https://my.home-assistant.io/redirect/hacs_repository/?owner=olerida&repository=automower-ble-plus&category=integration)
 2. Si el mismo cortacésped está configurado en **Husqvarna Automower BLE**, deshabilita esa entrada. Así una única integración gestiona la conexión con el cortacésped.
 3. En **Ajustes → Dispositivos y servicios**, configura el cortacésped descubierto o añade **Automower BLE Plus** con su dirección Bluetooth. Activa el modo de emparejamiento del cortacésped e introduce su PIN en el formulario si el modelo lo requiere.
 
@@ -33,4 +33,4 @@ El Automower 420 es el modelo de referencia. Las pruebas automatizadas reproduce
 
 Esta integración comunitaria utiliza [AutoMower-BLE](https://github.com/alistair23/AutoMower-BLE) para el emparejamiento y el establecimiento del canal Bluetooth.
 
-El paquete de distribución se genera con `python3 tools/build_hacs_release.py`. Al subir una etiqueta de versión que coincida con el manifiesto, GitHub Actions publica el archivo que descarga HACS después de superar las pruebas y Hassfest. [Requisitos de HACS](https://www.hacs.xyz/docs/publish/start/)
+El paquete de distribución se genera con `python3 tools/build_hacs_release.py`. Al subir una etiqueta de versión que coincida con el manifiesto, GitHub Actions publica el archivo que descargan Marketplace y HACS después de superar las pruebas y Hassfest. [Documentación de Marketplace](https://www.home-assistant.io/integrations/marketplace/)
