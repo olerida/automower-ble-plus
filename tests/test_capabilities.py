@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from automower_ble.protocol import MowerActivity, MowerState
+from automower_ble.protocol import MowerActivity, MowerState, ResponseResult
 from homeassistant import auth, loader, setup
 from homeassistant.config_entries import (
     SOURCE_USER,
@@ -207,6 +207,57 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert (Command(4716, 3), U16.pack(215)) not in client.calls
     await sector.async_set_native_value(175)
     assert sector.native_value == 175
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_calendar_resubscribes_and_refreshes_after_reconnect(
+    tmp_path, monkeypatch
+):
+    entry = _entry()
+    hass = HomeAssistant(str(tmp_path))
+    hass.config.time_zone = "UTC"
+    coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    subscribe = (Command(4690, 0), b"")
+    task = (Command(4690, 5), U32.pack(0))
+    original = ScheduleTask.from_action(time(9), 60, ["mon"])
+    changed = ScheduleTask.from_action(time(15), 45, ["mon"])
+    client.values.update(
+        {
+            subscribe: b"",
+            (Command(4690, 4), b""): U32.pack(1),
+            (Command(4690, 14), b""): U32.pack(5),
+            (Command(4690, 15), b""): U32.pack(5),
+            task: original.encode()[1],
+        }
+    )
+    connected = True
+
+    async def connect(_device):
+        nonlocal connected
+        connected = True
+        return ResponseResult.OK
+
+    monkeypatch.setattr(client, "is_connected", lambda: connected)
+    monkeypatch.setattr(client, "connect", connect, raising=False)
+    monkeypatch.setattr(
+        "custom_components.automower_ble_plus.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *args, **kwargs: object(),
+    )
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    await coordinator.async_refresh_optional()
+    assert coordinator.data["weekly_schedule"].tasks == (original,)
+    assert client.calls.count(subscribe) == 1
+
+    client.values[task] = changed.encode()[1]
+    connected = False
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    assert coordinator.data["weekly_schedule"].tasks == (changed,)
+    assert client.calls.count(subscribe) == 2
     await coordinator.async_shutdown()
 
 
@@ -1199,6 +1250,9 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             (Command(5582, 0), b""): b"\x01",
             (Command(5582, 3), area): I16.pack(450),
             (Command(4730, 4), b""): b"",
+            (Command(4658, 1), b""): U32.pack(1_799_999_900),
+            (Command(4690, 0), b""): b"",
+            (Command(4690, 2), b""): U32.pack(1_799_999_900),
             (Command(4690, 4), b""): U32.pack(1),
             (Command(4690, 5), U32.pack(0)): ScheduleTask.from_action(
                 time(9), 60, ["mon"]
@@ -1239,6 +1293,36 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert [event["start"] for event in schedule_events] == [
                 "2026-11-23T09:00:00+00:00"
             ]
+            assert client.calls.count((Command(4690, 0), b"")) == 1
+            client.values[Command(4690, 5), U32.pack(0)] = ScheduleTask.from_action(
+                time(11), 45, ["mon"]
+            ).encode()[1]
+            entry.runtime_data._async_on_event(Event(4690, 1, b"\x01"))
+            await hass.async_block_till_done()
+            assert entry.runtime_data.data["weekly_schedule"].tasks[0].start == 9 * 3600
+            entry.runtime_data._async_on_event(Event(4690, 1, U32.pack(1)))
+            await entry.runtime_data._event_refresh_task
+            await hass.async_block_till_done()
+            schedule = entry.runtime_data.data["weekly_schedule"]
+            assert [(task.start, task.duration) for task in schedule.tasks] == [
+                (11 * 3600, 45 * 60)
+            ]
+            entry.runtime_data._debounced_refresh.async_cancel()
+            client.values[Command(6746, 1), b""] = b"Europe/Madrid\0"
+            local_start = monday + timedelta(hours=11)
+            client.values[Command(4658, 1), b""] = U32.pack(
+                int(local_start.timestamp())
+            )
+            entry.runtime_data._async_on_event(Event(4690, 0, U32.pack(1_800_000_000)))
+            await entry.runtime_data._event_refresh_task
+            assert entry.runtime_data.data["mower_clock"] == 1_800_000_000
+            registry = entity_registry.async_get(hass)
+            next_start_id = registry.async_get_entity_id(
+                "sensor", DOMAIN, f"{entry.runtime_data.address}_next_start"
+            )
+            next_start = datetime.fromisoformat(hass.states.get(next_start_id).state)
+            assert next_start == monday + timedelta(hours=10)
+            assert client.calls.count((Command(4690, 0), b"")) == 1
             event_ids = hass.states.async_entity_ids("event")
             assert len(event_ids) == 1
             entry.runtime_data._async_on_event(

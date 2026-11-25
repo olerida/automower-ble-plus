@@ -28,6 +28,7 @@ from .epos import EPOS_ENUM_OPTIONS
 from .faults import FAULT_STATES, message_description
 from .firmware import get_message_key
 from .planner import OVERRIDE_OPTIONS, PlannerOverride
+from .schedule import WeeklySchedule
 from .wire_test import WIRE_TEST_OPTIONS
 
 
@@ -181,7 +182,12 @@ class AutomowerSensor(MowerValueEntity, SensorEntity):
             return value
         if value in (0, 0xFFFFFFFF):
             return None
-        zone = dt_util.get_time_zone(self.hass.config.time_zone) or UTC
+        schedule = self.coordinator.data.get("weekly_schedule")
+        zone = (
+            schedule.time_zone
+            if isinstance(schedule, WeeklySchedule)
+            else dt_util.get_time_zone(self.hass.config.time_zone) or UTC
+        )
         # The protocol reports local wall-clock time in an epoch-shaped field.
         return datetime.fromtimestamp(value, UTC).replace(tzinfo=zone)
 

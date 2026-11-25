@@ -135,6 +135,9 @@ _PAUSE = Command(4586, 5)
 _START_SPOT_CUTTING = Command(4710, 7)
 _MOWER_EVENTS = Command(4586, 7)
 _MESSAGE_EVENTS = Command(4730, 4)
+_CALENDAR_EVENTS = Command(4690, 0)
+_CALENDAR_TIME_UPDATED = 0
+_CALENDAR_TASKS_UPDATED = 1
 _SECTOR_MAXIMUM = {
     Command(4716, 3): Command(4716, 4),
     Command(4716, 7): Command(4716, 8),
@@ -171,6 +174,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._active_subscriptions: set[Command] = set()
         self._subscription_retry: dict[Command, float] = {}
         self._event_refresh_task: asyncio.Task | None = None
+        self._calendar_update_pending = False
+        self._calendar_time: int | None = None
         self.wire_test: WireTest | None = None
 
     @property
@@ -204,6 +209,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 LOGGER.debug("Ignoring unexpected mower message event")
                 return
             async_dispatcher_send(self.hass, self.message_signal, message)
+        elif (
+            event.family == _CALENDAR_EVENTS.family
+            and event.event_id in (_CALENDAR_TIME_UPDATED, _CALENDAR_TASKS_UPDATED)
+            and len(event.payload) == U32.size
+        ):
+            if event.event_id == _CALENDAR_TIME_UPDATED:
+                self._calendar_time = U32.unpack(event.payload)[0]
+            self._calendar_update_pending = True
+            self._async_schedule_event_refresh()
         elif self.wire_test is not None and self.wire_test.handle_event(event):
             self._async_schedule_event_refresh()
         elif event.family == _MOWER_EVENTS.family and event.event_id in (1, 2, 3):
@@ -216,9 +230,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         ):
             self._event_refresh_task = self.config_entry.async_create_background_task(
                 self.hass,
-                self.async_request_refresh(),
+                self._async_refresh_after_event(),
                 "refresh Automower after BLE event",
             )
+
+    async def _async_refresh_after_event(self) -> None:
+        await self.async_request_refresh()
+        if self._calendar_update_pending and self.client.is_connected():
+            # An event received during the read still needs a later snapshot.
+            await self.async_request_refresh()
 
     async def _async_connect(self) -> None:
         if self.client.is_connected():
@@ -236,13 +256,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 f"The mower returned {result.name} while connecting"
             )
         self._active_subscriptions.clear()
+        if self.data and "weekly_schedule" in self.data:
+            self._calendar_update_pending = True
 
     async def _async_subscribe_events(self) -> None:
         profile = self.firmware_profile
         commands = (
-            (_MOWER_EVENTS,)
+            (_MOWER_EVENTS, _CALENDAR_EVENTS)
             if profile is not None and not profile.message_events
-            else (_MOWER_EVENTS, _MESSAGE_EVENTS)
+            else (_MOWER_EVENTS, _CALENDAR_EVENTS, _MESSAGE_EVENTS)
         )
         for command in commands:
             if (
@@ -371,6 +393,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 data["message_events"] = int(
                     _MESSAGE_EVENTS in self._active_subscriptions
                 )
+                if self._calendar_update_pending and self.client.is_connected():
+                    await self._async_refresh_calendar(data)
                 await self._async_refresh_wire_test(data, state, activity)
                 return data
         except (MowerConnectionError, CommandRejected, ValueError) as err:
@@ -380,6 +404,31 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         return reading.decode(
             await self.client.command(reading.command, reading.arguments)
         )
+
+    async def _async_refresh_calendar(self, data: MowerData) -> None:
+        self._calendar_update_pending = False
+        if self._calendar_time is not None:
+            data["mower_clock"] = self._calendar_time
+            self._calendar_time = None
+        if "weekly_schedule" not in self._unsupported:
+            try:
+                data["weekly_schedule"] = await async_get_weekly_schedule(
+                    self.client, self.hass.config.time_zone
+                )
+            except CommandRejected as err:
+                if err.unsupported:
+                    self._unsupported.add("weekly_schedule")
+                    data.pop("weekly_schedule", None)
+            except ValueError, StructError:
+                data.pop("weekly_schedule", None)
+            except MowerConnectionError:
+                self._calendar_update_pending = True
+                return
+        if "next_start" in data:
+            try:
+                data["next_start"] = await self._read(READINGS["next_start"])
+            except CommandRejected, MowerConnectionError, ValueError:
+                LOGGER.debug("Could not refresh the next start after a calendar event")
 
     async def _probe_setting(self, setting: Setting) -> int | None:
         previous = self.setting_variants.get(setting.key)
