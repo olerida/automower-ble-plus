@@ -26,6 +26,7 @@ from custom_components.automower_ble_plus import (
     button,
     number,
     select,
+    sensor,
     switch,
     update,
 )
@@ -190,6 +191,53 @@ async def test_accessory_switches_require_mower_availability(tmp_path, monkeypat
     assert (edge_cut, b"") not in client.calls
     await detected["ultrasonic"].async_turn_on()
     assert detected["ultrasonic"].is_on
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_confirmable_fault_must_still_match_when_acknowledged(tmp_path):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    code = Command(4586, 6)
+    confirmable = Command(4586, 8)
+    confirm = Command(4586, 9)
+    client.values.update(
+        {
+            (code, b""): U32.pack(2),
+            (confirmable, b""): b"\x01",
+            (confirm, b""): b"",
+        }
+    )
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    for platform in (sensor, button):
+        await platform.async_setup_entry(coordinator.hass, entry, entities.extend)
+    devices = {entity.key: entity for entity in entities}
+    fault = devices["active_fault"]
+    assert fault.native_value == "no_loop_signal"
+    assert fault.extra_state_attributes == {"code": 2, "message_key": "no_loop_signal"}
+    acknowledge = devices["confirm_fault"]
+    client.values[code, b""] = U32.pack(3)
+    with pytest.raises(HomeAssistantError, match="no longer reports"):
+        await acknowledge.async_press()
+    assert (confirm, b"") not in client.calls
+    client.values[code, b""] = U32.pack(2)
+    client.values[confirmable, b""] = b"\0"
+    with pytest.raises(HomeAssistantError, match="no longer reports"):
+        await acknowledge.async_press()
+    assert (confirm, b"") not in client.calls
+    client.values[confirmable, b""] = b"\x01"
+    await acknowledge.async_press()
+    assert (confirm, b"") in client.calls
+    client.values[code, b""] = U32.pack(0)
+    client.values[confirmable, b""] = b"\0"
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    assert fault.native_value == "none"
+    assert not acknowledge.available
     await coordinator.async_shutdown()
 
 

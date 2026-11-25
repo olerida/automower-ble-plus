@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from automower_ble.protocol import MowerState
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -22,7 +23,9 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .coordinator import MowerCoordinator, MowerEntry
-from .entity import MowerValueEntity, async_add_detected
+from .entity import MowerEntity, MowerValueEntity, async_add_detected
+from .faults import FAULT_STATES, message_description
+from .firmware import get_message_key
 
 
 def _description(
@@ -116,6 +119,12 @@ async def async_setup_entry(
         },
         lambda key, description: AutomowerSensor(entry.runtime_data, key, description),
     )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"error_code": None},
+        lambda key, _: MowerFaultSensor(entry.runtime_data, "active_fault"),
+    )
 
 
 class AutomowerSensor(MowerValueEntity, SensorEntity):
@@ -140,3 +149,48 @@ class AutomowerSensor(MowerValueEntity, SensorEntity):
         zone = dt_util.get_time_zone(self.hass.config.time_zone) or UTC
         # The protocol reports local wall-clock time in an epoch-shaped field.
         return datetime.fromtimestamp(value, UTC).replace(tzinfo=zone)
+
+
+class MowerFaultSensor(MowerEntity, SensorEntity):
+    """Show a translated mower fault and the underlying protocol code."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_options = sorted({*FAULT_STATES.values(), "other"})
+
+    @property
+    def _code(self) -> int | None:
+        code = self.coordinator.data.get("error_code")
+        return code if isinstance(code, int) else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._code is not None
+
+    @property
+    def native_value(self) -> str | None:
+        code = self._code
+        if code is None:
+            return None
+        if not code and self.coordinator.data["state"] in (
+            MowerState.ERROR,
+            MowerState.FATAL_ERROR,
+        ):
+            return "other"
+        return FAULT_STATES.get(code, "other")
+
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        code = self._code
+        if code is None:
+            return None
+        data = {"code": code}
+        if key := get_message_key(code):
+            data["message_key"] = key
+        if (
+            code
+            and code not in FAULT_STATES
+            and (description := message_description(code))
+        ):
+            data["message"] = description
+        return data

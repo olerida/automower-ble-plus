@@ -3,9 +3,9 @@
 from datetime import UTC, datetime
 from struct import Struct
 
-from automower_ble.error_codes import ErrorCodes
-
+from .faults import SEVERITY_NAMES, message_description
 from .features import U32
+from .firmware import get_message_key
 from .indexed import async_indexed_page
 from .transport import AutomowerClient
 from .wire import Command
@@ -28,10 +28,12 @@ def _decode_message(index: int, raw: bytes) -> dict:
         "code": code,
         "severity": severity,
     }
-    try:
-        result["message"] = ErrorCodes(code).name.replace("_", " ").title()
-    except ValueError:
-        pass
+    if message := message_description(code):
+        result["message"] = message
+    if key := get_message_key(code):
+        result["message_key"] = key
+    if severity < len(SEVERITY_NAMES):
+        result["severity_name"] = SEVERITY_NAMES[severity]
     if len(raw) > _BASIC_MESSAGE.size:
         latitude, longitude = _POSITION.unpack_from(raw, _BASIC_MESSAGE.size)
         if abs(latitude) <= 90000000 and abs(longitude) <= 180000000:

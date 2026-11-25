@@ -66,6 +66,9 @@
       },
       "pair_charging_station": {
         "name": "Pair charging station"
+      },
+      "confirm_fault": {
+        "name": "Acknowledge fault"
       }
     },
     "binary_sensor": {
@@ -353,6 +356,54 @@
       },
       "blade_usage_time": {
         "name": "Blade usage time"
+      },
+      "active_fault": {
+        "name": "Active fault",
+        "state": {
+          "none": "No active fault",
+          "other": "Other fault",
+          "outside_working_area": "Outside work area",
+          "no_loop_signal": "No loop signal",
+          "wrong_loop_signal": "Wrong loop signal",
+          "front_loop_sensor_failure": "Front loop sensor fault",
+          "rear_loop_sensor_failure": "Rear loop sensor fault",
+          "left_loop_sensor_failure": "Left loop sensor fault",
+          "right_loop_sensor_failure": "Right loop sensor fault",
+          "wrong_pin": "Incorrect PIN",
+          "trapped": "Mower trapped",
+          "overturned": "Mower overturned",
+          "low_battery": "Low battery",
+          "empty_battery": "Empty battery",
+          "drive_failure": "Drive system fault",
+          "lifted": "Mower lifted",
+          "stuck_docked": "Mower stuck in charging station",
+          "station_blocked": "Charging station blocked",
+          "rear_collision_sensor_failure": "Rear collision sensor fault",
+          "front_collision_sensor_failure": "Front collision sensor fault",
+          "right_wheel_blocked": "Right wheel blocked",
+          "left_wheel_blocked": "Left wheel blocked",
+          "right_wheel_drive_failure": "Right wheel drive fault",
+          "left_wheel_drive_failure": "Left wheel drive fault",
+          "cutting_drive_failure": "Cutting drive fault",
+          "cutting_system_blocked": "Cutting system blocked",
+          "steep_slope": "Slope too steep",
+          "charging_system_failure": "Charging system fault",
+          "stop_button_failure": "STOP button fault",
+          "tilt_sensor_failure": "Tilt sensor fault",
+          "tilted": "Mower tilted",
+          "electronic_problem": "Electronics fault"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          },
+          "message_key": {
+            "name": "Message identifier"
+          },
+          "message": {
+            "name": "Message"
+          }
+        }
       }
     },
     "device_tracker": {

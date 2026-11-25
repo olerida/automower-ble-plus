@@ -22,6 +22,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, LOGGER
+from .faults import CONFIRM_ERROR, FAULT_READINGS
 from .features import (
     GET_ACTIVITY,
     GET_BATTERY,
@@ -209,12 +210,29 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 battery = await self._read(Reading(GET_BATTERY, U8))
                 state = await self._read(Reading(GET_STATE, U8))
                 activity = await self._read(Reading(GET_ACTIVITY, U8))
-                return {
+                data = {
                     **(self.data or {}),
                     "battery": battery,
                     "state": state,
                     "activity": activity,
                 }
+                for key, reading in FAULT_READINGS.items():
+                    if key in self._unsupported:
+                        continue
+                    try:
+                        data[key] = await self._read(reading)
+                    except CommandRejected as err:
+                        if err.unsupported:
+                            self._unsupported.add(key)
+                        data.pop(key, None)
+                    except ValueError:
+                        data.pop(key, None)
+                        LOGGER.debug("Unexpected response while reading %s", key)
+                    except MowerConnectionError:
+                        for fault_key in FAULT_READINGS:
+                            data.pop(fault_key, None)
+                        break
+                return data
         except (MowerConnectionError, CommandRejected, ValueError) as err:
             raise UpdateFailed("Could not read the mower status") from err
 
@@ -425,6 +443,24 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self.async_set_updated_data(
                 {**self.data, key: replace(status, phase=UpdatePhase.INSTALLING)}
             )
+
+    async def async_confirm_error(self, expected_code: int) -> None:
+        """Acknowledge the same fault only if the mower says it can be confirmed."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                confirmable = await self._read(FAULT_READINGS["error_confirmable"])
+                code = await self._read(FAULT_READINGS["error_code"])
+                if confirmable != 1 or code == 0 or code != expected_code:
+                    raise ValueError(
+                        "The mower no longer reports this as a confirmable fault"
+                    )
+                await self.client.command(CONFIRM_ERROR)
+            except (MowerConnectionError, CommandRejected, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not acknowledge the fault: {err}"
+                ) from err
+        await self.async_request_refresh()
 
     async def async_set_setting(self, setting: Setting, value: int) -> None:
         """Change a supported setting and retrieve the value stored by the mower."""

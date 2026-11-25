@@ -3,6 +3,7 @@
 from automower_ble.protocol import MowerActivity
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import MowerCoordinator, MowerEntry
@@ -49,6 +50,13 @@ async def async_setup_entry(
         )
     if profile and profile.station_pairing_subscription:
         add_entities([PairStationButton(entry.runtime_data, "pair_charging_station")])
+    async_add_detected(
+        entry,
+        add_entities,
+        {"error_confirmable": None},
+        lambda key, _: ConfirmFaultButton(entry.runtime_data, "confirm_fault"),
+        require_true=True,
+    )
     async_add_detected(
         entry,
         add_entities,
@@ -120,3 +128,22 @@ class PairStationButton(MowerEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_pair_station()
+
+
+class ConfirmFaultButton(MowerEntity, ButtonEntity):
+    """Acknowledge the fault offered by the mower."""
+
+    @property
+    def available(self) -> bool:
+        data = self.coordinator.data
+        return (
+            super().available
+            and data.get("error_confirmable") == 1
+            and bool(data.get("error_code"))
+        )
+
+    async def async_press(self) -> None:
+        code = self.coordinator.data.get("error_code")
+        if not isinstance(code, int) or not code:
+            raise ServiceValidationError("The mower does not report an active fault")
+        await self.coordinator.async_confirm_error(code)

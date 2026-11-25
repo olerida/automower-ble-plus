@@ -354,7 +354,6 @@ READINGS = {
     "battery_current": Reading(Command(4106, 8), I16),
     "battery_temperature": Reading(Command(4106, 9), I16),
     "operation_mode": Reading(Command(4586, 1), U8),
-    "error_code": Reading(Command(4586, 6), U32),
     "restriction_reason": Reading(Command(4658, 0), U8),
     "next_start": Reading(Command(4658, 1), U32),
     "drive_past_wire": Reading(Command(4712, 0), U16),

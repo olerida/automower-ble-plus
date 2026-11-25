@@ -36,13 +36,18 @@ def _catalog() -> dict:
     return json.loads(Path(__file__).with_name("firmware_profiles.json").read_text())
 
 
+def get_message_key(code: int) -> str | None:
+    """Return an identifier when the app's TIF files agree on its meaning."""
+    return _catalog()["message_keys"].get(str(code))
+
+
 def get_firmware_profile(
     model_id: tuple[int, int], node_version: str | None
 ) -> FirmwareProfile | None:
     """Look up the exact build, the app's family, or a matching G3 model."""
+    catalog = _catalog()
     if not node_version:
         return None
-    catalog = _catalog()
     exact = True
     if node_version in catalog["release"]:
         profile = catalog["release"][node_version]

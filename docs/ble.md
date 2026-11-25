@@ -25,7 +25,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Corte de bordes y ultrasonidos | 6690, 4728 | Activación cuando el cortacésped anuncia cada función |
 | Protección contra heladas | 5370, 5412 | Ajuste con detección de variantes |
 | Estadísticas y desgaste de cuchillas | 4726 | Lecturas y reinicio del contador por perfil de firmware |
-| Historial de avisos | 4730 | Lectura paginada |
+| Avisos y averías | 4730, 4586 | Historial paginado con códigos y niveles de gravedad. Avería actual y confirmación si el cortacésped la permite |
 | Corte en espiral y corte localizado | 4710, 4658, 4586 | Activación e intensidad del corte en espiral. Inicio manual de corte localizado cuando el perfil declara esa orden |
 | Áreas de trabajo | 5604, 4658 | Lista, inicio de corte, cambio de nombre y habilitación según firmware |
 | Ajustes de corte por área | 5582, 5604 | Patrón, dirección, variación, perímetro y altura según área y firmware |
@@ -64,3 +64,5 @@ El panel de la app llama «corte en espiral» a los ajustes de `SpotCutting` (`e
 REA confirmó los formatos de las escrituras antirrobo y los intervalos usados por la app (`ev_e44b63c08fee3d74bb161255991980922d2abe8cbb588165de791ab79fd94c7c`). La configuración distingue las alarmas de elevación, inclinación y movimiento con los indicadores por modelo (`ev_1783f2f3502c34150046f6bc8d08900d1a970bec31ac9c6753f45a7b538a4f2c`, `ev_0bf13ed7d130e9120113da4e0dfa2bb57eec4b4b32a623e740deccddd1343b5d`). Los sensores detectados consultan el estado por BLE durante el mantenimiento de la conexión.
 
 El emparejamiento con la estación usa `ChargingStation.InitiateNewPairing` y espera un evento de resultado por BLE (`ev_91d13098314f0b91fb6ef04f09aad8ccdc24c3521c6d3c1e640b0371a9b153a2`, `ev_aba4a141e9fe9090a45c6b581942a37a6cb4324aaa4f70e39112d3128e13ce95`, `ev_16d469f2709047308633bcb9b6d9a9fed142b1775b09f9c31da45f25579bdd55`). El perfil identifica la variante de suscripción. La cabecera del evento contiene el tipo, la familia, el identificador y la longitud (`ev_b60f3404cf52918fe7fd994a41eb42575445f60d4d7a5516bd590f7a1653a530`). Los TIF definen los índices de posición para leer señales del cable. El perfil conocido del 420 declara el emparejamiento, pero carece de las lecturas `LoopSystem` que usa el diagnóstico.
+
+La app consulta `MowerApp.IsErrorConfirmable` y envía `ConfirmError` (`ev_94d8513cc810e00823b149492e3fca4760888ee2d7a78fccc5e0e2d55f239e16`, `ev_a72472af0536626f9b7902baa9733a38c5fc983a86d0936ae9d5055f9513a3d1`). La integración vuelve a leer el código y el permiso del firmware antes de confirmar. El catálogo de avisos incluye los identificadores en los que coinciden todos los perfiles que declaran el código. Los casos ambiguos conservan el código numérico.

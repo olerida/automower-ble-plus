@@ -180,7 +180,19 @@ def extract(apk: Path) -> dict:
             for variant, family in sorted(variants.items()):
                 if family in tables["family"]:
                     tables["legacy"][f"{device}.{variant}"] = tables["family"][family]
-    return {"profiles": profiles, **tables}
+        codes: dict[int, set[str]] = {}
+        for file in sorted(members):
+            if not file.startswith("assets/tif-models/") or not file.endswith(".json"):
+                continue
+            for type_info in json.loads(archive.read(file)).get("types", ()):
+                if type_info["name"] == "tIMessages_MessageCode":
+                    for item in type_info.get("enums", ()):
+                        key = item["key"].removeprefix("MSG_ID_").lower()
+                        codes.setdefault(int(item["value"]), set()).add(key)
+    messages = {
+        code: next(iter(keys)) for code, keys in sorted(codes.items()) if len(keys) == 1
+    }
+    return {"profiles": profiles, **tables, "message_keys": messages}
 
 
 if __name__ == "__main__":

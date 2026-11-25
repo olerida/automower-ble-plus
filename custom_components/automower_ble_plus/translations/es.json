@@ -66,6 +66,9 @@
       },
       "pair_charging_station": {
         "name": "Emparejar estación de carga"
+      },
+      "confirm_fault": {
+        "name": "Confirmar avería"
       }
     },
     "binary_sensor": {
@@ -353,6 +356,54 @@
       },
       "blade_usage_time": {
         "name": "Tiempo de uso de las cuchillas"
+      },
+      "active_fault": {
+        "name": "Avería activa",
+        "state": {
+          "none": "Sin avería activa",
+          "other": "Otra avería",
+          "outside_working_area": "Fuera del área de trabajo",
+          "no_loop_signal": "Sin señal de lazo",
+          "wrong_loop_signal": "Señal de lazo incorrecta",
+          "front_loop_sensor_failure": "Fallo del sensor de lazo delantero",
+          "rear_loop_sensor_failure": "Fallo del sensor de lazo trasero",
+          "left_loop_sensor_failure": "Fallo del sensor de lazo izquierdo",
+          "right_loop_sensor_failure": "Fallo del sensor de lazo derecho",
+          "wrong_pin": "PIN incorrecto",
+          "trapped": "Cortacésped atrapado",
+          "overturned": "Cortacésped volcado",
+          "low_battery": "Batería baja",
+          "empty_battery": "Batería agotada",
+          "drive_failure": "Fallo del sistema de tracción",
+          "lifted": "Cortacésped levantado",
+          "stuck_docked": "Cortacésped atascado en la estación",
+          "station_blocked": "Estación de carga bloqueada",
+          "rear_collision_sensor_failure": "Fallo del sensor de colisión trasero",
+          "front_collision_sensor_failure": "Fallo del sensor de colisión delantero",
+          "right_wheel_blocked": "Rueda derecha bloqueada",
+          "left_wheel_blocked": "Rueda izquierda bloqueada",
+          "right_wheel_drive_failure": "Fallo de tracción en la rueda derecha",
+          "left_wheel_drive_failure": "Fallo de tracción en la rueda izquierda",
+          "cutting_drive_failure": "Fallo del motor de corte",
+          "cutting_system_blocked": "Sistema de corte bloqueado",
+          "steep_slope": "Pendiente demasiado pronunciada",
+          "charging_system_failure": "Fallo del sistema de carga",
+          "stop_button_failure": "Fallo del botón STOP",
+          "tilt_sensor_failure": "Fallo del sensor de inclinación",
+          "tilted": "Cortacésped inclinado",
+          "electronic_problem": "Fallo electrónico"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Código"
+          },
+          "message_key": {
+            "name": "Identificador del aviso"
+          },
+          "message": {
+            "name": "Aviso"
+          }
+        }
       }
     },
     "device_tracker": {
