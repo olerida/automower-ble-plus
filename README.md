@@ -4,7 +4,7 @@ Integración de Home Assistant para cortacéspedes Husqvarna Automower que admit
 
 ## Instalación mediante HACS
 
-1. Una vez publicado, añade `olerida/automower-ble-plus` en HACS como repositorio personalizado de tipo **Integración** y descarga **Automower BLE Plus**. Requiere Home Assistant 2026.11.0 o posterior.
+1. Una vez publicada la primera versión, añade `olerida/automower-ble-plus` en HACS como repositorio personalizado de tipo **Integración** y descarga **Automower BLE Plus**. Requiere Home Assistant 2026.11.0 o posterior.
 2. Si el mismo cortacésped está configurado en **Husqvarna Automower BLE**, deshabilita esa entrada. Así una única integración gestiona la conexión con el cortacésped.
 3. En **Ajustes → Dispositivos y servicios**, configura el cortacésped descubierto o añade **Automower BLE Plus** con su dirección Bluetooth. Activa el modo de emparejamiento del cortacésped e introduce su PIN en el formulario si el modelo lo requiere.
 
@@ -32,3 +32,5 @@ En firmwares compatibles también aparecen la activación y la intensidad del co
 El Automower 420 es el modelo de referencia. Las pruebas automatizadas reproducen el emparejamiento y la detección de funciones con un dispositivo simulado. El [inventario de BLE](docs/ble.md) recoge la cobertura y las funciones pendientes de comprobar.
 
 Esta integración comunitaria utiliza [AutoMower-BLE](https://github.com/alistair23/AutoMower-BLE) para el emparejamiento y el establecimiento del canal Bluetooth.
+
+El paquete de distribución se genera con `python3 tools/build_hacs_release.py`. Al subir una etiqueta de versión que coincida con el manifiesto, GitHub Actions publica el archivo que descarga HACS después de superar las pruebas y Hassfest. [Requisitos de HACS](https://www.hacs.xyz/docs/publish/start/)

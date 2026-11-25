@@ -1,5 +1,8 @@
 {
   "name": "Automower BLE Plus",
   "homeassistant": "2026.11.0",
-  "render_readme": true
+  "render_readme": true,
+  "hide_default_branch": true,
+  "zip_release": true,
+  "filename": "automower_ble_plus.zip"
 }
