@@ -29,6 +29,7 @@ class FirmwareProfile:
     loop_sensor_positions: str = ""
     station_pairing_subscription: int = 0
     installation_create_empty: int = 0
+    message_events: int = 0
 
 
 @cache

@@ -21,6 +21,7 @@ PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.DEVICE_TRACKER,
+    Platform.EVENT,
     Platform.LAWN_MOWER,
     Platform.NUMBER,
     Platform.SELECT,

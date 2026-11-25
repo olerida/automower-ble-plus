@@ -2,9 +2,11 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Sequence
+from contextlib import suppress
 from dataclasses import replace
 from datetime import timedelta
 from struct import error as StructError
+from time import monotonic
 
 from automower_ble.models import MowerModels
 from automower_ble.protocol import (
@@ -16,9 +18,10 @@ from automower_ble.protocol import (
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, CONF_PIN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, LOGGER
@@ -61,7 +64,7 @@ from .geofence import (
     async_get_geofence,
     async_recenter_geofence,
 )
-from .history import async_get_message_history
+from .history import async_get_message_history, decode_message_event
 from .mapfiles import async_get_map, async_replace_map
 from .models import STARTING_POINT_COUNTS
 from .schedule import (
@@ -81,7 +84,7 @@ from .sites import (
 )
 from .station import async_get_loop_signals, async_pair_charging_station
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
-from .wire import Command
+from .wire import Command, Event
 from .work_areas import (
     async_get_area_mowing_settings,
     async_get_work_areas,
@@ -103,6 +106,8 @@ _GET_TASK_COUNT = Command(4690, 4)
 _START = Command(4586, 4)
 _PAUSE = Command(4586, 5)
 _START_SPOT_CUTTING = Command(4710, 7)
+_MOWER_EVENTS = Command(4586, 7)
+_MESSAGE_EVENTS = Command(4730, 4)
 _SECTOR_MAXIMUM = {
     Command(4716, 3): Command(4716, 4),
     Command(4716, 7): Command(4716, 8),
@@ -127,6 +132,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         )
         self.address: str = entry.data[CONF_ADDRESS]
         self.client = AutomowerClient(self.address, entry.data.get(CONF_PIN))
+        self.client.event_callback = self._async_on_event
         self.device_info: DeviceInfo
         self.firmware_profile: FirmwareProfile | None = None
         self.settings: tuple[Setting, ...] = ()
@@ -134,6 +140,37 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._operation_lock = asyncio.Lock()
         self._unsupported: set[str] = set()
         self._optional_index = 0
+        self._unavailable_subscriptions: set[Command] = set()
+        self._active_subscriptions: set[Command] = set()
+        self._subscription_retry: dict[Command, float] = {}
+        self._event_refresh_task: asyncio.Task | None = None
+
+    @property
+    def message_signal(self) -> str:
+        """Dispatcher signal scoped to this mower's entry."""
+        return f"{DOMAIN}_message_{self.config_entry.entry_id}"
+
+    @callback
+    def _async_on_event(self, event: Event) -> None:
+        """Refresh mower state or forward newly reported messages."""
+        if event.family == _MESSAGE_EVENTS.family and event.event_id == 0:
+            try:
+                message = decode_message_event(event.payload)
+            except ValueError, StructError:
+                LOGGER.debug("Ignoring unexpected mower message event")
+                return
+            async_dispatcher_send(self.hass, self.message_signal, message)
+        elif (
+            event.family == _MOWER_EVENTS.family
+            and event.event_id in (1, 2, 3)
+            and self.data is not None
+            and (self._event_refresh_task is None or self._event_refresh_task.done())
+        ):
+            self._event_refresh_task = self.config_entry.async_create_background_task(
+                self.hass,
+                self.async_request_refresh(),
+                "refresh Automower after BLE event",
+            )
 
     async def _async_connect(self) -> None:
         if self.client.is_connected():
@@ -150,6 +187,34 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             raise MowerConnectionError(
                 f"The mower returned {result.name} while connecting"
             )
+        self._active_subscriptions.clear()
+
+    async def _async_subscribe_events(self) -> None:
+        profile = self.firmware_profile
+        commands = (
+            (_MOWER_EVENTS,)
+            if profile is not None and not profile.message_events
+            else (_MOWER_EVENTS, _MESSAGE_EVENTS)
+        )
+        for command in commands:
+            if (
+                command in self._unavailable_subscriptions
+                or command in self._active_subscriptions
+                or self._subscription_retry.get(command, 0) > monotonic()
+            ):
+                continue
+            try:
+                await self.client.command(command)
+            except CommandRejected as err:
+                if err.unsupported:
+                    self._unavailable_subscriptions.add(command)
+                else:
+                    self._subscription_retry[command] = monotonic() + 300
+            except MowerConnectionError:
+                self._subscription_retry[command] = monotonic() + 300
+                return
+            else:
+                self._active_subscriptions.add(command)
 
     async def _async_setup(self) -> None:
         guide_count = None
@@ -232,6 +297,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         for fault_key in FAULT_READINGS:
                             data.pop(fault_key, None)
                         break
+                if self.client.is_connected():
+                    await self._async_subscribe_events()
+                data["message_events"] = int(
+                    _MESSAGE_EVENTS in self._active_subscriptions
+                )
                 return data
         except (MowerConnectionError, CommandRejected, ValueError) as err:
             raise UpdateFailed("Could not read the mower status") from err
@@ -713,6 +783,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
 
     async def async_shutdown(self) -> None:
         """Release the Bluetooth connection and the coordinator listeners."""
+        if (
+            task := self._event_refresh_task
+        ) is not None and task is not asyncio.current_task():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         await super().async_shutdown()
         async with self._operation_lock:
             await self.client.disconnect()

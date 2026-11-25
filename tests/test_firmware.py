@@ -28,9 +28,10 @@ def test_exact_release_precedes_family_and_unknown_versions_stay_unknown():
         9,
         loop_sensor_positions="front_right front_center front_left rear_right rear_center rear_left",
         station_pairing_subscription=12,
+        message_events=1,
     )
     assert get_firmware_profile((26, 1), "40.1_Main-App-P25_other") == FirmwareProfile(
-        600, 5000, 0, 0, 7, 8, 15, 100, 5000, 0
+        600, 5000, 0, 0, 7, 8, 15, 100, 5000, 0, message_events=1
     )
     assert get_firmware_profile((5, 0), "999.1_Main-App-Unrecognized") is None
 

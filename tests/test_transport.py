@@ -14,7 +14,7 @@ from custom_components.automower_ble_plus.transport import (
     AutomowerClient,
     CommandRejected,
 )
-from custom_components.automower_ble_plus.wire import Command, Frame, pop_frame
+from custom_components.automower_ble_plus.wire import Command, Event, Frame, pop_frame
 
 
 class FakeGatt:
@@ -98,6 +98,16 @@ async def test_authenticated_gatt_exchange(monkeypatch, pin, result):
     if result == ResponseResult.OK:
         assert await client.main_node_version() == "App-G3_devicetype-5.0"
         assert await client.command(Command(4698, 9)) == b"\x05\x00"
+        received = asyncio.get_running_loop().create_future()
+        client.event_callback = received.set_result
+        notification = Frame(
+            client.channel_id, True, pack("<BHHHB", 2, 4586, 1, 1, 8)
+        ).encode()
+        await gatt.notify(None, notification[:11])
+        await gatt.notify(None, notification[11:])
+        async with asyncio.timeout(1):
+            assert await received == Event(4586, 1, b"\x08")
+        client.event_callback = None
         with pytest.raises(CommandRejected, match="INVALID_ID"):
             await client.command(Command(4722, 2))
         gatt.pairing_event = bytes.fromhex("02541202000000")

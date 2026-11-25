@@ -418,6 +418,24 @@
       "station_firmware_update": {
         "name": "Charging station firmware"
       }
+    },
+    "event": {
+      "message_events": {
+        "name": "Mower messages",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "unknown": "Unknown",
+              "fatal": "Fatal",
+              "error": "Error",
+              "warning": "Warning",
+              "info": "Information",
+              "debug": "Debug",
+              "software": "Software"
+            }
+          }
+        }
+      }
     }
   },
   "services": {

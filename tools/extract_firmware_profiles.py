@@ -18,6 +18,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     loop_operations = {}
     station_operations = {}
     site_operations = {}
+    message_events = 0
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -34,6 +35,13 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             station_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "SiteManager" and protocol.get("msgType") == "5900":
             site_operations[method["command"]] = protocol.get("subCmd")
+        if (
+            method["family"] == "Messages"
+            and method["command"] == "SubscribeEvents"
+            and protocol.get("msgType") == "4730"
+            and protocol.get("subCmd") == "4"
+        ):
+            message_events = 1
         if (
             method["family"] == "Missions"
             and protocol.get("msgType") == "5604"
@@ -150,6 +158,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         positions,
         station_subscription,
         create_empty,
+        message_events,
     )
     return result if any(result) else None
 

@@ -16,18 +16,19 @@ _BASIC_MESSAGE = Struct("<IIB")
 _POSITION = Struct("<ii")
 
 
-def _decode_message(index: int, raw: bytes) -> dict:
+def _decode_message(index: int | None, raw: bytes) -> dict:
     if len(raw) not in (_BASIC_MESSAGE.size, _BASIC_MESSAGE.size + _POSITION.size):
         raise ValueError("Unknown mower message format")
     timestamp, code, severity = _BASIC_MESSAGE.unpack_from(raw)
     result = {
-        "index": index,
         "timestamp": datetime.fromtimestamp(timestamp, UTC).isoformat()
         if timestamp
         else None,
         "code": code,
         "severity": severity,
     }
+    if index is not None:
+        result["index"] = index
     if message := message_description(code):
         result["message"] = message
     if key := get_message_key(code):
@@ -39,6 +40,15 @@ def _decode_message(index: int, raw: bytes) -> dict:
         if abs(latitude) <= 90000000 and abs(longitude) <= 180000000:
             result.update(latitude=latitude / 1000000, longitude=longitude / 1000000)
     return result
+
+
+def decode_message_event(raw: bytes) -> dict:
+    """Decode a newly added message, omitting coordinates from event state."""
+    count = U32.unpack_from(raw)[0]
+    message = _decode_message(None, raw[U32.size :])
+    message.pop("latitude", None)
+    message.pop("longitude", None)
+    return {"message_count": count, **message}
 
 
 async def async_get_message_history(

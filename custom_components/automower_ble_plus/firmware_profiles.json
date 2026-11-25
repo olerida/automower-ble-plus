@@ -15,6 +15,7 @@
       0,
       "",
       1,
+      0,
       0
     ],
     [
@@ -32,6 +33,7 @@
       1,
       "front_right front_center front_left rear_center",
       12,
+      1,
       1
     ],
     [
@@ -49,6 +51,7 @@
       1,
       "front_right front_center front_left rear_center",
       12,
+      1,
       1
     ],
     [
@@ -66,7 +69,8 @@
       1,
       "front_center rear_center",
       12,
-      0
+      0,
+      1
     ],
     [
       600,
@@ -83,6 +87,7 @@
       0,
       "front_right front_center front_left rear_right rear_center rear_left",
       12,
+      1,
       1
     ],
     [
@@ -100,6 +105,7 @@
       0,
       "front_right front_center front_left rear_right rear_center rear_left",
       12,
+      1,
       1
     ],
     [
@@ -117,6 +123,7 @@
       0,
       "front_right front_center front_left rear_right rear_left",
       12,
+      1,
       1
     ],
     [
@@ -134,6 +141,7 @@
       1,
       "front_right front_center front_left rear_right rear_left",
       12,
+      1,
       1
     ],
     [
@@ -151,7 +159,8 @@
       0,
       "front_right front_center front_left rear_right rear_center rear_left",
       12,
-      0
+      0,
+      1
     ],
     [
       150,
@@ -168,7 +177,8 @@
       0,
       "front_right front_center front_left rear_right rear_center rear_left",
       12,
-      0
+      0,
+      1
     ],
     [
       600,
@@ -185,6 +195,7 @@
       0,
       "front_right front_center front_left rear_right rear_center rear_left",
       12,
+      1,
       1
     ],
     [
@@ -202,6 +213,7 @@
       1,
       "front_right front_center rear_right rear_left",
       12,
+      1,
       1
     ],
     [
@@ -219,6 +231,7 @@
       0,
       "front_right front_center front_left rear_right rear_center rear_left",
       12,
+      1,
       1
     ],
     [
@@ -236,6 +249,7 @@
       0,
       "front_right front_center front_left rear_right rear_center rear_left",
       12,
+      1,
       1
     ],
     [
@@ -253,6 +267,7 @@
       1,
       "front_center",
       12,
+      1,
       1
     ],
     [
@@ -270,6 +285,7 @@
       1,
       "rear_center",
       12,
+      1,
       1
     ],
     [
@@ -287,7 +303,8 @@
       0,
       "front_right front_center front_left rear_right rear_left",
       12,
-      0
+      0,
+      1
     ],
     [
       1300,
@@ -304,6 +321,7 @@
       0,
       "front_right front_center front_left rear_right rear_left",
       12,
+      1,
       1
     ],
     [
@@ -321,6 +339,7 @@
       0,
       "front_right front_center front_left rear_right rear_left",
       12,
+      1,
       1
     ],
     [
@@ -338,6 +357,7 @@
       1,
       "front_center",
       12,
+      1,
       1
     ],
     [
@@ -355,6 +375,7 @@
       1,
       "rear_center",
       12,
+      1,
       1
     ],
     [
@@ -372,7 +393,8 @@
       1,
       "front_right front_center front_left rear_center",
       12,
-      0
+      0,
+      1
     ],
     [
       150,
@@ -389,7 +411,8 @@
       1,
       "front_right front_center front_left rear_center",
       12,
-      0
+      0,
+      1
     ],
     [
       600,
@@ -406,6 +429,7 @@
       1,
       "front_right front_center front_left rear_center",
       12,
+      1,
       1
     ],
     [
@@ -423,6 +447,7 @@
       1,
       "front_right front_center front_left rear_center",
       12,
+      1,
       1
     ],
     [
@@ -440,7 +465,8 @@
       1,
       "front_right front_center rear_right rear_left",
       12,
-      0
+      0,
+      1
     ],
     [
       0,
@@ -457,7 +483,8 @@
       1,
       "front_right front_center rear_right rear_left",
       12,
-      0
+      0,
+      1
     ],
     [
       700,
@@ -474,7 +501,8 @@
       1,
       "front_right front_center rear_right rear_left",
       12,
-      0
+      0,
+      1
     ],
     [
       700,
@@ -491,6 +519,7 @@
       1,
       "front_right front_center rear_right rear_left",
       12,
+      1,
       1
     ],
     [
@@ -508,6 +537,7 @@
       1,
       "front_right front_center rear_right rear_left",
       12,
+      1,
       1
     ],
     [
@@ -525,7 +555,8 @@
       1,
       "front_center rear_center",
       12,
-      0
+      0,
+      1
     ],
     [
       150,
@@ -542,7 +573,8 @@
       1,
       "front_center rear_center",
       12,
-      0
+      0,
+      1
     ],
     [
       150,
@@ -559,7 +591,8 @@
       1,
       "front_center rear_center",
       12,
-      0
+      0,
+      1
     ],
     [
       700,
@@ -576,6 +609,7 @@
       1,
       "front_right front_center front_left rear_right rear_left",
       12,
+      1,
       1
     ],
     [
@@ -593,7 +627,8 @@
       0,
       "front_center rear_center",
       12,
-      0
+      0,
+      1
     ],
     [
       600,
@@ -610,6 +645,7 @@
       1,
       "front_right front_center front_left rear_center",
       12,
+      1,
       1
     ],
     [
@@ -627,6 +663,7 @@
       1,
       "front_right front_center front_left rear_center",
       12,
+      1,
       1
     ]
   ],

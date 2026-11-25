@@ -1,7 +1,8 @@
 """Transport for authenticated Automower HCP commands over BLE."""
 
 import asyncio
-from collections.abc import AsyncIterator
+import logging
+from collections.abc import AsyncIterator, Callable
 from contextlib import suppress
 from secrets import randbelow
 
@@ -17,6 +18,7 @@ _KEEP_ALIVE = Command(4674, 2)
 _GET_MAIN_NODE_VERSION = Command(96, 0)
 _RESPONSE_TIMEOUT = 12
 _GATT_WRITE_SIZE = 17
+_LOGGER = logging.getLogger(__name__)
 
 
 class MowerConnectionError(Exception):
@@ -47,11 +49,17 @@ class AutomowerClient(BLEClient):
     def __init__(self, address: str, pin: str | None) -> None:
         super().__init__(randbelow(0x7FFFFFFF) + 1, address, int(pin) if pin else None)
         self._notification_buffer = bytearray()
+        self._reader: asyncio.Task[None] | None = None
+        self._pending: asyncio.Queue[Frame | Exception] | None = None
+        self._expected_events: tuple[int, tuple[int, ...]] | None = None
+        self.event_callback: Callable[[Event], None] | None = None
 
     async def connect(self, device: BLEDevice) -> ResponseResult:
         """Pair through the supplied HA Bluetooth adapter and open a channel."""
         result = ResponseResult.UNKNOWN_ERROR
         try:
+            if self.client is not None:
+                await self.disconnect()
             result = await super().connect(device)
         except (AttributeError, BleakError, FrameError, TimeoutError) as err:
             raise MowerConnectionError(
@@ -60,12 +68,19 @@ class AutomowerClient(BLEClient):
         finally:
             if result != ResponseResult.OK:
                 await self.disconnect()
+        if result == ResponseResult.OK:
+            self._reader = asyncio.create_task(self._read_notifications())
         return result
 
     async def disconnect(self) -> None:
         """Release the GATT client, including a partially established connection."""
+        reader, self._reader = self._reader, None
         client, self.client = self.client, None
         try:
+            if reader is not None:
+                reader.cancel()
+                with suppress(asyncio.CancelledError):
+                    await reader
             if client is not None and client.is_connected:
                 with suppress(BleakError, TimeoutError):
                     await client.disconnect()
@@ -73,6 +88,14 @@ class AutomowerClient(BLEClient):
             self._notification_buffer.clear()
             while not self.queue.empty():
                 self.queue.get_nowait()
+
+    def is_connected(self) -> bool:
+        """Return whether the authenticated connection can receive replies."""
+        return (
+            super().is_connected()
+            and self._reader is not None
+            and not self._reader.done()
+        )
 
     async def command(
         self,
@@ -111,23 +134,29 @@ class AutomowerClient(BLEClient):
         event = None
         try:
             async with self.lock, asyncio.timeout(timeout):
-                async for frame in self._read_reply(request.encode()):
-                    reply = command.response(self.channel_id, frame)
-                    if reply is None:
-                        if event_ids:
-                            candidate = Event.decode(frame)
-                            if (
-                                candidate.family == command.family
-                                and candidate.event_id in event_ids
-                            ):
-                                event = candidate
-                    else:
-                        result, response = reply
-                        if result:
-                            raise CommandRejected(command, result)
-                    if response is not None and (not event_ids or event is not None):
-                        return response, event
-        except (BleakError, FrameError, TimeoutError) as err:
+                if not self.is_connected():
+                    raise MowerConnectionError("The mower closed the HCP channel")
+                pending: asyncio.Queue[Frame | Exception] = asyncio.Queue()
+                self._pending = pending
+                self._expected_events = (
+                    (command.family, event_ids) if event_ids else None
+                )
+                try:
+                    await self._write_request(request.encode())
+                    while response is None or (event_ids and event is None):
+                        received = await pending.get()
+                        if isinstance(received, Exception):
+                            raise received
+                        reply = command.response(self.channel_id, received)
+                        if reply is None:
+                            event = Event.decode(received)
+                        else:
+                            result, response = reply
+                            if result:
+                                raise CommandRejected(command, result)
+                finally:
+                    self._pending = self._expected_events = None
+        except (BleakError, FrameError, MowerConnectionError, TimeoutError) as err:
             await self.disconnect()
             if event_ids and response is not None and event is None:
                 raise MowerConnectionError(
@@ -137,11 +166,7 @@ class AutomowerClient(BLEClient):
         except asyncio.CancelledError:
             await self.disconnect()
             raise
-        if event_ids and response is not None and event is None:
-            raise MowerConnectionError(
-                "The mower accepted the command, but its result event was not received"
-            )
-        raise MowerConnectionError("The mower closed the HCP channel")
+        return response, event
 
     async def keep_alive(self) -> None:
         """Keep the authenticated link available between polls."""
@@ -156,7 +181,8 @@ class AutomowerClient(BLEClient):
         """Read the response to the library's channel setup and login frames."""
         request = Frame.decode(bytes(request_data))
         async with self.lock, asyncio.timeout(_RESPONSE_TIMEOUT):
-            async for frame in self._read_reply(bytes(request_data)):
+            await self._write_request(bytes(request_data))
+            async for frame in self._read_frames():
                 if frame.channel != request.channel or frame.linked != request.linked:
                     continue
                 if frame.linked and _LOGIN.response(request.channel, frame) is None:
@@ -178,8 +204,7 @@ class AutomowerClient(BLEClient):
         except ValueError as err:
             raise FrameError("Unknown operator login result") from err
 
-    async def _read_reply(self, request: bytes) -> AsyncIterator[Frame]:
-        """Write one request and yield the reassembled frames until it is answered."""
+    async def _write_request(self, request: bytes) -> None:
         client = self.client
         if client is None or not client.is_connected:
             raise BleakError("The mower GATT client is disconnected")
@@ -189,6 +214,12 @@ class AutomowerClient(BLEClient):
                 request[offset : offset + _GATT_WRITE_SIZE],
                 response=False,
             )
+
+    async def _read_frames(self) -> AsyncIterator[Frame]:
+        """Reassemble frames from the BLE notifications."""
+        client = self.client
+        if client is None:
+            return
         while client.is_connected:
             if (frame := pop_frame(self._notification_buffer)) is not None:
                 yield frame
@@ -196,3 +227,35 @@ class AutomowerClient(BLEClient):
                 return
             else:
                 self._notification_buffer.extend(chunk)
+
+    async def _read_notifications(self) -> None:
+        """Dispatch unsolicited events separately from in-flight command replies."""
+        failure = MowerConnectionError("The mower closed the HCP channel")
+        try:
+            async for frame in self._read_frames():
+                if (
+                    frame.linked
+                    and frame.channel == self.channel_id
+                    and frame.payload.startswith(b"\x02")
+                ):
+                    try:
+                        event = Event.decode(frame)
+                    except FrameError:
+                        _LOGGER.debug("Ignoring malformed mower event")
+                        continue
+                    if self.event_callback is not None:
+                        try:
+                            self.event_callback(event)
+                        except Exception:
+                            _LOGGER.exception("Mower event callback failed")
+                    if self._pending is not None and self._expected_events is not None:
+                        family, event_ids = self._expected_events
+                        if event.family == family and event.event_id in event_ids:
+                            self._pending.put_nowait(frame)
+                elif self._pending is not None:
+                    self._pending.put_nowait(frame)
+        except FrameError as err:
+            failure = err
+        finally:
+            if self._pending is not None:
+                self._pending.put_nowait(failure)

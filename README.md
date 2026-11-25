@@ -16,6 +16,7 @@ En firmwares compatibles también aparecen la activación y la intensidad del co
 
 - `get_schedule` lee los intervalos semanales y sus límites. `replace_schedule` guarda el nuevo horario y lo vuelve a leer. Cada intervalo usa `start` (hora local), `duration_minutes`, `weekdays` (`mon` a `sun`) y, si procede, `mission_id`.
 - **Avería activa** muestra los fallos habituales en español o inglés. El botón **Confirmar avería** se habilita cuando el cortacésped permite confirmar el aviso actual. `get_message_history` devuelve una página del historial con los códigos originales, la gravedad y el identificador del aviso cuando se conoce.
+- Si el firmware admite avisos nuevos por Bluetooth, la entidad **Avisos del cortacésped** se puede usar en automatizaciones. Cada evento incluye el código y la gravedad. [Entidades de evento de Home Assistant](https://contributors.home-assistant.io/core/entities/event/)
 - `mow_secondary_area` inicia el modo de área secundaria. Si omites `minutes`, el cortacésped trabaja hasta que baja la batería.
 - `get_work_areas` devuelve los nombres e identificadores de las áreas en modelos compatibles. Puedes pasar `mission_id` a `mow_for` para cortar en esa área o a `update_work_area` para cambiar su nombre o estado.
 - `get_work_area_mowing` consulta el patrón, la dirección, el corte del perímetro y la altura de una zona según su compatibilidad. `set_work_area_mowing` cambia uno de los ajustes que aparecen en `editable`. La altura usa la unidad que indica la lectura, porcentaje o nivel del 1 al 9.

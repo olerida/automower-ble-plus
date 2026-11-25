@@ -2,7 +2,9 @@
 
 import asyncio
 from pathlib import Path
+from struct import pack
 from types import MappingProxyType
+from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant import loader, setup
@@ -35,7 +37,7 @@ from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import I16, U16, U32
 from custom_components.automower_ble_plus.firmware import get_firmware_profile
 from custom_components.automower_ble_plus.transport import CommandRejected
-from custom_components.automower_ble_plus.wire import Command
+from custom_components.automower_ble_plus.wire import Command, Event
 
 
 class FakeAutomower420:
@@ -111,6 +113,7 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     entry.runtime_data = coordinator
     await coordinator._async_setup()
     coordinator.async_set_updated_data(await coordinator._async_update_data())
+    assert (Command(4730, 4), b"") not in client.calls
     entities = []
     await switch.async_setup_entry(hass, entry, entities.extend)
     await number.async_setup_entry(hass, entry, entities.extend)
@@ -473,12 +476,16 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
     hass.config.components.update({"bluetooth", "bluetooth_adapters"})
     client = FakeAutomower420()
     area = U32.pack(12)
+    monkeypatch.setattr(
+        client, "main_node_version", AsyncMock(return_value="40.1_Main-App-P25_26.19")
+    )
     client.values.update(
         {
             (Command(5604, 20), b""): b"\x01",
             (Command(5604, 13), area): b"\x02",
             (Command(5582, 0), b""): b"\x01",
             (Command(5582, 3), area): I16.pack(450),
+            (Command(4730, 4), b""): b"",
         }
     )
     monkeypatch.setattr(
@@ -494,6 +501,17 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert entry.state == ConfigEntryState.LOADED
             assert hass.states.get("lawn_mower.automower_420").state == "docked"
             assert hass.services.has_service(DOMAIN, "get_schedule")
+            event_ids = hass.states.async_entity_ids("event")
+            assert len(event_ids) == 1
+            entry.runtime_data._async_on_event(
+                Event(4730, 0, pack("<IIIBii", 12, 1795600000, 2, 3, 41500000, 2000000))
+            )
+            await hass.async_block_till_done()
+            message = hass.states.get(event_ids[0]).attributes
+            assert message["event_type"] == "warning"
+            assert message["code"] == 2
+            assert message["message_count"] == 12
+            assert "latitude" not in message
             target = {"entity_id": "lawn_mower.automower_420", "mission_id": 12}
             response = await hass.services.async_call(
                 DOMAIN,

@@ -26,6 +26,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Protección contra heladas | 5370, 5412 | Ajuste con detección de variantes |
 | Estadísticas y desgaste de cuchillas | 4726 | Lecturas y reinicio del contador por perfil de firmware |
 | Avisos y averías | 4730, 4586 | Historial paginado con códigos y niveles de gravedad. Avería actual y confirmación si el cortacésped la permite |
+| Notificaciones BLE | 4586, 4730 | Actualización del estado, actividad y averías al recibir notificaciones. Entidad de evento si el firmware admite la suscripción a nuevos avisos |
 | Corte en espiral y corte localizado | 4710, 4658, 4586 | Activación e intensidad del corte en espiral. Inicio manual de corte localizado cuando el perfil declara esa orden |
 | Áreas de trabajo | 5604, 4658 | Lista, inicio de corte, cambio de nombre y habilitación según firmware |
 | Ajustes de corte por área | 5582, 5604 | Patrón, dirección, variación, perímetro y altura según área y firmware |
@@ -66,3 +67,5 @@ REA confirmó los formatos de las escrituras antirrobo y los intervalos usados p
 El emparejamiento con la estación usa `ChargingStation.InitiateNewPairing` y espera un evento de resultado por BLE (`ev_91d13098314f0b91fb6ef04f09aad8ccdc24c3521c6d3c1e640b0371a9b153a2`, `ev_aba4a141e9fe9090a45c6b581942a37a6cb4324aaa4f70e39112d3128e13ce95`, `ev_16d469f2709047308633bcb9b6d9a9fed142b1775b09f9c31da45f25579bdd55`). El perfil identifica la variante de suscripción. La cabecera del evento contiene el tipo, la familia, el identificador y la longitud (`ev_b60f3404cf52918fe7fd994a41eb42575445f60d4d7a5516bd590f7a1653a530`). Los TIF definen los índices de posición para leer señales del cable. El perfil conocido del 420 declara el emparejamiento, pero carece de las lecturas `LoopSystem` que usa el diagnóstico.
 
 La app consulta `MowerApp.IsErrorConfirmable` y envía `ConfirmError` (`ev_94d8513cc810e00823b149492e3fca4760888ee2d7a78fccc5e0e2d55f239e16`, `ev_a72472af0536626f9b7902baa9733a38c5fc983a86d0936ae9d5055f9513a3d1`). La integración vuelve a leer el código y el permiso del firmware antes de confirmar. El catálogo de avisos incluye los identificadores en los que coinciden todos los perfiles que declaran el código. Los casos ambiguos conservan el código numérico.
+
+Los TIF declaran `MowerApp.SubscribeAllEvents` (4586:7) y `Messages.SubscribeEvents` (4730:4) en los firmwares que admiten cada suscripción. En el perfil G3 del 420 está declarada la primera. REA confirmó que el protocolo decodifica los eventos por familia e identificador (`ev_b60f3404cf52918fe7fd994a41eb42575445f60d4d7a5516bd590f7a1653a530`). La integración separa las notificaciones de las respuestas de comandos y vuelve a suscribirse después de reconectar.

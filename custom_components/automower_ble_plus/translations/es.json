@@ -418,6 +418,24 @@
       "station_firmware_update": {
         "name": "Firmware de la estación de carga"
       }
+    },
+    "event": {
+      "message_events": {
+        "name": "Avisos del cortacésped",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "unknown": "Desconocido",
+              "fatal": "Crítico",
+              "error": "Error",
+              "warning": "Advertencia",
+              "info": "Información",
+              "debug": "Depuración",
+              "software": "Software"
+            }
+          }
+        }
+      }
     }
   },
   "services": {
