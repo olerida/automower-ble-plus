@@ -194,6 +194,52 @@ async def test_accessory_switches_require_mower_availability(tmp_path, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_installation_select_is_detected_and_disambiguates_names(
+    tmp_path, monkeypatch
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    active = Command(5900, 12)
+    profile_name = "Jardín\0".encode("utf-16-le")
+    client.values.update(
+        {
+            (Command(5900, 17), b""): b"\x01",
+            (Command(5900, 1), b""): U32.pack(2),
+            (Command(5900, 3), U32.pack(0)): U32.pack(4) + profile_name,
+            (Command(5900, 3), U32.pack(1)): U32.pack(7) + profile_name,
+            (Command(5900, 5), U32.pack(7)): profile_name,
+            (active, b""): U32.pack(4),
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == Command(5900, 14):
+            client.values[active, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    await select.async_setup_entry(coordinator.hass, entry, entities.extend)
+    assert not entities
+    await coordinator.async_refresh_optional()
+    picker = next(
+        entity for entity in entities if entity.key == "installation_selection"
+    )
+    assert picker.options == ["Jardín (4)", "Jardín (7)"]
+    assert picker.current_option == "Jardín (4)"
+    await picker.async_select_option("Jardín (7)")
+    assert picker.current_option == "Jardín (7)"
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
 async def test_legacy_420_reports_spiral_settings_without_manual_spot_trigger(
     tmp_path, monkeypatch
 ):

@@ -17,6 +17,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     spot_cut_operations = {}
     loop_operations = {}
     station_operations = {}
+    site_operations = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -31,6 +32,8 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             loop_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "ChargingStation" and protocol.get("msgType") == "4692":
             station_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "SiteManager" and protocol.get("msgType") == "5900":
+            site_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "Missions"
             and protocol.get("msgType") == "5604"
@@ -131,6 +134,10 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         and station_events.get("PairingSuccessful") == "2"
     ):
         station_subscription = int(event_channel)
+    create_empty = int(
+        site_operations.get("GetAvailable") == "17"
+        and site_operations.get("CreateNewSite") == "24"
+    )
     result = (
         *reverse,
         *angles,
@@ -142,6 +149,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         spot_cut_trigger,
         positions,
         station_subscription,
+        create_empty,
     )
     return result if any(result) else None
 

@@ -221,6 +221,55 @@ get_installations:
           max: 100
           step: 1
           mode: box
+activate_installation:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    site_id:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+    expected_active_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+create_installation:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    copy_current:
+      required: true
+      selector:
+        boolean:
+delete_installation:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    site_id:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+    expected_name:
+      required: true
+      selector:
+        text:
 rename_installation:
   target:
     entity:

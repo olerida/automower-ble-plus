@@ -28,6 +28,7 @@ class FirmwareProfile:
     spot_cut_trigger: int = 0
     loop_sensor_positions: str = ""
     station_pairing_subscription: int = 0
+    installation_create_empty: int = 0
 
 
 @cache
@@ -68,5 +69,6 @@ def get_firmware_profile(
             spot_cut_trigger=0,
             loop_sensor_positions="",
             station_pairing_subscription=0,
+            installation_create_empty=0,
         )
     )

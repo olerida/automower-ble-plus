@@ -127,9 +127,23 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         """List the available installation profiles on the mower."""
         return await self.coordinator.async_read_installations(offset, limit)
 
+    async def async_activate_installation(
+        self, site_id: int, expected_active_id: int | None = None
+    ) -> None:
+        """Switch to a saved installation."""
+        await self.coordinator.async_set_installation(site_id, expected_active_id)
+
     async def async_rename_installation(self, site_id: int, name: str) -> None:
         """Rename the active installation after verifying the site ID."""
         await self.coordinator.async_change_installation_name(site_id, name)
+
+    async def async_create_installation(self, copy_current: bool) -> dict:
+        """Create an installation and return the assigned identifier."""
+        return await self.coordinator.async_create_installation(copy_current)
+
+    async def async_delete_installation(self, site_id: int, expected_name: str) -> None:
+        """Delete a confirmed inactive installation."""
+        await self.coordinator.async_delete_installation(site_id, expected_name)
 
     async def async_get_map(self, generated: bool = False) -> dict:
         """Read the site or generated map as Automower SVG, when available."""

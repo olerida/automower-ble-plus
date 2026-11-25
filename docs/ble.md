@@ -29,7 +29,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Corte en espiral y corte localizado | 4710, 4658, 4586 | Activación e intensidad del corte en espiral. Inicio manual de corte localizado cuando el perfil declara esa orden |
 | Áreas de trabajo | 5604, 4658 | Lista, inicio de corte, cambio de nombre y habilitación según firmware |
 | Ajustes de corte por área | 5582, 5604 | Patrón, dirección, variación, perímetro y altura según área y firmware |
-| Perfiles de instalación | 5900, 5896, 5578 | Lista, identificación y cambio de nombre del perfil activo, e indicadores de mapas disponibles |
+| Perfiles de instalación | 5900, 5896, 5578 | Selección, cambio de nombre, copia, creación y borrado según firmware, e indicadores de mapas disponibles |
 | Geometría del mapa | 5578, 5786 | Descarga directa del SVG en los firmwares que admiten `GetRaw`. Carga del mapa activo con comprobación de la revisión |
 | Posición GPS | 5264 | Lectura del dispositivo y entidad de ubicación opcional |
 | GeoFence | 4734 | Lectura de estado, activación, radio, sensibilidad y cambio de centro según firmware |
@@ -46,6 +46,8 @@ Para el área secundaria, la app valida una conexión Bluetooth, selecciona `MAN
 REA siguió el reinicio del contador de cuchillas hasta `MowerBluetoothDataSourceImpl` en `ev_395604821ec534bd4bdcc33a21f773fec59c26ae808e728d72846041db9bcb0b`. En los TIF de la familia 4726 aparecen los pares 7/8 y 13/14. La integración selecciona el par por firmware y muestra el botón después de leer su contador.
 
 `SiteManager` resuelve la lista de instalaciones mediante `GetNumberOfSites` y `GetIdListEntry` (`ev_95e5f935eba43867cff0ead95dc1fb48605e8c1eb2841e11c0fdecca210cc6b0`). La integración confirma el ID activo antes de aplicar `Site.SetName` y comprueba el nombre y el ID después de la escritura. Los indicadores de `SiteMap` informan de la disponibilidad de los mapas.
+
+La app cambia de instalación con `ChangeSite` (`ev_0bd2bdfeb2fcee9fc9896caafb252953f6a77bfee9f89d09b034c8974ba39c65`), crea una nueva con `CreateNewSite` (`ev_94297831d32ced1031fd8e58ee247eac7e82d43acb4eb23c983e43aaea5d8f39`), copia la actual con `CreateSiteFromCurrent` (`ev_2da615b8e7768898cee3d95fb9604b938f3ed68d3ed814771663e97589ce5b71`) y elimina por ID (`ev_e66b6e040c58edf92b05b42b5153586af27bcc6583f9d14244e42402d725c19c`). La integración verifica el ID activo después del cambio y espera el evento de borrado del ID solicitado. El perfil G3 conocido del 420 carece de `SiteManager`.
 
 La app lee por BLE la suma de comprobación del mapa activo y recupera la geometría de su caché o del servidor (`ev_399d1f0af547570ccf17d7f7c44029f5b1c9c088bdde53c040b777b92f10f935`). Los TIF declaran los atributos 100 y 101 de `SiteMap` como SVG legible por `NativeAttributes.GetRaw`. Para subir la geometría, la app serializa polígonos y líneas en SVG (`ev_21eefa8d76472a52a8195a83b1b8dfe0a0ebb72a1ffd47685c281b40d880a179`), usa GZIP y CRC32 para transferirla (`ev_692ad27c006213d64d6f040235177f16d22567c27db0fd6e353fbb43775abd33`, `ev_44753a99b47edacf59c23507baf3cbb41a8ada36fccaf4d21d0cbb1a8d36eacb`) y publica el MD5 del SVG tras el último fragmento (`ev_9b8c838b03440c9f763aa613bdcc68c0d1ea77e81b08fd8d2034f6f36f399b99`, `ev_5d487bd75f9af263575d117aee0cfb8fec03d28aa69233f9757475f5e7236bee`).
 

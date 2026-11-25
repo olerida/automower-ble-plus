@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import MowerEntry
 from .fota import FirmwareStatus
+from .sites import InstallationSelection
 
 
 async def async_get_config_entry_diagnostics(
@@ -23,5 +24,6 @@ async def async_get_config_entry_diagnostics(
             key: asdict(value) if isinstance(value, FirmwareStatus) else value
             for key, value in coordinator.data.items()
             if key not in ("latitude", "longitude")
+            and not isinstance(value, InstallationSelection)
         },
     }

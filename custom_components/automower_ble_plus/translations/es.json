@@ -294,6 +294,9 @@
           "high": "Alta",
           "very_high": "Muy alta"
         }
+      },
+      "installation_selection": {
+        "name": "Instalación activa"
       }
     },
     "sensor": {
@@ -568,6 +571,44 @@
     "get_loop_signals": {
       "name": "Leer señales del cable",
       "description": "Lee las señales de los cables instalados y su calidad en cada sensor compatible."
+    },
+    "activate_installation": {
+      "name": "Activar instalación",
+      "description": "Cambia a una instalación guardada.",
+      "fields": {
+        "site_id": {
+          "name": "ID de instalación",
+          "description": "ID del perfil activo devuelto por Leer perfiles de instalación."
+        },
+        "expected_active_id": {
+          "name": "ID activo esperado",
+          "description": "Indica el ID que debe estar activo antes del cambio, si quieres comprobarlo."
+        }
+      }
+    },
+    "create_installation": {
+      "name": "Crear instalación",
+      "description": "Crea una instalación o una copia y devuelve su ID.",
+      "fields": {
+        "copy_current": {
+          "name": "Copiar la instalación activa",
+          "description": "Activa para copiar la instalación activa. Desactiva para crear una instalación vacía si el firmware lo admite."
+        }
+      }
+    },
+    "delete_installation": {
+      "name": "Eliminar instalación inactiva",
+      "description": "Elimina una instalación inactiva después de comprobar su ID y su nombre.",
+      "fields": {
+        "site_id": {
+          "name": "ID de instalación",
+          "description": "ID del perfil activo devuelto por Leer perfiles de instalación."
+        },
+        "expected_name": {
+          "name": "Nombre esperado",
+          "description": "Introduce el nombre exacto devuelto por Leer perfiles de instalación."
+        }
+      }
     }
   },
   "selector": {

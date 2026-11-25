@@ -1,7 +1,7 @@
 """Manage one authenticated BLE session per mower."""
 
 import asyncio
-from collections.abc import Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import replace
 from datetime import timedelta
 from struct import error as StructError
@@ -69,7 +69,15 @@ from .schedule import (
     async_get_schedule_limits,
     async_replace_schedule,
 )
-from .sites import async_get_installations, async_rename_installation
+from .sites import (
+    InstallationSelection,
+    async_activate_installation,
+    async_create_installation,
+    async_delete_installation,
+    async_get_installation_selection,
+    async_get_installations,
+    async_rename_installation,
+)
 from .station import async_get_loop_signals, async_pair_charging_station
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
 from .wire import Command
@@ -81,7 +89,7 @@ from .work_areas import (
 )
 
 type MowerEntry = ConfigEntry[MowerCoordinator]
-type MowerData = dict[str, int | FirmwareStatus]
+type MowerData = dict[str, int | FirmwareStatus | InstallationSelection]
 type CommandBatch = Iterable[tuple[Command, bytes]]
 
 _CLEAR_OVERRIDE = Command(4658, 6)
@@ -255,7 +263,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             for key, reading in READINGS.items()
             if key not in setting_keys
         )
-        probes.extend((("statistics", None), ("position", None)))
+        probes.extend(
+            (("statistics", None), ("position", None), ("installation_selection", None))
+        )
         probes.extend((key, None) for key in FIRMWARE_TARGETS)
         if self._configured_pin is not None:
             probes.append(("geofence_center_settable", None))
@@ -311,6 +321,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                             values.pop(key, None)
                         else:
                             values[key] = status
+                    elif key == "installation_selection":
+                        selection = await async_get_installation_selection(self.client)
+                        if selection is None:
+                            values.pop(key, None)
+                        else:
+                            values[key] = selection
                     else:
                         values.pop("latitude", None)
                         values.pop("longitude", None)
@@ -735,7 +751,13 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         async with self._operation_lock:
             try:
                 await self._async_connect()
-                return await async_get_installations(self.client, offset, limit)
+                result = await async_get_installations(self.client, offset, limit)
+                if result["available"]:
+                    profile = self.firmware_profile
+                    result["can_create_empty"] = bool(
+                        profile and profile.installation_create_empty
+                    )
+                return result
             except (
                 MowerConnectionError,
                 CommandRejected,
@@ -746,12 +768,43 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     f"Could not read the mower installations: {err}"
                 ) from err
 
+    async def async_set_installation(
+        self, site_id: int, expected_active_id: int | None = None
+    ) -> None:
+        """Switch profiles and refresh the entities with the mower's new state."""
+        await self._async_change_installations(
+            async_activate_installation, site_id, expected_active_id
+        )
+        await self.async_refresh_optional()
+
     async def async_change_installation_name(self, site_id: int, name: str) -> None:
         """Update the active installation where the mower allows profile editing."""
+        await self._async_change_installations(async_rename_installation, site_id, name)
+
+    async def async_create_installation(self, copy_current: bool) -> dict:
+        """Request a new installation and return the mower's assigned ID."""
+        profile = self.firmware_profile
+        if not copy_current and not (profile and profile.installation_create_empty):
+            raise HomeAssistantError(
+                "This firmware does not expose empty installation creation"
+            )
+        return await self._async_change_installations(
+            async_create_installation, copy_current
+        )
+
+    async def async_delete_installation(self, site_id: int, expected_name: str) -> None:
+        """Remove an inactive installation after checking its identity."""
+        await self._async_change_installations(
+            async_delete_installation, site_id, expected_name
+        )
+
+    async def _async_change_installations[T](
+        self, operation: Callable[..., Awaitable[T]], *args
+    ) -> T:
         async with self._operation_lock:
             try:
                 await self._async_connect()
-                await async_rename_installation(self.client, site_id, name)
+                result = await operation(self.client, *args)
             except (
                 MowerConnectionError,
                 CommandRejected,
@@ -759,8 +812,19 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 StructError,
             ) as err:
                 raise HomeAssistantError(
-                    f"Could not change the mower installation name: {err}"
+                    f"Could not update installations: {err}"
                 ) from err
+            data = dict(self.data)
+            data.pop("installation_selection", None)
+            try:
+                selection = await async_get_installation_selection(self.client)
+            except MowerConnectionError, CommandRejected, ValueError, StructError:
+                LOGGER.debug("Could not refresh the installation selection")
+            else:
+                if selection is not None:
+                    data["installation_selection"] = selection
+            self.async_set_updated_data(data)
+            return result
 
     async def async_read_map(self, generated: bool) -> dict:
         """Read map geometry from the mower's native BLE attributes."""

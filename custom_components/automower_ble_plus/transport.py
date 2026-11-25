@@ -86,10 +86,15 @@ class AutomowerClient(BLEClient):
         return response
 
     async def command_and_wait_for_event(
-        self, command: Command, event_ids: tuple[int, ...], *, timeout: float
+        self,
+        command: Command,
+        event_ids: tuple[int, ...],
+        payload: bytes = b"",
+        *,
+        timeout: float,
     ) -> Event:
         """Send a command and wait for both its response and its result event."""
-        _, event = await self._exchange(command, b"", timeout, event_ids)
+        _, event = await self._exchange(command, payload, timeout, event_ids)
         if event is None:
             raise MowerConnectionError("The mower did not report the command outcome")
         return event

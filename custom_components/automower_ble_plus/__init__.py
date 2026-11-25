@@ -69,6 +69,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "get_work_areas": page_schema,
         "get_work_area_mowing": {vol.Required("mission_id"): mission},
         "get_installations": page_schema,
+        "activate_installation": {
+            vol.Required("site_id"): _bounded_integer(0, 0xFFFFFFFF),
+            vol.Optional("expected_active_id"): _bounded_integer(0, 0xFFFFFFFF),
+        },
+        "create_installation": {vol.Required("copy_current"): cv.boolean},
+        "delete_installation": {
+            vol.Required("site_id"): _bounded_integer(0, 0xFFFFFFFF),
+            vol.Required("expected_name"): cv.string,
+        },
         "get_geofence": {},
         "get_loop_signals": {},
         "get_map": {vol.Optional("generated", default=False): cv.boolean},
@@ -108,7 +117,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             supports_response=SupportsResponse.ONLY
             if action.startswith("get_")
             else SupportsResponse.OPTIONAL
-            if action == "replace_map"
+            if action in ("create_installation", "replace_map")
             else SupportsResponse.NONE,
         )
     return True

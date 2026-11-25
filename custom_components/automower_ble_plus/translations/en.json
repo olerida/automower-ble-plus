@@ -294,6 +294,9 @@
           "high": "High",
           "very_high": "Very high"
         }
+      },
+      "installation_selection": {
+        "name": "Active installation"
       }
     },
     "sensor": {
@@ -568,6 +571,44 @@
     "get_loop_signals": {
       "name": "Read loop signals",
       "description": "Read installed loop signals and quality at each supported mower sensor."
+    },
+    "activate_installation": {
+      "name": "Activate installation",
+      "description": "Switch to a saved installation.",
+      "fields": {
+        "site_id": {
+          "name": "Site ID",
+          "description": "ID of the active installation returned by Read installation profiles."
+        },
+        "expected_active_id": {
+          "name": "Expected active ID",
+          "description": "Optionally require this installation to be active before switching."
+        }
+      }
+    },
+    "create_installation": {
+      "name": "Create installation",
+      "description": "Create an installation or a copy and return its ID.",
+      "fields": {
+        "copy_current": {
+          "name": "Copy active installation",
+          "description": "Turn on to copy the active installation. Turn off to create an empty installation if supported."
+        }
+      }
+    },
+    "delete_installation": {
+      "name": "Delete inactive installation",
+      "description": "Delete the inactive installation after checking its ID and name.",
+      "fields": {
+        "site_id": {
+          "name": "Site ID",
+          "description": "ID of the active installation returned by Read installation profiles."
+        },
+        "expected_name": {
+          "name": "Expected name",
+          "description": "Enter the exact name returned by Read installation profiles."
+        }
+      }
     }
   },
   "selector": {
