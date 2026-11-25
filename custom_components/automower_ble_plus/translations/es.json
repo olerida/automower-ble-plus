@@ -108,6 +108,12 @@
   },
   "entity": {
     "button": {
+      "appdrive_undock": {
+        "name": "Salir de la base con appDrive"
+      },
+      "appdrive_stop": {
+        "name": "Detener appDrive"
+      },
       "start_epos_docking_installation": {
         "name": "Establecer punto de acoplamiento EPOS"
       },
@@ -173,6 +179,15 @@
       }
     },
     "binary_sensor": {
+      "appdrive_remote_control": {
+        "name": "Control remoto de appDrive"
+      },
+      "appdrive_dock_possible": {
+        "name": "Acoplamiento por appDrive disponible"
+      },
+      "appdrive_undock_possible": {
+        "name": "Salida de la base por appDrive disponible"
+      },
       "wifi_connected": {
         "name": "Conexión Wi-Fi",
         "state_attributes": {
@@ -473,6 +488,37 @@
       }
     },
     "sensor": {
+      "appdrive_state": {
+        "name": "Estado de appDrive",
+        "state": {
+          "idle": "En reposo",
+          "in_operation": "En funcionamiento",
+          "performing_action": "Ejecutando maniobra",
+          "error": "Error",
+          "pending_start": "Esperando para arrancar"
+        }
+      },
+      "appdrive_activity": {
+        "name": "Actividad de appDrive",
+        "state": {
+          "none": "Ninguna",
+          "undocking": "Saliendo de la base",
+          "docking": "Acoplándose a la base",
+          "planning": "Planificando",
+          "searching_for_satellites": "Buscando satélites",
+          "driving_to_point": "Dirigiéndose al punto"
+        }
+      },
+      "appdrive_undock_status": {
+        "name": "Resultado de la salida de la base con appDrive",
+        "state": {
+          "in_progress": "En curso",
+          "complete": "Completada",
+          "stop_requested": "Parada solicitada",
+          "failed": "Fallida",
+          "unconfirmed": "Sin confirmar"
+        }
+      },
       "wifi_signal_strength": {
         "name": "Intensidad de señal Wi-Fi"
       },

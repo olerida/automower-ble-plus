@@ -23,6 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from .appdrive import APPDRIVE_ENUM_OPTIONS
 from .coordinator import MowerCoordinator, MowerEntry
 from .entity import MowerEntity, MowerValueEntity, async_add_detected
 from .epos import EPOS_ENUM_OPTIONS
@@ -133,7 +134,7 @@ _DESCRIPTIONS = (
     ),
     *(
         _description(key, SensorDeviceClass.ENUM, options=options)
-        for key, options in EPOS_ENUM_OPTIONS.items()
+        for key, options in (EPOS_ENUM_OPTIONS | APPDRIVE_ENUM_OPTIONS).items()
     ),
 )
 

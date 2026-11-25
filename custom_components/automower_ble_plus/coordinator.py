@@ -24,6 +24,20 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .appdrive import (
+    APPDRIVE_ABORT,
+    APPDRIVE_EVENTS,
+    APPDRIVE_STATE,
+    APPDRIVE_STATUS_KEYS,
+    APPDRIVE_SUPPORTED,
+    APPDRIVE_UNDOCK,
+    APPDRIVE_UNDOCK_POSSIBLE,
+    APPDRIVE_UNDOCK_TIMEOUT,
+    AppDriveState,
+    UndockStatus,
+    async_read_appdrive_status,
+    async_remote_control_available,
+)
 from .const import DOMAIN, LOGGER
 from .epos import (
     EPOS_STATUS_KEYS,
@@ -224,6 +238,24 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._reset_request_sent = False
         self._wifi_operation_lock = asyncio.Lock()
         self._wifi_event_listener: Callable[[Event], None] | None = None
+        self._appdrive_undock_task: asyncio.Task[None] | None = None
+
+    @property
+    def appdrive_undocking(self) -> bool:
+        """Whether Home Assistant is waiting for an appDrive undock."""
+        return bool(
+            self.data
+            and self.data.get("appdrive_undock_status") == UndockStatus.IN_PROGRESS
+        )
+
+    @property
+    def appdrive_active(self) -> bool:
+        """Whether appDrive reports a session that may be stopped."""
+        return self.appdrive_undocking or (self.data or {}).get("appdrive_state") in (
+            AppDriveState.IN_OPERATION,
+            AppDriveState.PERFORMING_ACTION,
+            AppDriveState.PENDING_START,
+        )
 
     @property
     def can_configure_wifi(self) -> bool:
@@ -291,6 +323,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             scan.handle_event(event)
         elif event.family == WIFI_FAMILY and self._wifi_event_listener is not None:
             self._wifi_event_listener(event)
+        elif event.family == APPDRIVE_EVENTS.family and (
+            (event.event_id == 0 and len(event.payload) == U8.size)
+            or (event.event_id in (1, 2) and not event.payload)
+        ):
+            self._async_schedule_event_refresh()
         elif (
             event.family == _CALENDAR_EVENTS.family
             and event.event_id in (_CALENDAR_TIME_UPDATED, _CALENDAR_TASKS_UPDATED)
@@ -350,6 +387,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             if profile is not None and not profile.message_events
             else (_MOWER_EVENTS, _CALENDAR_EVENTS, _MESSAGE_EVENTS)
         )
+        if self.data and "appdrive_state" in self.data:
+            commands += (APPDRIVE_EVENTS,)
         for command in commands:
             if (
                 command in self._unavailable_subscriptions
@@ -479,6 +518,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 )
                 if self._calendar_update_pending and self.client.is_connected():
                     await self._async_refresh_calendar(data)
+                if "appdrive_state" in data and self.client.is_connected():
+                    with suppress(CommandRejected, MowerConnectionError):
+                        await self._async_refresh_appdrive(data)
                 await self._async_refresh_wire_test(data, state, activity)
                 if (
                     self.firmware_profile
@@ -572,6 +614,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ("vision", None),
                 ("epos", None),
                 ("wifi", None),
+                ("appdrive", None),
             )
         )
         probes.extend((key, None) for key in FIRMWARE_TARGETS)
@@ -681,6 +724,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         for status in WIFI_STATUS_KEYS.difference(wifi):
                             values.pop(status, None)
                         values.update(wifi)
+                    elif key == "appdrive":
+                        await self._async_refresh_appdrive(values)
                     else:
                         values.pop("latitude", None)
                         values.pop("longitude", None)
@@ -753,6 +798,17 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             data.update(status)
         if monotonic() >= self._docking_installation_start_until:
             data.pop("epos_docking_start_pending", None)
+
+    async def _async_refresh_appdrive(self, data: MowerData) -> None:
+        status = await async_read_appdrive_status(self.client)
+        for key in APPDRIVE_STATUS_KEYS.difference(status):
+            data.pop(key, None)
+        data.update(status)
+        if "appdrive_undock_possible" in status and "in_charging_station" in data:
+            with suppress(CommandRejected, ValueError):
+                docked = await self._read(READINGS["in_charging_station"])
+                if docked in (0, 1):
+                    data["in_charging_station"] = docked
 
     async def _async_refresh_wire_test(
         self, data: MowerData, state: int, activity: int
@@ -1247,15 +1303,19 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
-        if (scan_task := self._reference_scan_task) is not None:
-            scan_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await scan_task
+        for task in (self._reference_scan_task, self._appdrive_undock_task):
+            if task is not None:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
         await super().async_shutdown()
         async with self._operation_lock:
             if self.reference_scan_active and self.client.is_connected():
                 with suppress(CommandRejected, MowerConnectionError):
                     await self.client.command(STOP_REFERENCE_SCAN)
+            if self.appdrive_undocking and self.client.is_connected():
+                with suppress(CommandRejected, MowerConnectionError):
+                    await self.client.command(APPDRIVE_ABORT)
             self._reference_scan = None
             await self.client.disconnect()
 
@@ -1677,6 +1737,128 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 if key not in WIFI_STATUS_KEYS
             }
             self.async_set_updated_data({**data, **status})
+
+    async def async_undock_appdrive(self) -> None:
+        """Request the mower's built-in undock manoeuvre from its paused state."""
+        async with self._operation_lock:
+            if self.appdrive_undocking:
+                raise HomeAssistantError("The appDrive undock is already in progress")
+            try:
+                await self._async_connect()
+                if await self._read(APPDRIVE_SUPPORTED) != 1:
+                    raise ValueError("The mower does not support appDrive")
+                if await async_remote_control_available(self.client) not in (None, 1):
+                    raise ValueError("Enable remote control on the mower first")
+                if await self._read(Reading(GET_STATE, U8)) != MowerState.PAUSED:
+                    raise ValueError(
+                        "Pause the mower before requesting appDrive undock"
+                    )
+                if await self._read(READINGS["in_charging_station"]) != 1:
+                    raise ValueError("The mower must be in its charging station")
+                if await self._read(APPDRIVE_UNDOCK_POSSIBLE) != 1:
+                    raise ValueError("The mower does not currently permit undocking")
+                state = AppDriveState(await self._read(APPDRIVE_STATE))
+                if state in (AppDriveState.PERFORMING_ACTION, AppDriveState.ERROR):
+                    raise ValueError(
+                        "The mower's appDrive state does not permit undocking"
+                    )
+                if "epos_installation_state" in self.data:
+                    epos = await async_read_docking_status(self.client)
+                    if epos.get("epos_installation_state") != 0:
+                        raise ValueError(
+                            "Finish the EPOS docking-point setup before undocking"
+                        )
+                await self.client.command(APPDRIVE_UNDOCK)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not undock using appDrive: {err}"
+                ) from err
+            self.async_set_updated_data(
+                {
+                    **self.data,
+                    "appdrive_undock_status": UndockStatus.IN_PROGRESS,
+                }
+            )
+            self._appdrive_undock_task = self.config_entry.async_create_background_task(
+                self.hass,
+                self._async_track_appdrive_undock(),
+                "track the Automower appDrive undock",
+            )
+
+    async def _async_track_appdrive_undock(self) -> None:
+        try:
+            async with asyncio.timeout(APPDRIVE_UNDOCK_TIMEOUT):
+                while True:
+                    async with self._operation_lock:
+                        if not self.client.is_connected():
+                            raise MowerConnectionError(
+                                "Bluetooth disconnected during appDrive undock"
+                            )
+                        state = AppDriveState(await self._read(APPDRIVE_STATE))
+                        docked = await self._read(READINGS["in_charging_station"])
+                        if docked not in (0, 1):
+                            raise ValueError(
+                                "The mower returned an invalid charging station state"
+                            )
+                        status = UndockStatus.IN_PROGRESS
+                        if state is AppDriveState.ERROR:
+                            status = UndockStatus.FAILED
+                        elif not docked and state in (
+                            AppDriveState.IDLE,
+                            AppDriveState.IN_OPERATION,
+                        ):
+                            status = UndockStatus.COMPLETE
+                        data = {
+                            **self.data,
+                            "appdrive_state": state,
+                            "in_charging_station": docked,
+                            "appdrive_undock_status": status,
+                        }
+                        if data != self.data:
+                            self.async_set_updated_data(data)
+                        if status is not UndockStatus.IN_PROGRESS:
+                            return
+                    await asyncio.sleep(1)
+        except CommandRejected, MowerConnectionError, TimeoutError, ValueError:
+            async with self._operation_lock:
+                if self.appdrive_undocking:
+                    self.async_set_updated_data(
+                        {
+                            **self.data,
+                            "appdrive_undock_status": UndockStatus.UNCONFIRMED,
+                        }
+                    )
+
+    async def async_stop_appdrive(self) -> None:
+        """Send the firmware's abort command for an active appDrive session."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                if await self._read(APPDRIVE_SUPPORTED) != 1:
+                    raise ValueError("The mower does not support appDrive")
+                if not self.appdrive_undocking and await self._read(
+                    APPDRIVE_STATE
+                ) not in (
+                    AppDriveState.IN_OPERATION,
+                    AppDriveState.PERFORMING_ACTION,
+                    AppDriveState.PENDING_START,
+                ):
+                    return
+                await self.client.command(APPDRIVE_ABORT)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(f"Could not stop appDrive: {err}") from err
+            if (
+                self.appdrive_undocking
+                and (task := self._appdrive_undock_task) is not None
+            ):
+                task.cancel()
+                self.async_set_updated_data(
+                    {
+                        **self.data,
+                        "appdrive_undock_status": UndockStatus.STOP_REQUESTED,
+                    }
+                )
+        await self.async_request_refresh()
 
     async def async_start_epos_docking_installation(self) -> None:
         """Ask the docked, paused mower to establish its EPOS docking point."""

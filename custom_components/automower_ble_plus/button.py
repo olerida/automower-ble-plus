@@ -1,6 +1,6 @@
 """One-shot schedule and parking commands."""
 
-from automower_ble.protocol import MowerActivity
+from automower_ble.protocol import MowerActivity, MowerState
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -106,6 +106,18 @@ async def async_setup_entry(
         lambda _key, _: StopReferenceScanButton(
             entry.runtime_data, "stop_epos_reference_scan"
         ),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"appdrive_undock_possible": None},
+        lambda _key, _: AppDriveUndockButton(entry.runtime_data, "appdrive_undock"),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"appdrive_state": None},
+        lambda _key, _: StopAppDriveButton(entry.runtime_data, "appdrive_stop"),
     )
 
 
@@ -370,3 +382,34 @@ class ConfirmFaultButton(MowerEntity, ButtonEntity):
         if not isinstance(code, int) or not code:
             raise ServiceValidationError("The mower does not report an active fault")
         await self.coordinator.async_confirm_error(code)
+
+
+class AppDriveUndockButton(MowerEntity, ButtonEntity):
+    """Ask the mower to leave the charger in appDrive mode."""
+
+    @property
+    def available(self) -> bool:
+        data = self.coordinator.data
+        return (
+            super().available
+            and data.get("appdrive_undock_possible") == 1
+            and data.get("appdrive_remote_control") in (None, 1)
+            and data.get("state") == MowerState.PAUSED
+            and data.get("in_charging_station") == 1
+            and data.get("epos_installation_state") in (None, 0)
+            and not self.coordinator.appdrive_undocking
+        )
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_undock_appdrive()
+
+
+class StopAppDriveButton(MowerEntity, ButtonEntity):
+    """Stop a remote-driver session using the firmware's abort command."""
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.appdrive_active
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_stop_appdrive()

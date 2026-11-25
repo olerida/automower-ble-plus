@@ -8,6 +8,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .appdrive import APPDRIVE_BINARY_KEYS
 from .coordinator import MowerEntry
 from .entity import MowerValueEntity, async_add_detected
 from .epos import EPOS_BINARY_KEYS
@@ -49,7 +50,12 @@ async def async_setup_entry(
     async_add_detected(
         entry,
         add_entities,
-        dict.fromkeys(VISION_STATUS_KEYS | EPOS_BINARY_KEYS | {"is_daylight"}),
+        dict.fromkeys(
+            VISION_STATUS_KEYS
+            | EPOS_BINARY_KEYS
+            | APPDRIVE_BINARY_KEYS
+            | {"is_daylight"}
+        ),
         lambda key, _: DiagnosticStatusSensor(entry.runtime_data, key),
     )
 

@@ -108,6 +108,12 @@
   },
   "entity": {
     "button": {
+      "appdrive_undock": {
+        "name": "Undock with appDrive"
+      },
+      "appdrive_stop": {
+        "name": "Stop appDrive"
+      },
       "start_epos_docking_installation": {
         "name": "Set EPOS docking point"
       },
@@ -173,6 +179,15 @@
       }
     },
     "binary_sensor": {
+      "appdrive_remote_control": {
+        "name": "AppDrive remote control"
+      },
+      "appdrive_dock_possible": {
+        "name": "AppDrive docking possible"
+      },
+      "appdrive_undock_possible": {
+        "name": "AppDrive undocking possible"
+      },
       "wifi_connected": {
         "name": "Wi-Fi connection",
         "state_attributes": {
@@ -473,6 +488,37 @@
       }
     },
     "sensor": {
+      "appdrive_state": {
+        "name": "AppDrive state",
+        "state": {
+          "idle": "Idle",
+          "in_operation": "In operation",
+          "performing_action": "Performing a manoeuvre",
+          "error": "Error",
+          "pending_start": "Waiting to start"
+        }
+      },
+      "appdrive_activity": {
+        "name": "AppDrive activity",
+        "state": {
+          "none": "None",
+          "undocking": "Undocking",
+          "docking": "Docking",
+          "planning": "Planning",
+          "searching_for_satellites": "Searching for satellites",
+          "driving_to_point": "Driving to point"
+        }
+      },
+      "appdrive_undock_status": {
+        "name": "AppDrive undock result",
+        "state": {
+          "in_progress": "In progress",
+          "complete": "Complete",
+          "stop_requested": "Stop requested",
+          "failed": "Failed",
+          "unconfirmed": "Unconfirmed"
+        }
+      },
       "wifi_signal_strength": {
         "name": "Wi-Fi signal strength"
       },
