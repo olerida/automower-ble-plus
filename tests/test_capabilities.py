@@ -31,6 +31,7 @@ from custom_components.automower_ble_plus import (
     binary_sensor,
     button,
     calendar,
+    device_tracker,
     diagnostics,
     mower_clock,
     number,
@@ -1574,6 +1575,87 @@ async def test_firmware_controls_require_model_support_and_a_ready_vendor_update
 
 
 @pytest.mark.asyncio
+async def test_gps_tracker_handles_reports_loss_of_fix_and_reconnect(
+    tmp_path, monkeypatch
+):
+    hass = HomeAssistant(str(tmp_path))
+    entry = _entry()
+    coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    gps = Command(5264, 0)
+    subscribe = Command(5264, 1)
+    pose = Command(5242, 5)
+    # Legacy firmware can respond to GetPosition without a GetAvailable method.
+    client.values.update(
+        {
+            (gps, b""): pack("<ii", 0, 0),
+            (subscribe, b""): b"",
+            (pose, b""): pack("<iiihiih", 0, 0, 0, 1812, 14, -1, 12),
+        }
+    )
+    connected = True
+
+    async def connect(_device):
+        nonlocal connected
+        connected = True
+        return ResponseResult.OK
+
+    monkeypatch.setattr(client, "is_connected", lambda: connected)
+    monkeypatch.setattr(client, "connect", connect, raising=False)
+    monkeypatch.setattr(
+        coordinator_module.bluetooth,
+        "async_ble_device_from_address",
+        lambda *args, **kwargs: object(),
+    )
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    trackers = []
+    sensors = []
+    await device_tracker.async_setup_entry(hass, entry, trackers.extend)
+    await sensor.async_setup_entry(hass, entry, sensors.extend)
+    await coordinator.async_refresh_optional()
+    (tracker,) = trackers
+    assert tracker.unique_id.endswith("_latitude")
+    assert not tracker.available
+    assert (subscribe, b"") not in client.calls
+    lookup = {entity.key: entity for entity in sensors}
+    assert lookup["local_heading"].native_value == 181.2
+    assert lookup["local_position_accuracy"].native_value == 14
+    assert lookup["local_heading_accuracy"].native_value == 1.2
+
+    monkeypatch.setattr(tracker, "async_write_ha_state", Mock())
+    await tracker.async_added_to_hass()
+    assert client.calls.count((subscribe, b"")) == 1
+    assert coordinator._gps_report_task is None
+    coordinator._async_on_event(Event(5264, 0, b"\x01"))
+    assert coordinator._gps_report_task is None
+    original_timer = coordinator._unsub_refresh
+    coordinator._async_on_event(Event(5264, 0, pack("<ii", -22_500_000, 520_000_000)))
+    await coordinator._gps_report_task
+    assert coordinator._unsub_refresh is original_timer
+    assert tracker.available
+    assert (tracker.latitude, tracker.longitude) == (52.0, -2.25)
+    coordinator._async_on_event(Event(5264, 0, pack("<ii", 0, 0)))
+    await coordinator._gps_report_task
+    assert not tracker.available
+    assert tracker.latitude is None and tracker.longitude is None
+
+    connected = False
+    client.values[gps, b""] = pack("<ii", 22_500_000, 519_000_000)
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    assert client.calls.count((subscribe, b"")) == 2
+    assert (tracker.latitude, tracker.longitude) == (51.9, 2.25)
+    coordinator.async_set_gps_tracking(False)
+    latest_task = coordinator._gps_report_task
+    coordinator._async_on_event(Event(5264, 0, pack("<ii", 22_500_000, 530_000_000)))
+    assert coordinator._gps_report_task is latest_task
+    assert tracker.latitude == 51.9
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
 async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkeypatch):
     integrations = Path(__file__).resolve().parents[1] / "custom_components"
     (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
@@ -1612,6 +1694,10 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             ).encode()[1],
             (Command(4690, 14), b""): U32.pack(5),
             (Command(4690, 15), b""): U32.pack(5),
+            (Command(5264, 4), b""): b"\x01",
+            (Command(5264, 0), b""): pack("<ii", 22_500_000, 520_000_000),
+            (Command(5242, 5), b""): pack("<iiihiih", 910, -1200, 45, -900, 20, 30, 11),
+            (Command(5242, 11), b""): pack("<ii", 22_499_900, 519_999_900),
         }
     )
     monkeypatch.setattr(
@@ -1670,6 +1756,31 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             await entry.runtime_data._event_refresh_task
             assert entry.runtime_data.data["mower_clock"] == 1_800_000_000
             registry = entity_registry.async_get(hass)
+            tracker_id = registry.async_get_entity_id(
+                "device_tracker", DOMAIN, f"{entry.runtime_data.address}_latitude"
+            )
+            assert registry.async_get(tracker_id).disabled
+            assert (Command(5264, 1), b"") not in client.calls
+            position = await hass.services.async_call(
+                DOMAIN,
+                "get_position",
+                {"entity_id": "lawn_mower.automower_420"},
+                blocking=True,
+                return_response=True,
+            )
+            assert position["lawn_mower.automower_420"] == {
+                "gps": {"longitude": 2.25, "latitude": 52.0},
+                "local": {
+                    "x_mm": 910,
+                    "y_mm": -1200,
+                    "z_mm": 45,
+                    "z_accuracy_mm": 30,
+                    "heading_degrees": 270.0,
+                    "heading_accuracy_degrees": 1.1,
+                    "xy_accuracy_mm": 20,
+                    "origin": {"longitude": 2.24999, "latitude": 51.99999},
+                },
+            }
             next_start_id = registry.async_get_entity_id(
                 "sensor", DOMAIN, f"{entry.runtime_data.address}_next_start"
             )

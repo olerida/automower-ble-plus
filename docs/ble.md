@@ -37,7 +37,7 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Ajustes de corte por área | 5582, 5604 | Patrón, dirección, variación, perímetro, altura y prioridad según área y firmware |
 | Perfiles de instalación | 5900, 5896, 5578 | Selección, cambio de nombre, copia, creación y borrado según firmware, e indicadores de mapas disponibles |
 | Geometría del mapa | 5578, 5786 | Descarga directa del SVG en los firmwares que admiten `GetRaw`. Carga del mapa activo con comprobación de la revisión |
-| Posición GPS | 5264 | Lectura del dispositivo y entidad de ubicación opcional |
+| Posición GPS y coordenadas de instalación | 5264, 5242 | Lectura y avisos GPS cada 30 segundos con el rastreador habilitado, coordenadas locales, origen geográfico, rumbo y precisión según firmware |
 | GeoFence | 4734 | Lectura de estado, activación, radio, sensibilidad y cambio de centro según firmware |
 | Protección antirrobo | 4736 | Ajustes con sesión de operador y sensores de alarma según modelo y firmware |
 | Actualización de firmware | 5296, 6244, 4698, 6552 | Entidades del cortacésped y la estación con detección, búsqueda de actualizaciones e instalación de la versión descargada |
@@ -112,3 +112,7 @@ Los 166 TIF del APK declaran `System.ResetToUserDefault` (4698:8), incluido el p
 Las franjas del cortacésped guardan una hora local, una duración y los días de la semana. Los 166 TIF declaran la lectura y la transacción de escritura, y 157 declaran la variante con misión. El calendario de Home Assistant expande las franjas en fechas concretas. Cada edición lee de nuevo las franjas antes de escribir y verifica el resultado. Los cambios se aplican al horario semanal en cuanto el robot los guarda. [Entidades de calendario de Home Assistant](https://contributors.home-assistant.io/core/entities/calendar/)
 
 Los 166 TIF declaran `Calendar.SubscribeAllEvents` (4690:0). `TasksUpdated` (evento 1) lleva un contador de 32 bits. Como el contador puede repetirse al editar una franja, la integración vuelve a leer la lista completa. `TimeUpdated` (evento 0) contiene la hora local y provoca una nueva lectura de la zona horaria y del próximo arranque, si están disponibles. La suscripción se renueva tras reconectar y se mantiene la lectura periódica.
+
+142 TIF declaran `Position.GetPosition` (5264:0) y `SubscribePosition30s` (5264:1). El evento `PositionReport` entrega longitud y latitud en décimas de microgrado. La integración renueva la suscripción al reconectar cuando el rastreador está habilitado. El modo de lectura admite los perfiles con `GetPosition` que carecen de `GetAvailable`. El historial reciente que la app solicita al servidor pertenece a la ruta `BACKEND` (`ev_da026851bb2ae51bc4d5914001e57cfbe09b56e71ac0c7c4b3350b7000e065e3`).
+
+La app consulta el rumbo y las coordenadas locales por BLE, en décimas de grado y milímetros respectivamente (`ev_2fbc8e4a1d19520cc23b01c0d9d6b9282a11dd7540c546c67154479d90a75779`, `ev_aafc8a86cc9601b56f519cc22566c030be13eb517658965437af1925daae7660`). 145 TIF declaran `LocalPosition.GetCoordinate` (5242:5), que proporciona una lectura conjunta de X, Y, Z, rumbo y precisión. La acción `get_position` devuelve el GPS y el marco local en campos separados, con el rumbo normalizado a 0–359,9 grados. 128 TIF declaran también `LocalPosition.GetOrigin` (5242:11).

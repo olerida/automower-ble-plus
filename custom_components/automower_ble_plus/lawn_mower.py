@@ -169,6 +169,10 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         """Read the site or generated map as Automower SVG, when available."""
         return await self.coordinator.async_read_map(generated)
 
+    async def async_get_position(self) -> dict:
+        """Read the mower's geographic and local positions over BLE."""
+        return await self.coordinator.async_read_position()
+
     async def async_get_geofence(self) -> dict:
         """Read the GeoFence settings that this mower exposes over BLE."""
         return await self.coordinator.async_read_geofence()

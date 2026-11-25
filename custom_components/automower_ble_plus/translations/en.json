@@ -488,6 +488,15 @@
       }
     },
     "sensor": {
+      "local_heading": {
+        "name": "Heading in installation"
+      },
+      "local_heading_accuracy": {
+        "name": "Heading accuracy"
+      },
+      "local_position_accuracy": {
+        "name": "Position accuracy in installation"
+      },
       "appdrive_state": {
         "name": "AppDrive state",
         "state": {
@@ -904,6 +913,10 @@
     "get_geofence": {
       "name": "Read GeoFence",
       "description": "Read the mower’s local GeoFence settings and status."
+    },
+    "get_position": {
+      "name": "Read mower position",
+      "description": "Read the mower's current GPS position and its local coordinates, heading and accuracy when supported."
     },
     "get_work_area_mowing": {
       "name": "Read work area mowing settings",

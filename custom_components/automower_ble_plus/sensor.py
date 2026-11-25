@@ -10,6 +10,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    DEGREE,
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
@@ -60,6 +61,18 @@ _MEASUREMENT = SensorStateClass.MEASUREMENT
 _COUNTER = SensorStateClass.TOTAL_INCREASING
 _DESCRIPTIONS = (
     _description("battery", SensorDeviceClass.BATTERY, PERCENTAGE, _MEASUREMENT),
+    _description(
+        "local_heading",
+        unit=DEGREE,
+        state_class=SensorStateClass.MEASUREMENT_ANGLE,
+    ),
+    _description("local_heading_accuracy", unit=DEGREE, state_class=_MEASUREMENT),
+    _description(
+        "local_position_accuracy",
+        SensorDeviceClass.DISTANCE,
+        UnitOfLength.MILLIMETERS,
+        _MEASUREMENT,
+    ),
     _description(
         "wifi_signal_strength",
         SensorDeviceClass.SIGNAL_STRENGTH,
@@ -181,10 +194,15 @@ class AutomowerSensor(MowerValueEntity, SensorEntity):
         self.entity_description = description
 
     @property
-    def native_value(self) -> int | str | datetime | None:
+    def native_value(self) -> int | float | str | datetime | None:
         value = self.value
         if self.entity_description.options and value is not None:
             return self.entity_description.options[value]
+        if (
+            self.key in ("local_heading", "local_heading_accuracy")
+            and value is not None
+        ):
+            return value / 10
         if self.key == "mower_clock" and value is not None:
             # Display the wall time reported by the mower, including any clock drift.
             return (

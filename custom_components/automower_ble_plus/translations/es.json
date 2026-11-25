@@ -488,6 +488,15 @@
       }
     },
     "sensor": {
+      "local_heading": {
+        "name": "Rumbo en la instalación"
+      },
+      "local_heading_accuracy": {
+        "name": "Precisión del rumbo"
+      },
+      "local_position_accuracy": {
+        "name": "Precisión de posición en la instalación"
+      },
       "appdrive_state": {
         "name": "Estado de appDrive",
         "state": {
@@ -904,6 +913,10 @@
     "get_geofence": {
       "name": "Leer GeoFence",
       "description": "Lee la configuración local y el estado de GeoFence del cortacésped."
+    },
+    "get_position": {
+      "name": "Leer posición del cortacésped",
+      "description": "Lee la posición GPS actual del cortacésped y sus coordenadas locales, rumbo y precisión si el modelo los proporciona."
     },
     "get_work_area_mowing": {
       "name": "Leer ajustes de corte del área",

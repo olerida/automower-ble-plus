@@ -53,14 +53,10 @@ from .features import (
     GET_FIRMWARE,
     GET_GUIDE_COUNT,
     GET_MODEL,
-    GET_POSITION,
-    GET_POSITION_AVAILABLE,
     GET_STATE,
     GET_STATISTICS,
     MINIMUM_LEGACY_BOUNDARY_CORRIDOR,
     MODEL,
-    POSITION,
-    POSITION_SCALE,
     READINGS,
     SET_LEGACY_BOUNDARY_CORRIDOR,
     STATISTIC_KEYS,
@@ -98,6 +94,16 @@ from .identity import (
 from .mapfiles import async_get_map, async_replace_map
 from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
 from .planner import PlannerOverride, async_read_planner_override
+from .position import (
+    GPS_COORDINATE_KEYS,
+    GPS_POSITION_EVENTS,
+    GPS_POSITION_REPORT,
+    LOCAL_POSITION_KEYS,
+    async_describe_position,
+    async_read_gps_position,
+    async_read_local_pose,
+    decode_gps_position,
+)
 from .reference_station import (
     REFERENCE_SCAN_TIMEOUT,
     REFERENCE_STATION_EVENTS,
@@ -239,6 +245,18 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._wifi_operation_lock = asyncio.Lock()
         self._wifi_event_listener: Callable[[Event], None] | None = None
         self._appdrive_undock_task: asyncio.Task[None] | None = None
+        self._gps_tracking = False
+        self._gps_resync_pending = False
+        self._gps_report_pending: dict[str, int] | None = None
+        self._gps_report_task: asyncio.Task[None] | None = None
+
+    @callback
+    def async_set_gps_tracking(self, enabled: bool) -> None:
+        """Enable position notifications for the device tracker."""
+        self._gps_tracking = enabled
+        self._gps_resync_pending = enabled
+        if not enabled:
+            self._gps_report_pending = None
 
     @property
     def appdrive_undocking(self) -> bool:
@@ -323,6 +341,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             scan.handle_event(event)
         elif event.family == WIFI_FAMILY and self._wifi_event_listener is not None:
             self._wifi_event_listener(event)
+        elif (
+            self._gps_tracking
+            and event.family == GPS_POSITION_EVENTS.family
+            and event.event_id == GPS_POSITION_REPORT
+        ):
+            self._async_handle_gps_report(event.payload)
         elif event.family == APPDRIVE_EVENTS.family and (
             (event.event_id == 0 and len(event.payload) == U8.size)
             or (event.event_id in (1, 2) and not event.payload)
@@ -341,6 +365,41 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self._async_schedule_event_refresh()
         elif event.family == _MOWER_EVENTS.family and event.event_id in (1, 2, 3):
             self._async_schedule_event_refresh()
+
+    @callback
+    def _async_handle_gps_report(self, payload: bytes) -> None:
+        try:
+            self._gps_report_pending = decode_gps_position(payload)
+        except ValueError:
+            return
+        if self._gps_report_task is None or self._gps_report_task.done():
+            self._gps_report_task = self.config_entry.async_create_background_task(
+                self.hass,
+                self._async_publish_gps_report(),
+                "update Automower GPS position",
+            )
+
+    async def _async_publish_gps_report(self) -> None:
+        async with self._operation_lock:
+            report = self._gps_report_pending
+            self._gps_report_pending = None
+            if (
+                report is None
+                or not self._gps_tracking
+                or not self.client.is_connected()
+                or (self.data or {}).get("gps_position_supported") != 1
+            ):
+                return
+            data = {
+                key: value
+                for key, value in self.data.items()
+                if key not in GPS_COORDINATE_KEYS
+            }
+            data.update(report)
+            if data != self.data:
+                # Updating the tracker must not postpone the independent core poll.
+                self.data = data
+                self.async_update_listeners()
 
     @callback
     def _async_schedule_event_refresh(self) -> None:
@@ -364,6 +423,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             return
         if (scan := self._reference_scan) is not None:
             self._async_finish_reference_scan(scan, ScanStatus.FAILED)
+        self._gps_report_pending = None
+        self._gps_resync_pending = self._gps_tracking
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
@@ -389,6 +450,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         )
         if self.data and "appdrive_state" in self.data:
             commands += (APPDRIVE_EVENTS,)
+        if (
+            self._gps_tracking
+            and self.data
+            and self.data.get("gps_position_supported") == 1
+        ):
+            commands += (GPS_POSITION_EVENTS,)
         for command in commands:
             if (
                 command in self._unavailable_subscriptions
@@ -518,6 +585,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 )
                 if self._calendar_update_pending and self.client.is_connected():
                     await self._async_refresh_calendar(data)
+                if self._gps_resync_pending and self.client.is_connected():
+                    self._gps_resync_pending = False
+                    with suppress(CommandRejected, MowerConnectionError, ValueError):
+                        await self._async_refresh_gps(data)
                 if "appdrive_state" in data and self.client.is_connected():
                     with suppress(CommandRejected, MowerConnectionError):
                         await self._async_refresh_appdrive(data)
@@ -610,6 +681,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ("weekly_schedule", None),
                 ("statistics", None),
                 ("position", None),
+                ("local_position", None),
                 ("installation_selection", None),
                 ("vision", None),
                 ("epos", None),
@@ -726,19 +798,21 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         values.update(wifi)
                     elif key == "appdrive":
                         await self._async_refresh_appdrive(values)
-                    else:
-                        values.pop("latitude", None)
-                        values.pop("longitude", None)
-                        if await self._read(Reading(GET_POSITION_AVAILABLE, U8)) == 1:
-                            longitude, latitude = POSITION.unpack(
-                                await self.client.command(GET_POSITION)
+                    elif key == "position":
+                        await self._async_refresh_gps(values)
+                    elif key == "local_position":
+                        for status in LOCAL_POSITION_KEYS:
+                            values.pop(status, None)
+                        pose = await async_read_local_pose(self.client)
+                        if pose is None:
+                            self._unsupported.add(key)
+                        else:
+                            values.update(
+                                {
+                                    status: pose[status]
+                                    for status in LOCAL_POSITION_KEYS & pose.keys()
+                                }
                             )
-                            if (
-                                (longitude or latitude)
-                                and abs(latitude) <= 90 * POSITION_SCALE
-                                and abs(longitude) <= 180 * POSITION_SCALE
-                            ):
-                                values.update(latitude=latitude, longitude=longitude)
                 except CommandRejected as err:
                     if err.unsupported:
                         self._unsupported.add(key)
@@ -809,6 +883,13 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 docked = await self._read(READINGS["in_charging_station"])
                 if docked in (0, 1):
                     data["in_charging_station"] = docked
+
+    async def _async_refresh_gps(self, data: MowerData) -> None:
+        for key in GPS_COORDINATE_KEYS:
+            data.pop(key, None)
+        gps = await async_read_gps_position(self.client)
+        data.pop("gps_position_supported", None)
+        data.update(gps)
 
     async def _async_refresh_wire_test(
         self, data: MowerData, state: int, activity: int
@@ -1303,7 +1384,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
-        for task in (self._reference_scan_task, self._appdrive_undock_task):
+        for task in (
+            self._reference_scan_task,
+            self._appdrive_undock_task,
+            self._gps_report_task,
+        ):
             if task is not None:
                 task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -1531,6 +1616,17 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             ) as err:
                 raise HomeAssistantError(
                     f"Could not read the mower GeoFence: {err}"
+                ) from err
+
+    async def async_read_position(self) -> dict:
+        """Return fresh GPS and installation-frame positioning as separate values."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                return await async_describe_position(self.client)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not read the mower's position: {err}"
                 ) from err
 
     async def async_read_loop_signals(self) -> dict:

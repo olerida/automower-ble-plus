@@ -417,6 +417,11 @@ get_geofence:
     entity:
       integration: automower_ble_plus
       domain: lawn_mower
+get_position:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
 get_loop_signals:
   target:
     entity:

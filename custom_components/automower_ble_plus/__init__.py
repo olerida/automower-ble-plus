@@ -98,6 +98,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Required("expected_name"): cv.string,
         },
         "get_geofence": {},
+        "get_position": {},
         "get_loop_signals": {},
         "get_map": {vol.Optional("generated", default=False): cv.boolean},
         "replace_map": {
