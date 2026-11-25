@@ -5,7 +5,7 @@ from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from struct import pack
 from types import MappingProxyType
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -18,6 +18,7 @@ from homeassistant.config_entries import (
     ConfigEntryState,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import (
     area_registry,
@@ -47,7 +48,10 @@ from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import I16, I32, U16, U32
 from custom_components.automower_ble_plus.firmware import get_firmware_profile
 from custom_components.automower_ble_plus.schedule import ScheduleTask
-from custom_components.automower_ble_plus.transport import CommandRejected
+from custom_components.automower_ble_plus.transport import (
+    CommandRejected,
+    MowerConnectionError,
+)
 from custom_components.automower_ble_plus.wire import Command, Event
 
 
@@ -1584,10 +1588,88 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
                 blocking=True,
             )
             assert (Command(5582, 4), area + I16.pack(450)) not in client.calls
+            reset = (Command(4698, 8), b"")
+            client.values[reset] = b""
+            flow = await hass.config_entries.options.async_init(entry.entry_id)
+            assert flow["type"] == FlowResultType.FORM
+            flow = await hass.config_entries.options.async_configure(
+                flow["flow_id"], {"confirm_reset": False}
+            )
+            assert flow["errors"] == {"confirm_reset": "confirmation_required"}
+            assert reset not in client.calls
+            reload_entry = Mock()
+            monkeypatch.setattr(
+                hass.config_entries, "async_schedule_reload", reload_entry
+            )
+            flow = await hass.config_entries.options.async_configure(
+                flow["flow_id"], {"confirm_reset": True}
+            )
+            assert flow["reason"] == "reset_requested"
+            assert client.calls.count(reset) == 1
+            reload_entry.assert_called_once_with(entry.entry_id)
             assert await hass.config_entries.async_unload(entry.entry_id)
             assert entry.state == ConfigEntryState.NOT_LOADED
     finally:
         await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reply", ["acknowledged", "unsupported", "disconnected", "rejected"]
+)
+async def test_reset_power_cycle_falls_back_only_when_unsupported(
+    tmp_path, monkeypatch, reply
+):
+    hass = HomeAssistant(str(tmp_path))
+    hass.config_entries = ConfigEntries(hass, {})
+    reload_entry = Mock()
+    monkeypatch.setattr(hass.config_entries, "async_schedule_reload", reload_entry)
+    entry = _entry()
+    coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    restart = Command(4698, 42)
+    reset = Command(4698, 8)
+    client.values[reset, b""] = b""
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == restart:
+            client.calls.append((operation, payload))
+            if reply == "unsupported":
+                raise CommandRejected(operation, ResponseResult.INVALID_ID)
+            if reply == "rejected":
+                raise CommandRejected(operation, ResponseResult.NOT_ALLOWED)
+            if reply == "disconnected":
+                raise MowerConnectionError("The mower restarted before it replied")
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    with pytest.raises(HomeAssistantError, match="cannot accept"):
+        await coordinator.async_reset_user_settings()
+    assert not client.calls
+    coordinator.firmware_profile = get_firmware_profile(
+        (5, 0), "40.14_Main-App-P22_102.14"
+    )
+    assert coordinator.can_reset_user_settings
+    if reply == "rejected":
+        with pytest.raises(HomeAssistantError, match="rejected the reset"):
+            await coordinator.async_reset_user_settings()
+        reload_entry.assert_not_called()
+        assert coordinator.can_reset_user_settings
+    else:
+        assert await coordinator.async_reset_user_settings() == (
+            reply != "disconnected"
+        )
+        reload_entry.assert_called_once_with(entry.entry_id)
+        assert not coordinator.can_reset_user_settings
+        with pytest.raises(HomeAssistantError, match="cannot accept"):
+            await coordinator.async_reset_user_settings()
+    assert client.calls == (
+        [(restart, b""), (reset, b"")] if reply == "unsupported" else [(restart, b"")]
+    )
+    await coordinator.async_shutdown()
 
 
 @pytest.mark.asyncio

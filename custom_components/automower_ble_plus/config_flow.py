@@ -8,9 +8,16 @@ import probatio as vol
 from automower_ble.models import MowerModels
 from automower_ble.protocol import ResponseResult
 from homeassistant.components import bluetooth
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigEntryState,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_ADDRESS, CONF_PIN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 
 from .const import CORE_DOMAIN, DOMAIN
@@ -44,6 +51,12 @@ class AutomowerConfigFlow(ConfigFlow, domain=DOMAIN):
     """Validate the local BLE connection before creating an entry."""
 
     address: str
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Open maintenance for the configured mower."""
+        return AutomowerMaintenanceFlow()
 
     async def async_step_bluetooth(
         self, discovery_info: bluetooth.BluetoothServiceInfoBleak
@@ -143,3 +156,45 @@ class AutomowerConfigFlow(ConfigFlow, domain=DOMAIN):
             await client.disconnect()
         identity = MowerModels.get(model_id)
         return None, identity.model if identity else None
+
+
+class AutomowerMaintenanceFlow(OptionsFlow):
+    """Confirm a settings reset for exactly one configured mower."""
+
+    async def async_step_init(self, user_input=None) -> ConfigFlowResult:
+        """Show the effect of a reset before sending the BLE command."""
+        entry = self.config_entry
+        if entry.state is not ConfigEntryState.LOADED:
+            return self.async_abort(reason="mower_unavailable")
+        coordinator = entry.runtime_data
+        if not coordinator.can_reset_user_settings:
+            return self.async_abort(reason="reset_unavailable")
+
+        errors = {}
+        if user_input is not None:
+            if not user_input["confirm_reset"]:
+                errors["confirm_reset"] = "confirmation_required"
+            else:
+                try:
+                    acknowledged = await coordinator.async_reset_user_settings()
+                except HomeAssistantError:
+                    errors["base"] = "reset_failed"
+                else:
+                    return self.async_abort(
+                        reason="reset_requested"
+                        if acknowledged
+                        else "reset_unconfirmed"
+                    )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        "confirm_reset", default=False
+                    ): selector.BooleanSelector(),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"name": entry.title},
+        )

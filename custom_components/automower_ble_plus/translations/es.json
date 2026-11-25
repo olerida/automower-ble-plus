@@ -38,6 +38,27 @@
       "reauth_successful": "El PIN se ha actualizado."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Restablecer ajustes del cortacésped",
+        "description": "Restaura los ajustes de fábrica en {name}. Se pueden borrar los horarios, la configuración de la instalación y los objetos del mapa. El cortacésped puede reiniciarse y desconectarse brevemente.",
+        "data": {
+          "confirm_reset": "Restaurar los ajustes de fábrica en este cortacésped"
+        }
+      }
+    },
+    "error": {
+      "confirmation_required": "Confirma que quieres restablecer los ajustes de este cortacésped.",
+      "reset_failed": "No se ha podido completar la solicitud de restablecimiento. Comprueba el cortacésped y su conexión Bluetooth."
+    },
+    "abort": {
+      "mower_unavailable": "La entrada de este cortacésped no está disponible en Home Assistant.",
+      "reset_unavailable": "El restablecimiento de ajustes no está disponible para este cortacésped.",
+      "reset_requested": "El cortacésped ha aceptado la solicitud. Home Assistant se volverá a conectar y leerá sus ajustes.",
+      "reset_unconfirmed": "Home Assistant no ha recibido una confirmación válida. Comprueba los ajustes del cortacésped cuando vuelva a conectarse."
+    }
+  },
   "entity": {
     "button": {
       "start_epos_docking_installation": {

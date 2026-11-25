@@ -148,6 +148,8 @@ _PARK_UNTIL_NEXT_START = Command(4658, 5)
 _GET_TASK_COUNT = Command(4690, 4)
 _START = Command(4586, 4)
 _PAUSE = Command(4586, 5)
+_RESET_USER_SETTINGS = Command(4698, 8)
+_RESET_USER_SETTINGS_AND_RESTART = Command(4698, 42)
 _START_SPOT_CUTTING = Command(4710, 7)
 _MOWER_EVENTS = Command(4586, 7)
 _MESSAGE_EVENTS = Command(4730, 4)
@@ -198,6 +200,17 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._reference_scan_task: asyncio.Task[None] | None = None
         self.reference_candidates: tuple[int, ...] = ()
         self._docking_installation_start_until = 0.0
+        self._reset_request_sent = False
+
+    @property
+    def can_reset_user_settings(self) -> bool:
+        """Whether the identified firmware offers a user-settings reset."""
+        profile = self.firmware_profile
+        return (
+            not self._reset_request_sent
+            and profile is not None
+            and profile.reset_user_settings in (8, 42)
+        )
 
     @property
     def docking_installation_active(self) -> bool:
@@ -1452,6 +1465,44 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not pair the charging station: {err}"
                 ) from err
+
+    async def async_reset_user_settings(self) -> bool:
+        """Request the firmware's user reset and report whether it acknowledged it."""
+        async with self._operation_lock:
+            if not self.can_reset_user_settings or self.firmware_profile is None:
+                raise HomeAssistantError("This mower cannot accept a reset request")
+            try:
+                await self._async_connect()
+            except MowerConnectionError as err:
+                raise HomeAssistantError("Could not connect to the mower") from err
+
+            operation = (
+                _RESET_USER_SETTINGS_AND_RESTART
+                if self.firmware_profile.reset_user_settings == 42
+                else _RESET_USER_SETTINGS
+            )
+            try:
+                try:
+                    response = await self.client.command(operation)
+                except CommandRejected as err:
+                    if (
+                        operation != _RESET_USER_SETTINGS_AND_RESTART
+                        or not err.unsupported
+                    ):
+                        raise
+                    response = await self.client.command(_RESET_USER_SETTINGS)
+            except CommandRejected as err:
+                raise HomeAssistantError(
+                    f"The mower rejected the reset request: {err}"
+                ) from err
+            except MowerConnectionError:
+                # A reboot can disconnect BLE before the reply. Read again after reload.
+                confirmed = False
+            else:
+                confirmed = not response
+            self._reset_request_sent = True
+            self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
+            return confirmed
 
     async def async_start_epos_docking_installation(self) -> None:
         """Ask the docked, paused mower to establish its EPOS docking point."""

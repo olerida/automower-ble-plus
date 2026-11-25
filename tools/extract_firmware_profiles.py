@@ -20,6 +20,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     site_operations = {}
     vision_operations = {}
     follow_wire_operations = {}
+    reset_operations = set()
     message_events = 0
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
@@ -39,6 +40,13 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             site_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "FollowWire" and protocol.get("msgType") == "4706":
             follow_wire_operations[method["command"]] = protocol.get("subCmd")
+        if (
+            method["family"] == "System"
+            and protocol.get("msgType") == "4698"
+            and not method.get("inParams")
+            and not method.get("outParams")
+        ):
+            reset_operations.add((method["command"], protocol.get("subCmd")))
         if (
             method["family"] == "ObstacleAvoidanceVision"
             and protocol.get("msgType") == "7338"
@@ -162,6 +170,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     docking_pattern_stop = (
         docking_pattern and station_operations.get("StopInstallationPattern") == "35"
     )
+    reset_user_settings = 0
+    if ("ResetToUserDefault", "8") in reset_operations:
+        reset_user_settings = (
+            42 if ("ResetToUserDefaultAndPowerCycle", "42") in reset_operations else 8
+        )
     create_empty = int(
         site_operations.get("GetAvailable") == "17"
         and site_operations.get("CreateNewSite") == "24"
@@ -239,14 +252,16 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         wire_test_states,
         int(docking_pattern),
         int(docking_pattern_stop),
+        reset_user_settings,
     )
     return (
         result
-        if any(result[:-5])
+        if any(result[:-6])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
         or docking_pattern
+        or reset_user_settings
         else None
     )
 

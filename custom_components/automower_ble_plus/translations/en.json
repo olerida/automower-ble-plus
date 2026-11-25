@@ -38,6 +38,27 @@
       "reauth_successful": "The operator PIN was updated."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Reset mower user settings",
+        "description": "Restore the factory defaults on {name}. This can erase schedules, installation settings and map objects. The mower may restart and briefly disconnect.",
+        "data": {
+          "confirm_reset": "Restore factory defaults on this mower"
+        }
+      }
+    },
+    "error": {
+      "confirmation_required": "Confirm that you want to reset this mower.",
+      "reset_failed": "The reset request could not be completed. Check the mower and its Bluetooth connection."
+    },
+    "abort": {
+      "mower_unavailable": "This mower's Home Assistant entry is unavailable.",
+      "reset_unavailable": "A user-settings reset is unavailable for this mower.",
+      "reset_requested": "The mower accepted the reset request. Home Assistant will reconnect and read its settings again.",
+      "reset_unconfirmed": "Home Assistant did not receive a valid confirmation. Check the mower's settings after it reconnects."
+    }
+  },
   "entity": {
     "button": {
       "start_epos_docking_installation": {
