@@ -538,11 +538,32 @@
       },
       "wire_test_distance": {
         "name": "Wire test distance"
+      },
+      "planner_override": {
+        "name": "Schedule override",
+        "state": {
+          "inactive": "Inactive",
+          "forced_park": "Forced parking",
+          "forced_mow": "Forced mowing"
+        },
+        "state_attributes": {
+          "duration_seconds": {
+            "name": "Requested duration (seconds)"
+          },
+          "mission_id": {
+            "name": "Work area ID"
+          }
+        }
       }
     },
     "device_tracker": {
       "latitude": {
         "name": "Mower position"
+      }
+    },
+    "text": {
+      "mower_name": {
+        "name": "Name stored on the mower"
       }
     },
     "update": {

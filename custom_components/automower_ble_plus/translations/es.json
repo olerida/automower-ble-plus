@@ -538,11 +538,32 @@
       },
       "wire_test_distance": {
         "name": "Distancia recorrida en la prueba"
+      },
+      "planner_override": {
+        "name": "Anulación del horario",
+        "state": {
+          "inactive": "Inactiva",
+          "forced_park": "Aparcamiento forzado",
+          "forced_mow": "Corte forzado"
+        },
+        "state_attributes": {
+          "duration_seconds": {
+            "name": "Duración solicitada (segundos)"
+          },
+          "mission_id": {
+            "name": "ID del área de trabajo"
+          }
+        }
       }
     },
     "device_tracker": {
       "latitude": {
         "name": "Posición del cortacésped"
+      }
+    },
+    "text": {
+      "mower_name": {
+        "name": "Nombre guardado en el cortacésped"
       }
     },
     "update": {

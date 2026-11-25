@@ -10,10 +10,10 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | --- | --- | --- |
 | Batería y carga | 4106 | Lecturas implementadas |
 | Actividad, estado, pausa e inicio | 4586 | Incluye inicio en área secundaria en modo manual |
-| Próximo arranque, restricciones y anulaciones del horario | 4658 | Lecturas y acciones puntuales implementadas |
+| Próximo arranque, restricciones y anulaciones del horario | 4658 | Lecturas y acciones puntuales. Estado de la anulación, duración y área si el equipo las proporciona |
 | Horario semanal | 4690 | Lectura, edición en transacción y verificación posterior |
 | Reloj del horario | 4690, 6746 | Lectura de la hora local, botón de sincronización y corrección automática según capacidades |
-| Identificación y versión de firmware | 4698 | Implementadas |
+| Identificación y versión de firmware | 4698 | Modelo, serie y versión de firmware. Lectura y escritura del nombre guardado en el equipo |
 | Temporizador climático | 4460 | Ajustes con detección |
 | Altura de corte y reducción automática | 4422 | Ajustes con detección |
 | ECO y estación | 4692 | Ajustes de ECO y caseta con detección |
@@ -89,3 +89,7 @@ La app envía una pausa seguida de `FollowWire.TestStartingPoint` o `FollowWire.
 La sección de accesorios guarda el ajuste FlexiFence mediante `MobileLoop.Enabled` (`ev_980da380e3e068697a159431114b342149fcc332f6cfb6236dd77d6d19fee2ad`, `ev_daf03529ad8af72c3eba9cd87d424098569fd48f213f57e399bbdf73f4e8fb65`). El TIF del 420 declara la familia 5926. Hay otras variantes con la familia 6050. En ambos casos, la integración espera que `MobileLoop.Available` devuelva verdadero.
 
 La app representa la hora del calendario como segundos Unix más el desfase de la zona local (`ev_04c1b5a7f1b575dfaa8da7398ae38285c56fdba47c3b85652b1d418da28431f0`). Los 166 TIF declaran `Calendar.GetTime` y `Calendar.SetTime` (4690:2 y 4690:3). En los firmwares con la familia `Clock`, la integración usa la zona configurada en el cortacésped y comprueba el desfase que guarda el equipo. En el perfil 31.7 del 420, usa la zona de Home Assistant y solo escribe `Calendar.SetTime`.
+
+La app escribe el nombre con `System.UserMowerName` por Bluetooth (`ev_e4c99838bbd1878d65a103f78938bbf99194f47d3292567b7210740d73e308c3`, `ev_82bf8daa76c7ae5c8502918cbccfe8a24ad42da5fc944745ac6dd2663cddf190`). Los TIF declaran 21 caracteres UCS-2 o sus 42 bytes equivalentes, y el normalizador del APK trata ambas definiciones como el mismo campo (`ev_ae9506ff742d4dd98f90cf8c87839c029cb93cc0976e0da6f04e712c8c7ab708`). La integración escribe el campo en UTF-16 little endian y vuelve a leerlo.
+
+El panel de la app consulta `Planner.Override` y distingue los estados inactivo, aparcamiento forzado y corte forzado (`ev_3d16e35a3dfb00f1b52903cd7c2a22d53227cdcff92e49e6788753cb9e90d066`, `ev_3f05db139f47c3f7e0ec7b763e6418244726d754f199270cce1284a3ae3d27ef`). Su decodificador recupera la duración y el ID de misión opcional (`ev_b87399fe3eb9c2ef4d3e8572457febdc66d337dc00317d8cf7fc426c903b3a4c`). El perfil del 420 declara la variante de 9 bytes. Los firmwares con misiones pueden devolver 13 bytes.

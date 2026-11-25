@@ -68,8 +68,16 @@ from .geofence import (
     async_recenter_geofence,
 )
 from .history import async_get_message_history, decode_message_event
+from .identity import (
+    GET_MOWER_NAME,
+    GET_SERIAL_NUMBER,
+    SET_MOWER_NAME,
+    decode_mower_name,
+    encode_mower_name,
+)
 from .mapfiles import async_get_map, async_replace_map
 from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
+from .planner import PlannerOverride, async_read_planner_override
 from .schedule import (
     ScheduleTask,
     async_get_schedule,
@@ -102,7 +110,9 @@ from .work_areas import (
 )
 
 type MowerEntry = ConfigEntry[MowerCoordinator]
-type MowerData = dict[str, int | FirmwareStatus | InstallationSelection]
+type MowerData = dict[
+    str, int | str | FirmwareStatus | InstallationSelection | PlannerOverride
+]
 type CommandBatch = Iterable[tuple[Command, bytes]]
 
 _CLEAR_OVERRIDE = Command(4658, 6)
@@ -249,6 +259,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def _async_setup(self) -> None:
         guide_count = None
         node_version = None
+        serial_number = None
         try:
             async with self._operation_lock:
                 await self._async_connect()
@@ -265,6 +276,13 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     guide_count = min(await self._read(Reading(GET_GUIDE_COUNT, U8)), 3)
                 except CommandRejected, MowerConnectionError, ValueError:
                     pass
+                if self.client.is_connected():
+                    try:
+                        serial_number = await self._read(
+                            Reading(GET_SERIAL_NUMBER, U32)
+                        )
+                    except CommandRejected, MowerConnectionError, ValueError:
+                        pass
                 if self.client.is_connected():
                     try:
                         node_version = await self.client.main_node_version()
@@ -294,6 +312,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             model_id=f"{model_id[0]}.{model_id[1]}",
             sw_version=firmware or None,
         )
+        if serial_number not in (None, 0, 0xFFFFFFFF):
+            self.device_info["serial_number"] = str(serial_number)
 
     async def _async_update_data(self) -> MowerData:
         try:
@@ -324,6 +344,20 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         for fault_key in FAULT_READINGS:
                             data.pop(fault_key, None)
                         break
+                if (
+                    self.client.is_connected()
+                    and "planner_override" not in self._unsupported
+                ):
+                    try:
+                        data["planner_override"] = await async_read_planner_override(
+                            self.client
+                        )
+                    except CommandRejected as err:
+                        if err.unsupported:
+                            self._unsupported.add("planner_override")
+                        data.pop("planner_override", None)
+                    except ValueError, MowerConnectionError:
+                        data.pop("planner_override", None)
                 if self.client.is_connected():
                     await self._async_subscribe_events()
                 data["message_events"] = int(
@@ -382,6 +416,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         probes.extend(
             (
                 ("mower_clock", MOWER_CLOCK),
+                ("mower_name", None),
                 ("statistics", None),
                 ("position", None),
                 ("installation_selection", None),
@@ -443,6 +478,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         values.update(
                             zip(STATISTIC_KEYS, STATISTICS.unpack(raw), strict=True)
                         )
+                    elif key == "mower_name":
+                        values[key] = decode_mower_name(
+                            await self.client.command(GET_MOWER_NAME)
+                        )
                     elif key == "geofence_center_settable":
                         available = (
                             await self._read(Reading(GEOFENCE_AVAILABLE, U8)) == 1
@@ -492,7 +531,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 except CommandRejected as err:
                     if err.unsupported:
                         self._unsupported.add(key)
-                        if key in FIRMWARE_TARGETS:
+                        if key in FIRMWARE_TARGETS or key == "mower_name":
                             values.pop(key, None)
                 except ValueError, StructError:
                     LOGGER.debug("Unexpected response while reading %s", key)
@@ -699,6 +738,26 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     f"Could not synchronize the mower clock: {err}"
                 ) from err
             self.async_set_updated_data({**self.data, "mower_clock": actual})
+
+    async def async_set_mower_name(self, name: str) -> None:
+        """Store the requested name on the mower and confirm what it saved."""
+        async with self._operation_lock:
+            if "mower_name" not in self.data:
+                raise HomeAssistantError("This mower does not report an editable name")
+            try:
+                payload = encode_mower_name(name)
+                await self._async_connect()
+                actual = decode_mower_name(await self.client.command(GET_MOWER_NAME))
+                if actual != name:
+                    await self.client.command(SET_MOWER_NAME, payload)
+                    actual = decode_mower_name(
+                        await self.client.command(GET_MOWER_NAME)
+                    )
+            except (MowerConnectionError, CommandRejected, ValueError) as err:
+                raise HomeAssistantError(f"Could not rename the mower: {err}") from err
+            self.async_set_updated_data({**self.data, "mower_name": actual})
+            if actual != name:
+                raise HomeAssistantError("The mower did not confirm the new name")
 
     async def async_set_setting(self, setting: Setting, value: int) -> None:
         """Change a supported setting and retrieve the value stored by the mower."""

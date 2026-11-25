@@ -28,11 +28,13 @@ from homeassistant.helpers import (
 from custom_components.automower_ble_plus import (
     binary_sensor,
     button,
+    diagnostics,
     mower_clock,
     number,
     select,
     sensor,
     switch,
+    text,
     update,
 )
 from custom_components.automower_ble_plus.const import DOMAIN
@@ -202,6 +204,110 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert (Command(4716, 3), U16.pack(215)) not in client.calls
     await sector.async_set_native_value(175)
     assert sector.native_value == 175
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_mower_name_uses_utf16_and_only_appears_after_valid_read(
+    tmp_path, monkeypatch
+):
+    entry = _entry()
+    hass = HomeAssistant(str(tmp_path))
+    coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    get_name = Command(4698, 3)
+    set_name = Command(4698, 4)
+    client.values[Command(4698, 10), b""] = U32.pack(1_900_012_345)
+    client.values[get_name, b""] = b"\x01"
+    send = client.command
+    store_name = True
+    writes = []
+
+    async def command(operation, payload=b""):
+        if operation == set_name:
+            writes.append(payload)
+            if store_name:
+                client.values[get_name, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    await text.async_setup_entry(hass, entry, entities.extend)
+    await coordinator.async_refresh_optional()
+    assert not entities
+    client.values[get_name, b""] = "Robi".encode("utf-16-le").ljust(42, b"\0")
+    await coordinator.async_refresh_optional()
+    (entity,) = entities
+    assert entity.native_value == "Robi"
+    assert entity.device_info["serial_number"] == "1900012345"
+    assert entity.native_max == 21
+
+    await entity.async_set_value("Césped 420")
+    assert writes == ["Césped 420".encode("utf-16-le").ljust(42, b"\0")]
+    assert entity.native_value == "Césped 420"
+    await entity.async_set_value("Césped 420")
+    assert len(writes) == 1
+    with pytest.raises(HomeAssistantError, match="21 UTF-16"):
+        await entity.async_set_value("A" * 20 + "🌱")
+    assert len(writes) == 1
+    await entity.async_set_value("A" * 21)
+    assert writes[-1] == b"A\0" * 21
+    assert entity.native_value == "A" * 21
+
+    store_name = False
+    with pytest.raises(HomeAssistantError, match="did not confirm"):
+        await entity.async_set_value("Jardín")
+    assert entity.native_value == "A" * 21
+    support = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
+    assert "serial_number" not in support
+    assert "mower_name" not in support["telemetry"]
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("wire_format", "action", "fields", "expected"),
+    (
+        ("<BII", "forced_park", (1, 1_800_000_000, 3600), {"duration_seconds": 3600}),
+        (
+            "<BIII",
+            "forced_mow",
+            (2, 1_800_000_000, 7200, 17),
+            {"duration_seconds": 7200, "mission_id": 17},
+        ),
+    ),
+)
+async def test_planner_override_exposes_requested_duration_and_optional_area(
+    tmp_path, wire_format, action, fields, expected
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    get_override = Command(4658, 2)
+    client.values[get_override, b""] = pack(wire_format, *fields)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    await sensor.async_setup_entry(coordinator.hass, entry, entities.extend)
+    entity = next(entity for entity in entities if entity.key == "planner_override")
+    assert entity.native_value == action
+    assert entity.extra_state_attributes == expected
+
+    client.values[get_override, b""] = pack(wire_format, 0, *fields[1:])
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    assert entity.native_value == "inactive"
+    assert entity.extra_state_attributes == {}
+    client.values[get_override, b""] = b"\x01"
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    assert not entity.available
+    assert coordinator.data["battery"] == 100
     await coordinator.async_shutdown()
 
 

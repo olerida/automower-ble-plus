@@ -27,6 +27,7 @@ from .entity import MowerEntity, MowerValueEntity, async_add_detected
 from .epos import EPOS_ENUM_OPTIONS
 from .faults import FAULT_STATES, message_description
 from .firmware import get_message_key
+from .planner import OVERRIDE_OPTIONS, PlannerOverride
 from .wire_test import WIRE_TEST_OPTIONS
 
 
@@ -146,6 +147,12 @@ async def async_setup_entry(
         {"error_code": None},
         lambda key, _: MowerFaultSensor(entry.runtime_data, "active_fault"),
     )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"planner_override": None},
+        lambda key, _: PlannerOverrideSensor(entry.runtime_data, key),
+    )
 
 
 class AutomowerSensor(MowerValueEntity, SensorEntity):
@@ -177,6 +184,40 @@ class AutomowerSensor(MowerValueEntity, SensorEntity):
         zone = dt_util.get_time_zone(self.hass.config.time_zone) or UTC
         # The protocol reports local wall-clock time in an epoch-shaped field.
         return datetime.fromtimestamp(value, UTC).replace(tzinfo=zone)
+
+
+class PlannerOverrideSensor(MowerEntity, SensorEntity):
+    """Report an active manual mowing or parking request."""
+
+    entity_description = _description(
+        "planner_override", SensorDeviceClass.ENUM, options=OVERRIDE_OPTIONS
+    )
+
+    @property
+    def override(self) -> PlannerOverride | None:
+        value = self.coordinator.data.get(self.key)
+        return value if isinstance(value, PlannerOverride) else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.override is not None
+
+    @property
+    def native_value(self) -> str | None:
+        return override.action if (override := self.override) is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, int] | None:
+        if (override := self.override) is None:
+            return None
+        return {
+            key: value
+            for key, value in (
+                ("duration_seconds", override.duration_seconds),
+                ("mission_id", override.mission_id),
+            )
+            if value is not None
+        }
 
 
 class MowerFaultSensor(MowerEntity, SensorEntity):

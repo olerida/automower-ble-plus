@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import MowerEntry
 from .fota import FirmwareStatus
+from .planner import PlannerOverride
 from .sites import InstallationSelection
 
 
@@ -21,9 +22,11 @@ async def async_get_config_entry_diagnostics(
         "connected": coordinator.client.is_connected(),
         "available_settings": sorted(coordinator.setting_variants),
         "telemetry": {
-            key: asdict(value) if isinstance(value, FirmwareStatus) else value
+            key: asdict(value)
+            if isinstance(value, (FirmwareStatus, PlannerOverride))
+            else value
             for key, value in coordinator.data.items()
-            if key not in ("latitude", "longitude")
+            if key not in ("latitude", "longitude", "mower_name")
             and not isinstance(value, InstallationSelection)
         },
     }
