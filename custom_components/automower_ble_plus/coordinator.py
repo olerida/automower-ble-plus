@@ -80,8 +80,10 @@ from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
 from .planner import PlannerOverride, async_read_planner_override
 from .schedule import (
     ScheduleTask,
+    WeeklySchedule,
     async_get_schedule,
     async_get_schedule_limits,
+    async_get_weekly_schedule,
     async_replace_schedule,
 )
 from .sites import (
@@ -111,7 +113,13 @@ from .work_areas import (
 
 type MowerEntry = ConfigEntry[MowerCoordinator]
 type MowerData = dict[
-    str, int | str | FirmwareStatus | InstallationSelection | PlannerOverride
+    str,
+    int
+    | str
+    | FirmwareStatus
+    | InstallationSelection
+    | PlannerOverride
+    | WeeklySchedule,
 ]
 type CommandBatch = Iterable[tuple[Command, bytes]]
 
@@ -417,6 +425,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             (
                 ("mower_clock", MOWER_CLOCK),
                 ("mower_name", None),
+                ("weekly_schedule", None),
                 ("statistics", None),
                 ("position", None),
                 ("installation_selection", None),
@@ -482,6 +491,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         values[key] = decode_mower_name(
                             await self.client.command(GET_MOWER_NAME)
                         )
+                    elif key == "weekly_schedule":
+                        values[key] = await async_get_weekly_schedule(
+                            self.client, self.hass.config.time_zone
+                        )
                     elif key == "geofence_center_settable":
                         available = (
                             await self._read(Reading(GEOFENCE_AVAILABLE, U8)) == 1
@@ -531,9 +544,14 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 except CommandRejected as err:
                     if err.unsupported:
                         self._unsupported.add(key)
-                        if key in FIRMWARE_TARGETS or key == "mower_name":
+                        if key in FIRMWARE_TARGETS or key in (
+                            "mower_name",
+                            "weekly_schedule",
+                        ):
                             values.pop(key, None)
                 except ValueError, StructError:
+                    if key == "weekly_schedule":
+                        values.pop(key, None)
                     LOGGER.debug("Unexpected response while reading %s", key)
                 except MowerConnectionError:
                     return
@@ -946,7 +964,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             try:
                 await self._async_connect()
                 limits = await async_get_schedule_limits(self.client)
-                tasks = await async_get_schedule(self.client)
+                tasks = await async_get_schedule(self.client, maximum=limits[0])
             except (
                 MowerConnectionError,
                 CommandRejected,
@@ -977,7 +995,43 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not confirm the mower schedule update: {err}"
                 ) from err
+            if isinstance(schedule := self.data.get("weekly_schedule"), WeeklySchedule):
+                self.async_set_updated_data(
+                    {
+                        **self.data,
+                        "weekly_schedule": replace(schedule, tasks=tuple(tasks)),
+                    }
+                )
         await self.async_request_refresh()
+
+    async def async_edit_schedule(
+        self, edit: Callable[[WeeklySchedule], Sequence[ScheduleTask]]
+    ) -> None:
+        """Apply an event edit to a fresh snapshot while holding the BLE lock."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                current = await async_get_weekly_schedule(
+                    self.client, self.hass.config.time_zone
+                )
+                tasks = tuple(edit(current))
+                if tasks != current.tasks:
+                    await async_replace_schedule(self.client, tasks)
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not confirm the mower schedule update: {err}"
+                ) from err
+            self.async_set_updated_data(
+                {
+                    **self.data,
+                    "weekly_schedule": replace(current, tasks=tasks),
+                }
+            )
 
     async def async_read_history(self, offset: int, limit: int) -> dict:
         """Read one page of the mower's local messages."""

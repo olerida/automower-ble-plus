@@ -591,6 +591,11 @@
           }
         }
       }
+    },
+    "calendar": {
+      "weekly_schedule": {
+        "name": "Horario semanal de corte"
+      }
     }
   },
   "services": {
@@ -962,5 +967,9 @@
         "highest": "Máxima"
       }
     }
+  },
+  "common": {
+    "calendar_mowing": "Corte programado",
+    "calendar_work_area": "Área de trabajo {mission_id}"
   }
 }

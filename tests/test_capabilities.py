@@ -1,15 +1,16 @@
 """Verify that Home Assistant exposes only controls confirmed over BLE."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from struct import pack
 from types import MappingProxyType
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 from automower_ble.protocol import MowerActivity, MowerState
-from homeassistant import loader, setup
+from homeassistant import auth, loader, setup
 from homeassistant.config_entries import (
     SOURCE_USER,
     ConfigEntries,
@@ -17,7 +18,7 @@ from homeassistant.config_entries import (
     ConfigEntryState,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import (
     area_registry,
     device_registry,
@@ -28,6 +29,7 @@ from homeassistant.helpers import (
 from custom_components.automower_ble_plus import (
     binary_sensor,
     button,
+    calendar,
     diagnostics,
     mower_clock,
     number,
@@ -41,6 +43,7 @@ from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import I16, I32, U16, U32
 from custom_components.automower_ble_plus.firmware import get_firmware_profile
+from custom_components.automower_ble_plus.schedule import ScheduleTask
 from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command, Event
 
@@ -205,6 +208,126 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     await sector.async_set_native_value(175)
     assert sector.native_value == 175
     await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_calendar_expands_and_edits_the_mower_schedule(tmp_path, monkeypatch):
+    now = datetime(2026, 11, 23, 8, tzinfo=UTC)
+    monkeypatch.setattr(calendar.dt_util, "utcnow", lambda: now)
+    entry = _entry()
+    integrations = Path(__file__).resolve().parents[1] / "custom_components"
+    (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
+    hass = HomeAssistant(str(tmp_path))
+    loader.async_setup(hass)
+    hass.config.time_zone = "UTC"
+    coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    original = ScheduleTask.from_action(time(22, 30), 240, ["mon"], 17)
+    stored = [original.encode()[1]]
+    staged = []
+    transactions = []
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation.family != 4690:
+            return await send(operation, payload)
+        if operation.operation == 4:
+            return U32.pack(len(stored))
+        if operation.operation == 5:
+            return stored[U32.unpack(payload)[0]]
+        if operation.operation in (14, 15):
+            return U32.pack(5)
+        if operation.operation == 10:
+            transactions.append(operation)
+            staged[:] = stored
+        elif operation.operation == 9:
+            staged.clear()
+        elif operation.operation in (7, 16):
+            staged.append(payload)
+        elif operation.operation == 11:
+            stored[:] = staged
+        else:
+            return await send(operation, payload)
+        return b""
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    await calendar.async_setup_entry(hass, entry, entities.extend)
+    assert not entities
+    await coordinator.async_refresh_optional()
+    (entity,) = entities
+    assert entity.available
+    night = datetime(2026, 11, 24, 1, tzinfo=UTC)
+    (overnight,) = await entity.async_get_events(
+        hass, night, night + timedelta(hours=2)
+    )
+    assert overnight.start == datetime(2026, 11, 23, 22, 30, tzinfo=UTC)
+    assert overnight.end == datetime(2026, 11, 24, 2, 30, tzinfo=UTC)
+    assert overnight.rrule == "FREQ=WEEKLY;BYDAY=MO"
+    assert overnight.uid == entity.event.uid
+
+    early = datetime(2026, 11, 23, 14, tzinfo=UTC)
+    event = {
+        calendar.EVENT_START: early,
+        calendar.EVENT_END: early + timedelta(hours=1),
+        calendar.EVENT_RRULE: "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE",
+    }
+    with pytest.raises(ServiceValidationError, match="first upcoming occurrence"):
+        await entity.async_create_event(
+            **{
+                **event,
+                calendar.EVENT_START: early + timedelta(days=7),
+                calendar.EVENT_END: early + timedelta(days=7, hours=1),
+            }
+        )
+    assert not transactions
+    await entity.async_create_event(**event)
+    assert ScheduleTask.decode(stored[1]) == ScheduleTask.from_action(
+        time(14), 60, ["mon", "wed"]
+    )
+    assert entity.event.start == early
+
+    change = {
+        **event,
+        calendar.EVENT_START: early + timedelta(hours=7),
+        calendar.EVENT_END: early + timedelta(hours=8),
+        calendar.EVENT_RRULE: "FREQ=WEEKLY;BYDAY=MO",
+    }
+    with pytest.raises(ServiceValidationError, match="following"):
+        await entity.async_update_event(overnight.uid, change, overnight.recurrence_id)
+    assert len(transactions) == 1
+    future = await entity.async_get_events(
+        hass, now + timedelta(days=7), now + timedelta(days=8)
+    )
+    later = next(event for event in future if event.uid == overnight.uid)
+    with pytest.raises(ServiceValidationError, match="next occurrence"):
+        await entity.async_delete_event(later.uid, later.recurrence_id, "THISANDFUTURE")
+    await entity.async_update_event(
+        overnight.uid, change, overnight.recurrence_id, "THISANDFUTURE"
+    )
+    assert ScheduleTask.decode(stored[0]) == ScheduleTask.from_action(
+        time(21), 60, ["mon"], 17
+    )
+    with pytest.raises(ServiceValidationError, match="changed"):
+        await entity.async_delete_event(overnight.uid)
+    events = await entity.async_get_events(hass, now, now + timedelta(days=3))
+    updated = next(event for event in events if event.start.hour == 21)
+    await entity.async_delete_event(updated.uid, updated.recurrence_id, "THISANDFUTURE")
+    assert len(stored) == 1
+    await coordinator.async_shutdown()
+
+
+def test_calendar_clips_an_interval_at_the_start_of_daylight_saving():
+    zone = ZoneInfo("Europe/Madrid")
+    task = ScheduleTask.from_action(time(2, 30), 45, ["sun"])
+    day = datetime(2026, 3, 29, tzinfo=UTC)
+    [(start, end)] = calendar._occurrences(task, zone, day, day + timedelta(days=1))
+    assert start == datetime(2026, 3, 29, 3, 0, tzinfo=zone)
+    assert end == datetime(2026, 3, 29, 3, 15, tzinfo=zone)
 
 
 @pytest.mark.asyncio
@@ -1062,6 +1185,7 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
         entity_registry.async_load(hass),
         label_registry.async_load(hass),
     )
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
     hass.config.components.update({"bluetooth", "bluetooth_adapters"})
     client = FakeAutomower420()
     area = U32.pack(12)
@@ -1075,6 +1199,12 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             (Command(5582, 0), b""): b"\x01",
             (Command(5582, 3), area): I16.pack(450),
             (Command(4730, 4), b""): b"",
+            (Command(4690, 4), b""): U32.pack(1),
+            (Command(4690, 5), U32.pack(0)): ScheduleTask.from_action(
+                time(9), 60, ["mon"]
+            ).encode()[1],
+            (Command(4690, 14), b""): U32.pack(5),
+            (Command(4690, 15), b""): U32.pack(5),
         }
     )
     monkeypatch.setattr(
@@ -1090,6 +1220,25 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert entry.state == ConfigEntryState.LOADED
             assert hass.states.get("lawn_mower.automower_420").state == "docked"
             assert hass.services.has_service(DOMAIN, "get_schedule")
+            await entry.runtime_data.async_refresh_optional()
+            await hass.async_block_till_done()
+            (calendar_id,) = hass.states.async_entity_ids("calendar")
+            monday = datetime(2026, 11, 23, tzinfo=UTC)
+            calendar_response = await hass.services.async_call(
+                "calendar",
+                "get_events",
+                {
+                    "entity_id": calendar_id,
+                    "start_date_time": monday.isoformat(),
+                    "end_date_time": (monday + timedelta(days=1)).isoformat(),
+                },
+                blocking=True,
+                return_response=True,
+            )
+            schedule_events = calendar_response[calendar_id]["events"]
+            assert [event["start"] for event in schedule_events] == [
+                "2026-11-23T09:00:00+00:00"
+            ]
             event_ids = hass.states.async_entity_ids("event")
             assert len(event_ids) == 1
             entry.runtime_data._async_on_event(

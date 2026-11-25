@@ -26,7 +26,7 @@ async def async_get_config_entry_diagnostics(
             if isinstance(value, (FirmwareStatus, PlannerOverride))
             else value
             for key, value in coordinator.data.items()
-            if key not in ("latitude", "longitude", "mower_name")
+            if key not in ("latitude", "longitude", "mower_name", "weekly_schedule")
             and not isinstance(value, InstallationSelection)
         },
     }

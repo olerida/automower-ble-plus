@@ -5,10 +5,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import time
 from struct import Struct
+from zoneinfo import ZoneInfo
 
 from automower_ble.protocol import ResponseResult
+from homeassistant.util.dt import async_get_time_zone
 
 from .features import U32
+from .mower_clock import async_get_mower_time_zone
 from .transport import AutomowerClient, CommandRejected
 from .wire import Command
 
@@ -79,12 +82,37 @@ class ScheduleTask:
         return _ADD, _BASIC_TASK.pack(self.start, self.duration, *self.days)
 
 
-async def async_get_schedule(client: AutomowerClient) -> list[ScheduleTask]:
+@dataclass(frozen=True, slots=True)
+class WeeklySchedule:
+    """A complete snapshot of the mower-local weekly schedule."""
+
+    tasks: tuple[ScheduleTask, ...]
+    time_zone: ZoneInfo
+
+
+async def async_get_weekly_schedule(
+    client: AutomowerClient, fallback_time_zone: str
+) -> WeeklySchedule:
+    """Read the schedule and the zone used for its wall times."""
+    maximum, per_day = await async_get_schedule_limits(client)
+    if not maximum or not per_day:
+        raise ValueError("The mower reports no calendar slots")
+    tasks = await async_get_schedule(client, maximum=maximum)
+    name = await async_get_mower_time_zone(client, fallback_time_zone)
+    if (zone := await async_get_time_zone(name)) is None:
+        raise ValueError("The mower's calendar time zone is invalid")
+    return WeeklySchedule(tuple(tasks), zone)
+
+
+async def async_get_schedule(
+    client: AutomowerClient, *, maximum: int | None = None
+) -> list[ScheduleTask]:
     """Read all intervals, including either index origin used by mower firmware."""
     count = U32.unpack(await client.command(_COUNT))[0]
     if count == 0:
         return []
-    maximum, _ = await async_get_schedule_limits(client)
+    if maximum is None:
+        maximum, _ = await async_get_schedule_limits(client)
     if count > maximum:
         raise ValueError("Mower returned a schedule count above its reported maximum")
     try:
@@ -148,6 +176,6 @@ async def async_replace_schedule(
     finally:
         if not committed:
             await client.disconnect()
-    actual = await async_get_schedule(client)
+    actual = await async_get_schedule(client, maximum=maximum)
     if Counter(actual) != Counter(tasks):
         raise ValueError("The readback differs from the schedule sent to the mower")

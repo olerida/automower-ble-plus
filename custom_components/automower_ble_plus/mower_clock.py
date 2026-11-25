@@ -31,6 +31,12 @@ async def _read_time_zone(client: AutomowerClient) -> tuple[str, int] | None:
     return name.decode("ascii"), len(payload)
 
 
+async def async_get_mower_time_zone(client: AutomowerClient, fallback: str) -> str:
+    """Return the mower's zone when set, or Home Assistant's zone."""
+    time_zone = await _read_time_zone(client)
+    return (time_zone[0] or fallback) if time_zone else fallback
+
+
 async def async_sync_mower_clock(
     client: AutomowerClient,
     zone_name: str,

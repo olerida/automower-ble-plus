@@ -591,6 +591,11 @@
           }
         }
       }
+    },
+    "calendar": {
+      "weekly_schedule": {
+        "name": "Weekly mowing schedule"
+      }
     }
   },
   "services": {
@@ -962,5 +967,9 @@
         "highest": "Highest"
       }
     }
+  },
+  "common": {
+    "calendar_mowing": "Scheduled mowing",
+    "calendar_work_area": "Work area {mission_id}"
   }
 }
