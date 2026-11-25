@@ -107,6 +107,26 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         """Return available work areas and their device-assigned IDs."""
         return await self.coordinator.async_read_work_areas(offset, limit)
 
+    async def async_create_work_area(
+        self, name: str, area_id: str, expected_checksum: str
+    ) -> dict:
+        """Link a new mowing task to a polygon on the active map."""
+        return await self.coordinator.async_create_work_area(
+            name, area_id, expected_checksum
+        )
+
+    async def async_delete_work_area(self, mission_id: int, expected_name: str) -> None:
+        """Remove a confirmed work area without pending scheduled intervals."""
+        await self.coordinator.async_delete_work_area(mission_id, expected_name)
+
+    async def async_get_work_area_status(self, mission_id: int | None = None) -> dict:
+        """Read the area's saved progress and recent mowing timestamps."""
+        return await self.coordinator.async_work_area_status(mission_id)
+
+    async def async_reset_work_area_progress(self, mission_id: int) -> None:
+        """Reset the saved progress for this area."""
+        await self.coordinator.async_clear_work_area_progress(mission_id)
+
     async def async_get_work_area_mowing(self, mission_id: int) -> dict:
         """Return the supported settings for one mowing area."""
         return await self.coordinator.async_read_work_area_mowing(mission_id)

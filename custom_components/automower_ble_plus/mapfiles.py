@@ -67,7 +67,7 @@ def _decode_svg(data: bytes) -> str:
     return data.decode("utf-8")
 
 
-def _svg_bytes(svg: str) -> bytes:
+def _parse_svg(svg: str) -> tuple[bytes, ElementTree.Element]:
     """Validate the polygons and polylines produced by Automower Connect."""
     raw = svg.encode("utf-8")
     if len(raw) > _MAX_MAP_SIZE or b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
@@ -108,11 +108,11 @@ def _svg_bytes(svg: str) -> bytes:
             )
         if any("url(" in shape.get(key, "").lower() for key in ("fill", "stroke")):
             raise ValueError("Map features cannot reference external resources")
-    return raw
+    return raw, root
 
 
 def _prepare_map(svg: str) -> tuple[bytes, bytes]:
-    raw = _svg_bytes(svg)
+    raw, _ = _parse_svg(svg)
     return gzip.compress(raw, mtime=0), md5(raw, usedforsecurity=False).digest()
 
 
@@ -164,6 +164,32 @@ async def async_get_map(client: AutomowerClient, generated: bool) -> dict:
         raw = await _async_read_raw_map(client, attribute)
         result["svg"] = await asyncio.to_thread(_decode_svg, raw)
     return result
+
+
+async def async_verify_mowing_area(
+    client: AutomowerClient, area_id: str, expected_checksum: str
+) -> None:
+    """Verify that the current map revision contains the requested mowing polygon."""
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", expected_checksum):
+        raise ValueError("Enter the checksum returned for the active map")
+    current = await async_get_map(client, generated=False)
+    if not current["available"]:
+        raise ValueError("The mower does not report an active site map")
+    if current["checksum"] != expected_checksum.lower():
+        raise ValueError(
+            "The active map changed. Read it again before creating an area"
+        )
+    _, root = await asyncio.to_thread(_parse_svg, current["svg"])
+    if not any(
+        shape.tag.removeprefix(_SVG_NAMESPACE) == "polygon"
+        and shape.get("id") == area_id
+        and shape.get("fill", "").lower() == "green"
+        and shape.get("rewildingzone", "").lower() != "true"
+        for shape in root
+    ):
+        raise ValueError("The active map does not contain the selected mowing polygon")
+    if (await _async_checksum(client)).hex() != expected_checksum.lower():
+        raise ValueError("The active map changed while reading it")
 
 
 async def async_replace_map(

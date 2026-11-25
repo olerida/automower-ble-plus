@@ -5,11 +5,16 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.automower_ble_plus.features import I16, U32
+from custom_components.automower_ble_plus.schedule import ScheduleTask
 from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command
 from custom_components.automower_ble_plus.work_areas import (
+    async_create_work_area,
+    async_delete_work_area,
     async_get_area_mowing_settings,
+    async_get_work_area_status,
     async_get_work_areas,
+    async_reset_work_area_progress,
     async_set_area_mowing_setting,
     async_update_work_area,
 )
@@ -187,3 +192,91 @@ async def test_area_assistance_uses_available_hardware_and_a_specific_mission():
     with pytest.raises(ValueError, match="does not support"):
         await async_set_area_mowing_setting(client, 12, 0, {"vision_positioning": True})
     assert responses[daylight, identity] == b"\x01"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rejected", [False, True])
+async def test_work_area_creation_links_the_verified_polygon_and_cleans_up_failures(
+    monkeypatch, rejected
+):
+    client = AsyncMock()
+    client.is_connected = lambda: True
+    verify = AsyncMock()
+    monkeypatch.setattr(
+        "custom_components.automower_ble_plus.work_areas.async_verify_mowing_area",
+        verify,
+    )
+    encoded_name = "Jardín\0".encode("utf-16-le")
+    name = "Jardín"
+    identity = U32.pack(12)
+    checksum = "01" * 16
+    client.command.side_effect = [
+        b"\x01",
+        U32.pack(0),
+        identity,
+        b"",
+        *(
+            [CommandRejected(Command(5604, 19), 5), b"", U32.pack(0)]
+            if rejected
+            else [b"", encoded_name, b"lawn\0", b"\x01"]
+        ),
+    ]
+    if rejected:
+        with pytest.raises(ValueError, match="reverted"):
+            await async_create_work_area(client, name, "lawn", checksum)
+        client.command.assert_any_await(Command(5604, 5), identity)
+    else:
+        assert await async_create_work_area(client, name, "lawn", checksum) == {
+            "mission_id": 12,
+            "name": name,
+            "mowing_area_id": "lawn",
+        }
+        client.command.assert_any_await(Command(5604, 19), identity + b"\x01")
+    verify.assert_awaited_once_with(client, "lawn", checksum)
+    client.command.assert_any_await(Command(5604, 12), identity + b"lawn\0")
+
+
+@pytest.mark.asyncio
+async def test_work_area_status_and_progress_reset_use_the_stored_mission():
+    client = AsyncMock()
+    identity = U32.pack(12)
+    client.command.side_effect = [
+        b"\x01",
+        identity,
+        "Jardín\0".encode("utf-16-le"),
+        b"\x23",
+        U32.pack(60),
+        U32.pack(0),
+        CommandRejected(Command(5604, 44), 7),
+    ]
+    assert await async_get_work_area_status(client, None) == {
+        "available": True,
+        "current_id": 12,
+        "mission_id": 12,
+        "name": "Jardín",
+        "progress_percent": 35,
+        "last_completed_epoch_seconds": 60,
+    }
+    client.command.side_effect = [b"\x01", b"\x23", b"", b"\0"]
+    await async_reset_work_area_progress(client, 12)
+    client.command.assert_any_await(Command(5604, 28), identity)
+
+
+@pytest.mark.asyncio
+async def test_delete_work_area_checks_identity_and_the_calendar(monkeypatch):
+    client = AsyncMock()
+    schedule = AsyncMock(
+        return_value=[ScheduleTask(3600, 3600, (1, 0, 0, 0, 0, 0, 0), 12)]
+    )
+    monkeypatch.setattr(
+        "custom_components.automower_ble_plus.work_areas.async_get_schedule", schedule
+    )
+    name = "Jardín\0".encode("utf-16-le")
+    client.command.side_effect = [b"\x01", name]
+    with pytest.raises(ValueError, match="schedule intervals"):
+        await async_delete_work_area(client, 12, "Jardín")
+    assert client.command.await_count == 2
+    schedule.return_value = []
+    client.command.side_effect = [b"\x01", name, b"", U32.pack(0)]
+    await async_delete_work_area(client, 12, "Jardín")
+    client.command.assert_any_await(Command(5604, 5), U32.pack(12))

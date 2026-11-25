@@ -135,6 +135,69 @@ update_work_area:
     enabled:
       selector:
         boolean:
+create_work_area:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    name:
+      required: true
+      selector:
+        text:
+    area_id:
+      required: true
+      selector:
+        text:
+    expected_checksum:
+      required: true
+      selector:
+        text:
+delete_work_area:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    mission_id:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+    expected_name:
+      required: true
+      selector:
+        text:
+get_work_area_status:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    mission_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
+reset_work_area_progress:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    mission_id:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          step: 1
+          mode: box
 get_work_area_mowing:
   target:
     entity:
@@ -240,6 +303,16 @@ set_work_area_mowing:
     use_global_vision_obstacle_profile:
       selector:
         boolean:
+    priority:
+      selector:
+        select:
+          translation_key: work_area_priority
+          options:
+            - lowest
+            - low
+            - medium
+            - high
+            - highest
 get_installations:
   target:
     entity:

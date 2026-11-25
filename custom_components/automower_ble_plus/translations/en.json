@@ -722,6 +722,10 @@
         "use_global_vision_obstacle_profile": {
           "name": "Use global setting for visual obstacle profile",
           "description": "Use the mower’s general setting in this area."
+        },
+        "priority": {
+          "name": "Priority",
+          "description": "Choose the priority used to schedule this work area."
         }
       }
     },
@@ -766,6 +770,58 @@
           "description": "Enter the exact name returned by Read installation profiles."
         }
       }
+    },
+    "create_work_area": {
+      "name": "Create mowing task",
+      "description": "Link a new mowing task to an existing polygon on the active map.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "New name for the work area."
+        },
+        "area_id": {
+          "name": "Mowing polygon ID",
+          "description": "Identifier of the mowing polygon in the SVG returned by Read map."
+        },
+        "expected_checksum": {
+          "name": "Expected map checksum",
+          "description": "Checksum returned by Read map for the active revision."
+        }
+      }
+    },
+    "delete_work_area": {
+      "name": "Delete mowing task",
+      "description": "Remove the named mowing task after its schedule intervals have been removed.",
+      "fields": {
+        "mission_id": {
+          "name": "Work area ID",
+          "description": "ID returned by Read work areas."
+        },
+        "expected_name": {
+          "name": "Expected name",
+          "description": "Enter the name returned by Read work areas."
+        }
+      }
+    },
+    "get_work_area_status": {
+      "name": "Read work area status",
+      "description": "Read progress and the timestamps recorded for an area.",
+      "fields": {
+        "mission_id": {
+          "name": "Work area ID",
+          "description": "ID returned by Read work areas. Leave blank to read the current area."
+        }
+      }
+    },
+    "reset_work_area_progress": {
+      "name": "Reset work area progress",
+      "description": "Clear the saved progress of the selected work area.",
+      "fields": {
+        "mission_id": {
+          "name": "Work area ID",
+          "description": "ID returned by Read work areas."
+        }
+      }
     }
   },
   "selector": {
@@ -780,6 +836,15 @@
         "default_pro": "Professional default",
         "risk_objects_only": "Risk objects only",
         "residential_garden": "Residential garden"
+      }
+    },
+    "work_area_priority": {
+      "options": {
+        "lowest": "Lowest",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "highest": "Highest"
       }
     }
   }

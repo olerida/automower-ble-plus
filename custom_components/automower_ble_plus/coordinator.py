@@ -87,8 +87,12 @@ from .transport import AutomowerClient, CommandRejected, MowerConnectionError
 from .vision import VISION_STATUS_KEYS, async_read_vision_telemetry
 from .wire import Command, Event
 from .work_areas import (
+    async_create_work_area,
+    async_delete_work_area,
     async_get_area_mowing_settings,
+    async_get_work_area_status,
     async_get_work_areas,
+    async_reset_work_area_progress,
     async_set_area_mowing_setting,
     async_update_work_area,
 )
@@ -868,6 +872,43 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not update work area mowing settings: {err}"
                 ) from err
+
+    async def async_create_work_area(
+        self, name: str, area_id: str, expected_checksum: str
+    ) -> dict:
+        """Create a mowing task for a verified polygon in the active map."""
+        return await self._async_call_work_area(
+            async_create_work_area, name, area_id, expected_checksum
+        )
+
+    async def async_delete_work_area(self, mission_id: int, expected_name: str) -> None:
+        """Remove the named mowing task once its schedule is clear."""
+        await self._async_call_work_area(
+            async_delete_work_area, mission_id, expected_name
+        )
+
+    async def async_work_area_status(self, mission_id: int | None) -> dict:
+        """Read a selected area's progress or the active area if omitted."""
+        return await self._async_call_work_area(async_get_work_area_status, mission_id)
+
+    async def async_clear_work_area_progress(self, mission_id: int) -> None:
+        """Reset the selected area's progress tracker."""
+        await self._async_call_work_area(async_reset_work_area_progress, mission_id)
+
+    async def _async_call_work_area[T](
+        self, operation: Callable[..., Awaitable[T]], *args
+    ) -> T:
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                return await operation(self.client, *args)
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(f"Work area operation failed: {err}") from err
 
     async def async_read_installations(self, offset: int, limit: int) -> dict:
         """Read the installation profiles via the current authenticated connection."""

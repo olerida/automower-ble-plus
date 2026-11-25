@@ -11,6 +11,7 @@ import pytest
 from custom_components.automower_ble_plus.mapfiles import (
     async_get_map,
     async_replace_map,
+    async_verify_mowing_area,
 )
 from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command
@@ -123,3 +124,25 @@ async def test_upload_checks_geometry_and_previous_checksum_before_writing():
         Command(5578, 0),
         Command(5578, 23),
     ]
+
+
+@pytest.mark.asyncio
+async def test_mission_can_only_link_to_a_mowing_polygon_on_the_confirmed_revision(
+    monkeypatch,
+):
+    client = AsyncMock()
+    checksum = bytes(16)
+    state = {"available": True, "checksum": checksum.hex(), "svg": SVG}
+    monkeypatch.setattr(
+        "custom_components.automower_ble_plus.mapfiles.async_get_map",
+        AsyncMock(return_value=state),
+    )
+    client.command.return_value = checksum
+    await async_verify_mowing_area(client, "lawn", checksum.hex())
+    state["svg"] = SVG.replace('fill="green"', 'fill="red"')
+    with pytest.raises(ValueError, match="selected mowing polygon"):
+        await async_verify_mowing_area(client, "lawn", checksum.hex())
+    state["svg"] = SVG
+    client.command.return_value = bytes([1] * 16)
+    with pytest.raises(ValueError, match="changed while reading"):
+        await async_verify_mowing_area(client, "lawn", checksum.hex())

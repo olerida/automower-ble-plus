@@ -722,6 +722,10 @@
         "use_global_vision_obstacle_profile": {
           "name": "Usar ajuste global de perfil de detección visual",
           "description": "Usa el ajuste general del cortacésped en esta área."
+        },
+        "priority": {
+          "name": "Prioridad",
+          "description": "Selecciona la prioridad para programar el corte de esta área."
         }
       }
     },
@@ -766,6 +770,58 @@
           "description": "Introduce el nombre exacto devuelto por Leer perfiles de instalación."
         }
       }
+    },
+    "create_work_area": {
+      "name": "Crear misión de corte",
+      "description": "Vincula una nueva misión de corte a un polígono existente del mapa activo.",
+      "fields": {
+        "name": {
+          "name": "Nombre",
+          "description": "Nuevo nombre del área de trabajo."
+        },
+        "area_id": {
+          "name": "ID del polígono de corte",
+          "description": "Identificador del polígono de corte en el SVG devuelto por Leer mapa."
+        },
+        "expected_checksum": {
+          "name": "Suma de comprobación del mapa",
+          "description": "Usa la suma que devuelve Leer mapa para la revisión activa."
+        }
+      }
+    },
+    "delete_work_area": {
+      "name": "Eliminar misión de corte",
+      "description": "Elimina la misión indicada tras retirar los intervalos asignados en el horario.",
+      "fields": {
+        "mission_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID devuelto por Leer áreas de trabajo."
+        },
+        "expected_name": {
+          "name": "Nombre esperado",
+          "description": "Introduzca el nombre devuelto por Leer áreas de trabajo."
+        }
+      }
+    },
+    "get_work_area_status": {
+      "name": "Leer estado del área de trabajo",
+      "description": "Lee el progreso y las marcas de tiempo guardadas para un área.",
+      "fields": {
+        "mission_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID devuelto por Leer áreas de trabajo. Déjalo vacío para leer el área actual."
+        }
+      }
+    },
+    "reset_work_area_progress": {
+      "name": "Reiniciar progreso del área",
+      "description": "Borra el progreso guardado del área seleccionada.",
+      "fields": {
+        "mission_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID devuelto por Leer áreas de trabajo."
+        }
+      }
     }
   },
   "selector": {
@@ -780,6 +836,15 @@
         "default_pro": "Profesional predeterminado",
         "risk_objects_only": "Solo objetos de riesgo",
         "residential_garden": "Jardín residencial"
+      }
+    },
+    "work_area_priority": {
+      "options": {
+        "lowest": "Mínima",
+        "low": "Baja",
+        "medium": "Media",
+        "high": "Alta",
+        "highest": "Máxima"
       }
     }
   }

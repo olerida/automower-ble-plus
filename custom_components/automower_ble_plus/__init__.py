@@ -14,7 +14,11 @@ from .config_flow import core_controls_address
 from .const import DOMAIN
 from .coordinator import MowerCoordinator, MowerEntry
 from .schedule import WEEKDAYS
-from .work_areas import AREA_ASSISTANCE_BOOLEAN_SETTINGS, AREA_VISION_PROFILES
+from .work_areas import (
+    AREA_ASSISTANCE_BOOLEAN_SETTINGS,
+    AREA_PRIORITIES,
+    AREA_VISION_PROFILES,
+)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -69,6 +73,17 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "replace_schedule": {vol.Required("intervals"): [interval_schema]},
         "get_message_history": page_schema,
         "get_work_areas": page_schema,
+        "get_work_area_status": {vol.Optional("mission_id"): mission},
+        "create_work_area": {
+            vol.Required("name"): cv.string,
+            vol.Required("area_id"): cv.string,
+            vol.Required("expected_checksum"): cv.string,
+        },
+        "delete_work_area": {
+            vol.Required("mission_id"): mission,
+            vol.Required("expected_name"): cv.string,
+        },
+        "reset_work_area_progress": {vol.Required("mission_id"): mission},
         "get_work_area_mowing": {vol.Required("mission_id"): mission},
         "get_installations": page_schema,
         "activate_installation": {
@@ -109,6 +124,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Exclusive("vision_obstacle_profile", "mowing_change"): vol.In(
                 tuple(AREA_VISION_PROFILES.values())
             ),
+            vol.Exclusive("priority", "mowing_change"): vol.In(
+                tuple(AREA_PRIORITIES.values())
+            ),
             **{
                 vol.Exclusive(key, "mowing_change"): cv.boolean
                 for key in sorted(AREA_ASSISTANCE_BOOLEAN_SETTINGS)
@@ -126,7 +144,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             supports_response=SupportsResponse.ONLY
             if action.startswith("get_")
             else SupportsResponse.OPTIONAL
-            if action in ("create_installation", "replace_map")
+            if action in ("create_installation", "create_work_area", "replace_map")
             else SupportsResponse.NONE,
         )
     return True
