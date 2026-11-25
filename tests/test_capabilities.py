@@ -74,6 +74,10 @@ class FakeAutomower420:
         if command in (Command(4716, 1), Command(4716, 3)):
             self.values[Command(4716, command.operation - 1), b""] = payload
             return b""
+        if command == Command(4706, 3):
+            guide, width = payload
+            self.values[Command(4706, 2), bytes([guide])] = bytes([width])
+            return b""
         try:
             return self.values[command, payload]
         except KeyError as err:
@@ -108,6 +112,14 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     hass = HomeAssistant(str(tmp_path))
     entry = _entry()
     client = FakeAutomower420()
+    client.values.update(
+        {
+            (Command(4706, 14), b""): b"\x01",
+            (Command(4706, 2), b"\x02"): b"\x09",
+            (Command(4706, 2), b"\x03"): b"\x09",
+            (Command(4706, 24), b""): b"\x06",
+        }
+    )
     coordinator = MowerCoordinator(hass, entry)
     coordinator.client = client
     entry.runtime_data = coordinator
@@ -124,6 +136,8 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert set(detected) == {
         "eco_mode",
         "drive_past_wire",
+        "boundary_corridor",
+        "guide_1_corridor",
         "starting_point_1_distance",
         "reversing_distance",
         "sector_1_start_angle",
@@ -132,6 +146,7 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert (Command(4422, 2), b"") not in client.calls
     assert (Command(6170, 2), b"") not in client.calls
     assert (Command(6170, 8), b"") not in client.calls
+    assert (Command(4706, 2), b"\x03") not in client.calls
     assert coordinator.device_info["model"] == "Automower 420"
     assert detected["starting_point_1_distance"].native_value == 150
     wire = detected["drive_past_wire"]
@@ -143,6 +158,14 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     await wire.async_set_native_value(320)
     assert wire.native_value == 320
     assert (Command(4712, 1), U16.pack(320)) in client.calls
+    guide = detected["guide_1_corridor"]
+    assert (guide.native_min_value, guide.native_max_value) == (0, 9)
+    await guide.async_set_native_value(0)
+    assert guide.native_value == 0
+    assert (Command(4706, 3), b"\x02\0") in client.calls
+    with pytest.raises(HomeAssistantError, match="between 1 and 9"):
+        await detected["boundary_corridor"].async_set_native_value(0)
+    assert (Command(4706, 25), b"\0") not in client.calls
     reverse = detected["reversing_distance"]
     assert (
         reverse.native_min_value,
@@ -161,7 +184,10 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_accessory_switches_require_mower_availability(tmp_path, monkeypatch):
+@pytest.mark.parametrize("flexifence_family", (5926, 6050))
+async def test_accessory_switches_require_mower_availability(
+    tmp_path, monkeypatch, flexifence_family
+):
     entry = _entry()
     coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
     client = FakeAutomower420()
@@ -169,12 +195,16 @@ async def test_accessory_switches_require_mower_availability(tmp_path, monkeypat
     entry.runtime_data = coordinator
     ultrasonic = Command(4728, 1)
     edge_cut = Command(6690, 2)
+    flexifence_available = Command(flexifence_family, 0)
+    flexifence = Command(flexifence_family, 2)
     client.values.update(
         {
             (Command(4728, 0), b""): b"\x01",
             (ultrasonic, b""): b"\0",
             (Command(6690, 3), b""): b"\0",
             (edge_cut, b""): b"\0",
+            (flexifence_available, b""): b"\0",
+            (flexifence, b""): b"\0",
         }
     )
     send = client.command
@@ -182,6 +212,10 @@ async def test_accessory_switches_require_mower_availability(tmp_path, monkeypat
     async def command(operation, payload=b""):
         if operation == Command(4728, 2) and payload == b"\x01":
             client.values[ultrasonic, b""] = payload
+            return b""
+        if operation == Command(flexifence_family, 3):
+            assert payload == b"\x01"
+            client.values[flexifence, b""] = payload
             return b""
         return await send(operation, payload)
 
@@ -194,8 +228,18 @@ async def test_accessory_switches_require_mower_availability(tmp_path, monkeypat
     detected = {entity.key: entity for entity in entities}
     assert "edge_cut" not in detected
     assert (edge_cut, b"") not in client.calls
+    assert "flexifence" not in detected
+    assert (flexifence, b"") not in client.calls
     await detected["ultrasonic"].async_turn_on()
     assert detected["ultrasonic"].is_on
+    client.values[flexifence_available, b""] = b"\x01"
+    await coordinator.async_refresh_optional()
+    flexifence_switch = next(
+        entity for entity in entities if entity.key == "flexifence"
+    )
+    assert not flexifence_switch.is_on
+    await flexifence_switch.async_turn_on()
+    assert flexifence_switch.is_on
     await coordinator.async_shutdown()
 
 

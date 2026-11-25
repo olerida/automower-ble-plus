@@ -188,6 +188,9 @@
       "ultrasonic": {
         "name": "Detección de obstáculos por ultrasonidos"
       },
+      "flexifence": {
+        "name": "Detección de FlexiFence"
+      },
       "mower_firmware_auto_check": {
         "name": "Buscar firmware del cortacésped automáticamente"
       },
@@ -237,6 +240,9 @@
       },
       "boundary_corridor": {
         "name": "Anchura del pasillo del cable delimitador"
+      },
+      "guide_corridor": {
+        "name": "Anchura del pasillo del cable guía {index}"
       },
       "starting_point_distance": {
         "name": "Distancia del punto de partida {index}"

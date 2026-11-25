@@ -140,6 +140,10 @@ _SETTINGS = (
     Setting("obstacle_avoidance", (_variant(5356, 4, 3, available=2),)),
     Setting("obstacle_avoidance_at_boundary", (_variant(5356, 6, 5, available=2),)),
     Setting("ultrasonic", (_variant(4728, 1, 2, available=0),)),
+    Setting(
+        "flexifence",
+        (_variant(5926, 2, 3, available=0), _variant(6050, 2, 3, available=0)),
+    ),
     Setting("edge_cut", (_variant(6690, 2, 1, available=3),)),
     Setting("boundary_edge_detection", (_variant(7414, 5, 4, available=2),)),
     Setting("vision_positioning", (_variant(6170, 15, 16, available=14),)),
@@ -157,7 +161,7 @@ _SETTINGS = (
     Setting("automatic_clock_sync", (_variant(6746, 7, 8),)),
     Setting("use_24_hour_time", (_variant(5100, 10, 11),)),
     Setting("display_cutting_height_in_inches", (_variant(5100, 8, 9),)),
-    Setting("boundary_corridor", (_variant(4706, 24, 25),), maximum=9),
+    Setting("boundary_corridor", (_variant(4706, 24, 25),), minimum=1, maximum=9),
     Setting("automatic_passage_handling", (_variant(4706, 4, 5),)),
     Setting(
         "station_search_range",
@@ -290,6 +294,16 @@ def settings_for_model(
                 maximum=bounds[1],
                 unit="mm",
                 step=10,
+            )
+        )
+    for index in range(1, (guide_count or 0) + 1):
+        settings.append(
+            Setting(
+                f"guide_{index}_corridor",
+                (_variant(4706, 2, 3, arguments=U8.pack(index + 1)),),
+                maximum=9,
+                translation_key="guide_corridor",
+                index=index,
             )
         )
     for index in range(1, STARTING_POINT_COUNTS.get(model, 0) + 1):

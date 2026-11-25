@@ -67,7 +67,6 @@ from .geofence import (
 )
 from .history import async_get_message_history, decode_message_event
 from .mapfiles import async_get_map, async_replace_map
-from .models import STARTING_POINT_COUNTS
 from .schedule import (
     ScheduleTask,
     async_get_schedule,
@@ -237,13 +236,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     )
                 except CommandRejected, MowerConnectionError, UnicodeError:
                     firmware = None
-                if model_id in STARTING_POINT_COUNTS:
-                    try:
-                        guide_count = min(
-                            await self._read(Reading(GET_GUIDE_COUNT, U8)), 3
-                        )
-                    except CommandRejected, MowerConnectionError, ValueError:
-                        pass
+                try:
+                    guide_count = min(await self._read(Reading(GET_GUIDE_COUNT, U8)), 3)
+                except CommandRejected, MowerConnectionError, ValueError:
+                    pass
                 if self.client.is_connected():
                     try:
                         node_version = await self.client.main_node_version()

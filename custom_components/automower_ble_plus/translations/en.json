@@ -188,6 +188,9 @@
       "ultrasonic": {
         "name": "Ultrasonic obstacle detection"
       },
+      "flexifence": {
+        "name": "FlexiFence detection"
+      },
       "mower_firmware_auto_check": {
         "name": "Check for mower firmware automatically"
       },
@@ -237,6 +240,9 @@
       },
       "boundary_corridor": {
         "name": "Boundary corridor width"
+      },
+      "guide_corridor": {
+        "name": "Corridor width for guide wire {index}"
       },
       "starting_point_distance": {
         "name": "Distance for starting point {index}"

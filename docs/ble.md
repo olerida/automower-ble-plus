@@ -19,10 +19,11 @@ El APK contiene 166 archivos TIF de variantes de firmware. Un nombre de operaci�
 | Emparejamiento de estación y diagnóstico de lazos | 4692, 4462 | Emparejamiento con el robot en la estación y confirmación por evento. Lectura de los lazos instalados en los firmwares compatibles |
 | Faros | 4722 | Ajustes con detección |
 | Distancias de cable, marcha atrás y ángulos de salida | 4712, 4716 | Rangos por modelo o versión del nodo. Las operaciones de lectura confirman cada control |
-| Puntos de partida y pasillos | 4706 | Habilitación, proporción, distancia, guía y corte en pasillos según modelo |
+| Puntos de partida y pasillos | 4706 | Habilitación, proporción, distancia, asignación de guía, anchura del pasillo delimitador y de cada guía compatible, y corte en pasillos según modelo |
 | Búsqueda de la estación | 4708 | Métodos, retardos y alcance con detección |
 | Navegación asistida y obstáculos | 4732, 5356 | Ajustes con detección |
 | Corte de bordes y ultrasonidos | 6690, 4728 | Activación cuando el cortacésped anuncia cada función |
+| Detección FlexiFence | 5926, 6050 | Interruptor según disponibilidad del accesorio en el cortacésped |
 | Protección contra heladas | 5370, 5412 | Ajuste con detección de variantes |
 | Estadísticas y desgaste de cuchillas | 4726 | Lecturas y reinicio del contador por perfil de firmware |
 | Avisos y averías | 4730, 4586 | Historial paginado con códigos y niveles de gravedad. Avería actual y confirmación si el cortacésped la permite |
@@ -76,3 +77,7 @@ La app relaciona la detección de bordes con `BoundaryEdgeDetection.Available` y
 La app crea una misión, le asigna un identificador de polígono y la habilita para programar (`ev_fdf3b186595cc2b79c9fd96ed55e0e4851e28b00400d912b387919437f33fee8`, `ev_97a8a6a5a86363436c6439fd6f8acfc001b31dfa53bf03eb563bec3a74680f93`, `ev_cf288a4f48793a65443fdecf99b13a24e69c50235c4d80135f216f1949af8239`). El lector SVG de la app clasifica los polígonos verdes como áreas de trabajo (`ev_28da0c59942928ead14ec47ce945e50f155666e10c6cae0d64956cee9905dfb9`). La integración comprueba la revisión del mapa antes de vincular el área y confirma su identidad tras escribirla. Para borrar, la app envía el ID con `Missions.DeleteMission` (`ev_d275964c1b8aede01045fc75be42554df5906f1a58c2fc10af8499e494ef571b`).
 
 La app consulta por BLE el estado y resultado de la instalación de la base (`ev_63ed062b22c1b828fb7f9f6b8533373b32a033003b240af259bc4dd7ec5623e1`, `ev_1b0b2beaf2be6e0b542182f2d8830590f0d7b42f88d436b83bc0e4ce518ca3ad`). Para EPOS, toma la calidad de señal del servicio activo o de la estación de referencia y calcula la distancia a partir de las coordenadas locales en milímetros (`ev_2818badc7317a522ea5fa1bee73b78cb3f56f1ddebc1d14bfcc4dca8a79d70e6`, `ev_9d317f2907446dae773e254a2b89921335d227fe3573123d54d54cc92002b9fd`). El ajuste de asistencia por cable escribe `Epos.AugmentByWireEnabled` (`ev_2531ee1a4e885e25843db8f4d3055372ab7bb2df2654778bb47a18bdd65ff714`). La integración comprueba la disponibilidad de la función y verifica el ajuste mediante una lectura posterior.
+
+La pantalla de anchura de pasillo usa los intervalos 1–9 para el delimitador y 0–9 para cada guía (`ev_6b301f9b87505ceb9e6e381f421014dab519902b5647fd6bcb2e35f7145257b0`). El perfil 31.7 del 420 declara `GetGuideCorridor` y `SetGuideCorridor` (4706:2 y 4706:3). La integración lee el número de guías y crea un control por cada guía cuya anchura pueda leer.
+
+La sección de accesorios guarda el ajuste FlexiFence mediante `MobileLoop.Enabled` (`ev_980da380e3e068697a159431114b342149fcc332f6cfb6236dd77d6d19fee2ad`, `ev_daf03529ad8af72c3eba9cd87d424098569fd48f213f57e399bbdf73f4e8fb65`). El TIF del 420 declara la familia 5926. Hay otras variantes con la familia 6050. En ambos casos, la integración espera que `MobileLoop.Available` devuelva verdadero.
