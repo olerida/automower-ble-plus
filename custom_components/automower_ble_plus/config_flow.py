@@ -1,5 +1,6 @@
 """Set up an Automower by discovery or Bluetooth address."""
 
+import asyncio
 import re
 from struct import error as StructError
 from uuid import UUID
@@ -15,7 +16,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.const import CONF_ADDRESS, CONF_PIN
+from homeassistant.const import CONF_ADDRESS, CONF_PASSWORD, CONF_PIN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
@@ -23,8 +24,9 @@ from homeassistant.helpers import selector
 from .const import CORE_DOMAIN, DOMAIN
 from .features import GET_BATTERY, GET_MODEL, MODEL, U8
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
+from .wifi import WifiNetwork, encode_wifi_password
 
-_PIN = selector.TextSelector(
+_SECRET = selector.TextSelector(
     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
 )
 _MAC = re.compile(r"(?:[A-F0-9]{2}:){5}[A-F0-9]{2}")
@@ -91,7 +93,7 @@ class AutomowerConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _async_configure(self, step: str, user_input) -> ConfigFlowResult:
         errors = {}
-        fields = {vol.Optional(vol.Secret(CONF_PIN)): _PIN}
+        fields = {vol.Optional(vol.Secret(CONF_PIN)): _SECRET}
         if step == "user":
             fields = {vol.Required(CONF_ADDRESS): str, **fields}
         if user_input is not None:
@@ -159,9 +161,28 @@ class AutomowerConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class AutomowerMaintenanceFlow(OptionsFlow):
-    """Confirm a settings reset for exactly one configured mower."""
+    """Manage one configured mower's maintenance features."""
+
+    def __init__(self) -> None:
+        self._scan_task: asyncio.Task[tuple[WifiNetwork, ...]] | None = None
+        self._network_task: asyncio.Task[None] | None = None
+        self._selected_network: WifiNetwork | None = None
+        self._saved_networks: tuple[str, ...] | None = None
+        self._network_result = "wifi_joined"
 
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
+        """Offer maintenance for the capabilities this mower reports."""
+        entry = self.config_entry
+        if entry.state is not ConfigEntryState.LOADED:
+            return self.async_abort(reason="mower_unavailable")
+        coordinator = entry.runtime_data
+        if coordinator.can_configure_wifi:
+            if not coordinator.can_reset_user_settings:
+                return await self.async_step_wifi()
+            return self.async_show_menu(step_id="init", menu_options=["wifi", "reset"])
+        return await self.async_step_reset()
+
+    async def async_step_reset(self, user_input=None) -> ConfigFlowResult:
         """Show the effect of a reset before sending the BLE command."""
         entry = self.config_entry
         if entry.state is not ConfigEntryState.LOADED:
@@ -187,7 +208,7 @@ class AutomowerMaintenanceFlow(OptionsFlow):
                     )
 
         return self.async_show_form(
-            step_id="init",
+            step_id="reset",
             data_schema=vol.Schema(
                 {
                     vol.Required(
@@ -197,4 +218,161 @@ class AutomowerMaintenanceFlow(OptionsFlow):
             ),
             errors=errors,
             description_placeholders={"name": entry.title},
+        )
+
+    async def async_step_wifi(self, user_input=None) -> ConfigFlowResult:
+        """Offer scanning and management of saved networks."""
+        entry = self.config_entry
+        if (
+            entry.state is not ConfigEntryState.LOADED
+            or not entry.runtime_data.can_configure_wifi
+        ):
+            return self.async_abort(reason="wifi_unavailable")
+        return self.async_show_menu(
+            step_id="wifi", menu_options=["wifi_scan", "wifi_saved"]
+        )
+
+    async def async_step_wifi_scan(self, user_input=None) -> ConfigFlowResult:
+        """Scan at the mower while Home Assistant shows progress."""
+        if self._scan_task is None:
+            entry = self.config_entry
+            self._scan_task = entry.async_create_background_task(
+                self.hass,
+                entry.runtime_data.async_scan_wifi(),
+                "scan Wi-Fi networks from the Automower",
+            )
+        if not self._scan_task.done():
+            return self.async_show_progress(
+                step_id="wifi_scan",
+                progress_action="wifi_scanning",
+                progress_task=self._scan_task,
+            )
+        return self.async_show_progress_done(next_step_id="wifi_choose")
+
+    async def async_step_wifi_choose(self, user_input=None) -> ConfigFlowResult:
+        """Choose a network the mower found."""
+        assert self._scan_task is not None
+        try:
+            networks = self._scan_task.result()
+        except HomeAssistantError:
+            return self.async_abort(reason="wifi_scan_failed")
+        if not networks:
+            return self.async_abort(reason="wifi_no_networks")
+        if user_input is not None:
+            self._selected_network = networks[int(user_input["network"])]
+            if self._selected_network.auth:
+                return await self.async_step_wifi_password()
+            return await self._async_request_wifi_join(self._selected_network.name, "")
+        return self.async_show_form(
+            step_id="wifi_choose",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("network"): self._network_selector(
+                        [network.label for network in networks]
+                    )
+                }
+            ),
+        )
+
+    async def async_step_wifi_password(self, user_input=None) -> ConfigFlowResult:
+        """Read a password for the current BLE request only."""
+        assert self._selected_network is not None
+        errors = {}
+        if user_input is not None:
+            password = user_input[CONF_PASSWORD]
+            try:
+                if not password:
+                    raise ValueError
+                encode_wifi_password(password)
+            except ValueError:
+                errors[CONF_PASSWORD] = "wifi_invalid_password"
+            else:
+                return await self._async_request_wifi_join(
+                    self._selected_network.name, password
+                )
+        return self.async_show_form(
+            step_id="wifi_password",
+            data_schema=vol.Schema({vol.Required(vol.Secret(CONF_PASSWORD)): _SECRET}),
+            errors=errors,
+        )
+
+    async def async_step_wifi_saved(self, user_input=None) -> ConfigFlowResult:
+        """Choose whether to connect to or remove a saved network."""
+        coordinator = self.config_entry.runtime_data
+        if self._saved_networks is None:
+            try:
+                self._saved_networks = await coordinator.async_list_saved_wifi()
+            except HomeAssistantError:
+                return self.async_abort(reason="wifi_saved_failed")
+        if not self._saved_networks:
+            return self.async_abort(reason="wifi_no_saved")
+        if user_input is not None:
+            name = self._saved_networks[int(user_input["network"])]
+            if user_input["operation"] == "connect":
+                return await self._async_request_wifi_join(name, None)
+            try:
+                await coordinator.async_forget_wifi(name)
+            except HomeAssistantError:
+                return self.async_abort(reason="wifi_forget_failed")
+            return self.async_abort(reason="wifi_forgotten")
+        return self.async_show_form(
+            step_id="wifi_saved",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("network"): self._network_selector(
+                        list(self._saved_networks)
+                    ),
+                    vol.Required(
+                        "operation", default="connect"
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=["connect", "forget"],
+                            translation_key="wifi_operation",
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def _async_request_wifi_join(
+        self, name: str, password: str | None
+    ) -> ConfigFlowResult:
+        entry = self.config_entry
+        self._network_task = entry.async_create_background_task(
+            self.hass,
+            entry.runtime_data.async_join_wifi(name, password),
+            "connect the Automower to Wi-Fi",
+        )
+        return await self.async_step_wifi_join()
+
+    async def async_step_wifi_join(self, user_input=None) -> ConfigFlowResult:
+        """Show progress while the mower attempts to join the network."""
+        assert self._network_task is not None
+        if not self._network_task.done():
+            return self.async_show_progress(
+                step_id="wifi_join",
+                progress_action="wifi_joining",
+                progress_task=self._network_task,
+            )
+        try:
+            self._network_task.result()
+        except HomeAssistantError:
+            self._network_result = "wifi_join_failed"
+        return self.async_show_progress_done(next_step_id="wifi_join_result")
+
+    async def async_step_wifi_join_result(self, user_input=None) -> ConfigFlowResult:
+        """Report the firmware's connection outcome."""
+        return self.async_abort(reason=self._network_result)
+
+    @staticmethod
+    def _network_selector(labels: list[str]) -> selector.SelectSelector:
+        return selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(value=str(index), label=label)
+                    for index, label in enumerate(labels)
+                ],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
         )

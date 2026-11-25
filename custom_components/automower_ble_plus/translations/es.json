@@ -41,22 +41,69 @@
   "options": {
     "step": {
       "init": {
+        "title": "Mantenimiento del cortacésped",
+        "menu_options": {
+          "wifi": "Redes Wi-Fi",
+          "reset": "Restablecer ajustes"
+        }
+      },
+      "reset": {
         "title": "Restablecer ajustes del cortacésped",
         "description": "Restaura los ajustes de fábrica en {name}. Se pueden borrar los horarios, la configuración de la instalación y los objetos del mapa. El cortacésped puede reiniciarse y desconectarse brevemente.",
         "data": {
           "confirm_reset": "Restaurar los ajustes de fábrica en este cortacésped"
         }
+      },
+      "wifi": {
+        "title": "Wi-Fi del cortacésped",
+        "menu_options": {
+          "wifi_scan": "Buscar redes cerca del cortacésped",
+          "wifi_saved": "Gestionar redes guardadas"
+        }
+      },
+      "wifi_choose": {
+        "title": "Elegir una red Wi-Fi",
+        "data": {
+          "network": "Red Wi-Fi"
+        }
+      },
+      "wifi_password": {
+        "title": "Introducir la contraseña de la red",
+        "data": {
+          "password": "Contraseña del Wi-Fi"
+        }
+      },
+      "wifi_saved": {
+        "title": "Gestionar redes Wi-Fi guardadas",
+        "data": {
+          "network": "Red guardada",
+          "operation": "Acción"
+        }
       }
+    },
+    "progress": {
+      "wifi_scanning": "El cortacésped está buscando redes Wi-Fi cercanas.",
+      "wifi_joining": "El cortacésped está conectándose a la red Wi-Fi seleccionada."
     },
     "error": {
       "confirmation_required": "Confirma que quieres restablecer los ajustes de este cortacésped.",
-      "reset_failed": "No se ha podido completar la solicitud de restablecimiento. Comprueba el cortacésped y su conexión Bluetooth."
+      "reset_failed": "No se ha podido completar la solicitud de restablecimiento. Comprueba el cortacésped y su conexión Bluetooth.",
+      "wifi_invalid_password": "Introduce una contraseña Wi-Fi de hasta 64 bytes en UTF-8."
     },
     "abort": {
       "mower_unavailable": "La entrada de este cortacésped no está disponible en Home Assistant.",
       "reset_unavailable": "El restablecimiento de ajustes no está disponible para este cortacésped.",
       "reset_requested": "El cortacésped ha aceptado la solicitud. Home Assistant se volverá a conectar y leerá sus ajustes.",
-      "reset_unconfirmed": "Home Assistant no ha recibido una confirmación válida. Comprueba los ajustes del cortacésped cuando vuelva a conectarse."
+      "reset_unconfirmed": "Home Assistant no ha recibido una confirmación válida. Comprueba los ajustes del cortacésped cuando vuelva a conectarse.",
+      "wifi_unavailable": "La interfaz Wi-Fi del cortacésped no está disponible.",
+      "wifi_scan_failed": "El cortacésped no completó la búsqueda de redes Wi-Fi.",
+      "wifi_no_networks": "El cortacésped no encontró redes Wi-Fi compatibles.",
+      "wifi_saved_failed": "No se han podido leer las redes Wi-Fi guardadas en el cortacésped.",
+      "wifi_no_saved": "El cortacésped no tiene redes Wi-Fi guardadas.",
+      "wifi_joined": "El cortacésped ha confirmado la conexión a la red Wi-Fi seleccionada.",
+      "wifi_join_failed": "El cortacésped no ha confirmado la conexión. Comprueba la señal y la contraseña.",
+      "wifi_forgotten": "La red seleccionada se ha eliminado del cortacésped.",
+      "wifi_forget_failed": "El cortacésped no ha confirmado que haya eliminado la red guardada."
     }
   },
   "entity": {
@@ -126,6 +173,14 @@
       }
     },
     "binary_sensor": {
+      "wifi_connected": {
+        "name": "Conexión Wi-Fi",
+        "state_attributes": {
+          "ssid": {
+            "name": "Nombre de la red"
+          }
+        }
+      },
       "charging": {
         "name": "En carga"
       },
@@ -173,6 +228,9 @@
       }
     },
     "switch": {
+      "wifi_enabled": {
+        "name": "Wi-Fi"
+      },
       "eco_mode": {
         "name": "Modo ECO"
       },
@@ -415,6 +473,9 @@
       }
     },
     "sensor": {
+      "wifi_signal_strength": {
+        "name": "Intensidad de señal Wi-Fi"
+      },
       "battery": {
         "name": "Batería"
       },
@@ -990,6 +1051,12 @@
     }
   },
   "selector": {
+    "wifi_operation": {
+      "options": {
+        "connect": "Conectar",
+        "forget": "Olvidar red"
+      }
+    },
     "mowing_pattern": {
       "options": {
         "random": "Aleatorio",

@@ -11,6 +11,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
@@ -58,6 +59,12 @@ _MEASUREMENT = SensorStateClass.MEASUREMENT
 _COUNTER = SensorStateClass.TOTAL_INCREASING
 _DESCRIPTIONS = (
     _description("battery", SensorDeviceClass.BATTERY, PERCENTAGE, _MEASUREMENT),
+    _description(
+        "wifi_signal_strength",
+        SensorDeviceClass.SIGNAL_STRENGTH,
+        SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        _MEASUREMENT,
+    ),
     _description(
         "battery_voltage",
         SensorDeviceClass.VOLTAGE,

@@ -52,6 +52,7 @@ from custom_components.automower_ble_plus.transport import (
     CommandRejected,
     MowerConnectionError,
 )
+from custom_components.automower_ble_plus.wifi import encode_ssid
 from custom_components.automower_ble_plus.wire import Command, Event
 
 
@@ -182,6 +183,10 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
         "stop_epos_docking_installation",
     }
     assert not any(command.family == 5650 for command, _ in client.calls)
+    assert not coordinator.can_configure_wifi
+    assert not any(
+        command.family == 5916 and command.operation != 0 for command, _ in client.calls
+    )
     assert (Command(4706, 2), b"\x03") not in client.calls
     assert (Command(4706, 24), b"") not in client.calls
     assert (Command(4706, 26), b"\x01") not in client.calls
@@ -1609,6 +1614,181 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             reload_entry.assert_called_once_with(entry.entry_id)
             assert await hass.config_entries.async_unload(entry.entry_id)
             assert entry.state == ConfigEntryState.NOT_LOADED
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+async def test_wifi_options_scan_join_and_forget_without_storing_credentials(
+    tmp_path, monkeypatch
+):
+    integrations = Path(__file__).resolve().parents[1] / "custom_components"
+    (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
+    hass = HomeAssistant(str(tmp_path))
+    loader.async_setup(hass)
+    hass.config.skip_pip = True
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
+    hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    client = FakeAutomower420()
+    entry = _entry()
+    monkeypatch.setattr(
+        "custom_components.automower_ble_plus.coordinator.AutomowerClient",
+        lambda *args: client,
+    )
+    wifi = 5916
+    network = "Jardín de prueba"
+    password = "contraseña de prueba"
+    scan_sent = asyncio.Event()
+    join_sent = asyncio.Event()
+    client.values.update(
+        {
+            (Command(wifi, 0), b""): b"\x01",
+            (Command(wifi, 2), b""): b"\0",
+            (Command(wifi, 3), b"\x01"): b"",
+            (Command(wifi, 7), b""): U32.pack(0),
+            (Command(wifi, 17), b""): b"\0",
+            (Command(wifi, 27), b""): b"",
+            (Command(wifi, 28), b""): b"",
+            (Command(wifi, 30), b""): b"",
+            (Command(wifi, 15), encode_ssid(network)): b"",
+            (Command(wifi, 13), encode_ssid(network)): b"",
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == Command(wifi, 11):
+            client.calls.append((operation, payload))
+            assert payload == encode_ssid(network) + password.encode().ljust(64, b"\0")
+            join_sent.set()
+            return b""
+        value = await send(operation, payload)
+        if operation == Command(wifi, 3):
+            client.values[Command(wifi, 2), b""] = payload
+        elif operation == Command(wifi, 27):
+            scan_sent.set()
+        elif operation == Command(wifi, 15):
+            client.values[Command(wifi, 7), b""] = U32.pack(0)
+            client.values[Command(wifi, 17), b""] = b"\0"
+        elif operation == Command(wifi, 13):
+            join_sent.set()
+        return value
+
+    monkeypatch.setattr(client, "command", command)
+    try:
+        async with asyncio.timeout(15):
+            assert await setup.async_setup_component(hass, DOMAIN, {})
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+            coordinator = entry.runtime_data
+            await coordinator.async_refresh_optional()
+            assert coordinator.can_configure_wifi
+            assert coordinator.data["wifi_enabled"] == 0
+            options = hass.config_entries.options
+            flow = await options.async_init(entry.entry_id)
+            assert flow["menu_options"] == ["wifi", "reset"]
+            flow_id = flow["flow_id"]
+            await options.async_configure(flow_id, {"next_step_id": "wifi"})
+            flow = await options.async_configure(flow_id, {"next_step_id": "wifi_scan"})
+            assert flow["type"] == FlowResultType.SHOW_PROGRESS
+            await scan_sent.wait()
+            # Core BLE commands can run while the Wi-Fi scan is in progress.
+            await coordinator.async_keep_alive()
+            for name, signal, auth_mode in (
+                (network, -71, 3),
+                (network, -45, 3),
+                ("Enterprise", -10, 5),
+                ("Open", -85, 0),
+            ):
+                coordinator._async_on_event(
+                    Event(
+                        wifi,
+                        1,
+                        pack("<33sbBB", encode_ssid(name), signal, 1, auth_mode),
+                    )
+                )
+            coordinator._async_on_event(Event(wifi, 0, b""))
+            await asyncio.sleep(0)
+            await hass.async_block_till_done()
+            flow = await options.async_configure(flow_id)
+            assert flow["step_id"] == "wifi_choose"
+            choices = next(iter(flow["data_schema"].schema.values())).config["options"]
+            assert [choice["label"] for choice in choices] == [
+                f"{network} (WPA2, -45 dBm)",
+                "Open (Open, -85 dBm)",
+            ]
+            flow = await options.async_configure(flow_id, {"network": "0"})
+            assert flow["step_id"] == "wifi_password"
+            flow = await options.async_configure(flow_id, {"password": "é" * 33})
+            assert flow["errors"] == {"password": "wifi_invalid_password"}
+            flow = await options.async_configure(flow_id, {"password": password})
+            assert flow["type"] == FlowResultType.SHOW_PROGRESS
+            await join_sent.wait()
+            coordinator._async_on_event(Event(wifi, 4, encode_ssid("Other") + b"\xa0"))
+            assert coordinator.data["wifi_connected"] == 0
+            client.values.update(
+                {
+                    (Command(wifi, 7), b""): U32.pack(1),
+                    (Command(wifi, 5), U32.pack(0)): encode_ssid(network),
+                    (Command(wifi, 17), b""): b"\x01",
+                    (Command(wifi, 18), b""): encode_ssid(network),
+                    (Command(wifi, 20), b""): pack("<b", -45),
+                }
+            )
+            coordinator._async_on_event(Event(wifi, 4, encode_ssid(network) + b"\xd3"))
+            await asyncio.sleep(0)
+            await hass.async_block_till_done()
+            flow = await options.async_configure(flow_id)
+            assert flow["reason"] == "wifi_joined"
+            assert coordinator.data["wifi_ssid"] == network
+            assert coordinator.data["wifi_signal_strength"] == -45
+            report = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
+            assert network not in str(report)
+            assert password not in str(entry.data) and not entry.options
+
+            async def saved_flow():
+                result = await options.async_init(entry.entry_id)
+                saved_flow_id = result["flow_id"]
+                await options.async_configure(saved_flow_id, {"next_step_id": "wifi"})
+                await options.async_configure(
+                    saved_flow_id, {"next_step_id": "wifi_saved"}
+                )
+                return saved_flow_id
+
+            saved = await saved_flow()
+            join_sent.clear()
+            await options.async_configure(
+                saved, {"network": "0", "operation": "connect"}
+            )
+            await join_sent.wait()
+            coordinator._async_on_event(Event(wifi, 6, encode_ssid(network) + b"\0"))
+            await asyncio.sleep(0)
+            await hass.async_block_till_done()
+            flow = await options.async_configure(saved)
+            assert flow["reason"] == "wifi_join_failed"
+
+            saved = await saved_flow()
+            flow = await options.async_configure(
+                saved, {"network": "0", "operation": "forget"}
+            )
+            assert flow["reason"] == "wifi_forgotten"
+            assert (Command(wifi, 15), encode_ssid(network)) in client.calls
+            assert coordinator.data["wifi_connected"] == 0
+            assert "wifi_ssid" not in coordinator.data
+            monkeypatch.setattr(coordinator_module, "WIFI_TIMEOUT", 0)
+            with pytest.raises(HomeAssistantError, match="complete the Wi-Fi scan"):
+                await coordinator.async_scan_wifi()
+            assert client.calls[-1] == (Command(wifi, 28), b"")
+            assert await hass.config_entries.async_unload(entry.entry_id)
     finally:
         await hass.async_stop(force=True)
 

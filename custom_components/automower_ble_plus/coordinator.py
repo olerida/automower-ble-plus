@@ -114,6 +114,27 @@ from .sites import (
 from .station import async_get_loop_signals, async_pair_charging_station
 from .transport import AutomowerClient, CommandRejected, MowerConnectionError
 from .vision import VISION_STATUS_KEYS, async_read_vision_telemetry
+from .wifi import (
+    REMOVE_WIFI,
+    SET_WIFI_ENABLED,
+    START_WIFI_SCAN,
+    STOP_WIFI_SCAN,
+    TRY_ADD_WIFI,
+    TRY_SAVED_WIFI,
+    WIFI_AVAILABLE,
+    WIFI_ENABLED,
+    WIFI_FAMILY,
+    WIFI_STATUS_EVENTS,
+    WIFI_STATUS_KEYS,
+    WIFI_TIMEOUT,
+    WifiJoin,
+    WifiNetwork,
+    WifiScan,
+    async_read_saved_wifi,
+    async_read_wifi_status,
+    encode_ssid,
+    encode_wifi_password,
+)
 from .wire import Command, Event
 from .wire_test import WireTest, WireTestPhase, WireTestRoute
 from .work_areas import (
@@ -201,6 +222,13 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self.reference_candidates: tuple[int, ...] = ()
         self._docking_installation_start_until = 0.0
         self._reset_request_sent = False
+        self._wifi_operation_lock = asyncio.Lock()
+        self._wifi_event_listener: Callable[[Event], None] | None = None
+
+    @property
+    def can_configure_wifi(self) -> bool:
+        """Whether the mower reported an available Wi-Fi interface."""
+        return self.data is not None and "wifi_enabled" in self.data
 
     @property
     def can_reset_user_settings(self) -> bool:
@@ -261,6 +289,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             and (scan := self._reference_scan) is not None
         ):
             scan.handle_event(event)
+        elif event.family == WIFI_FAMILY and self._wifi_event_listener is not None:
+            self._wifi_event_listener(event)
         elif (
             event.family == _CALENDAR_EVENTS.family
             and event.event_id in (_CALENDAR_TIME_UPDATED, _CALENDAR_TASKS_UPDATED)
@@ -541,6 +571,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ("installation_selection", None),
                 ("vision", None),
                 ("epos", None),
+                ("wifi", None),
             )
         )
         probes.extend((key, None) for key in FIRMWARE_TARGETS)
@@ -641,6 +672,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         for status in EPOS_STATUS_KEYS.difference(epos):
                             values.pop(status, None)
                         values.update(epos)
+                    elif key == "wifi":
+                        wifi = {}
+                        if values.get("wifi_enabled") == 1:
+                            wifi = await async_read_wifi_status(self.client)
+                        elif values.get("wifi_enabled") == 0:
+                            wifi = {"wifi_connected": 0}
+                        for status in WIFI_STATUS_KEYS.difference(wifi):
+                            values.pop(status, None)
+                        values.update(wifi)
                     else:
                         values.pop("latitude", None)
                         values.pop("longitude", None)
@@ -908,6 +948,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         """Change a supported setting and retrieve the value stored by the mower."""
         async with self._operation_lock:
             await self._async_write_setting(setting, value)
+            if setting.key == "wifi_enabled":
+                await self._async_update_wifi_telemetry()
 
     async def _async_write_setting(self, setting: Setting, value: int) -> int:
         """Write and read back a setting while the operation lock is held."""
@@ -1503,6 +1545,138 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self._reset_request_sent = True
             self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
             return confirmed
+
+    async def _async_connect_wifi_interface(self, *, enable: bool = False) -> None:
+        await self._async_connect()
+        if await self._read(WIFI_AVAILABLE) != 1:
+            raise ValueError("This mower does not report an available Wi-Fi interface")
+        if enable:
+            enabled = await self._read(WIFI_ENABLED)
+            if enabled not in (0, 1):
+                raise ValueError("The mower returned an invalid Wi-Fi setting")
+            if not enabled:
+                await self.client.command(SET_WIFI_ENABLED, b"\x01")
+                if await self._read(WIFI_ENABLED) != 1:
+                    raise ValueError("The mower did not enable Wi-Fi")
+            if self.data.get("wifi_enabled") != 1:
+                self.async_set_updated_data({**self.data, "wifi_enabled": 1})
+
+    async def async_scan_wifi(self) -> tuple[WifiNetwork, ...]:
+        """Discover Wi-Fi networks from the mower's location."""
+        async with self._wifi_operation_lock:
+            scan = WifiScan()
+            try:
+                async with self._operation_lock:
+                    await self._async_connect_wifi_interface(enable=True)
+                    self._wifi_event_listener = scan.handle_event
+                    await self.client.command(START_WIFI_SCAN)
+                async with asyncio.timeout(WIFI_TIMEOUT):
+                    await scan.done.wait()
+            except (
+                CommandRejected,
+                MowerConnectionError,
+                ValueError,
+                TimeoutError,
+            ) as err:
+                raise HomeAssistantError(
+                    "The mower did not complete the Wi-Fi scan"
+                ) from err
+            finally:
+                started = self._wifi_event_listener is not None
+                self._wifi_event_listener = None
+                if started and not scan.done.is_set():
+                    async with self._operation_lock:
+                        if self.client.is_connected():
+                            with suppress(CommandRejected, MowerConnectionError):
+                                await self.client.command(STOP_WIFI_SCAN)
+            return tuple(
+                sorted(
+                    scan.networks.values(),
+                    key=lambda network: (-network.signal, network.name),
+                )
+            )
+
+    async def async_list_saved_wifi(self) -> tuple[str, ...]:
+        """Read saved network names for the maintenance form."""
+        async with self._wifi_operation_lock, self._operation_lock:
+            try:
+                await self._async_connect_wifi_interface()
+                return await async_read_saved_wifi(self.client)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    "Could not read the mower's saved Wi-Fi networks"
+                ) from err
+
+    async def async_join_wifi(self, name: str, password: str | None = None) -> None:
+        """Connect using saved credentials or ask the mower to save a new network."""
+        async with self._wifi_operation_lock:
+            try:
+                ssid = encode_ssid(name)
+                payload = (
+                    ssid if password is None else ssid + encode_wifi_password(password)
+                )
+                join = WifiJoin(ssid)
+                async with self._operation_lock:
+                    await self._async_connect_wifi_interface(enable=True)
+                    if password is None and name not in await async_read_saved_wifi(
+                        self.client
+                    ):
+                        raise ValueError(
+                            "The mower no longer has this saved Wi-Fi network"
+                        )
+                    await self.client.command(WIFI_STATUS_EVENTS)
+                    self._wifi_event_listener = join.handle_event
+                    if password is None:
+                        await self.client.command(TRY_SAVED_WIFI, payload)
+                    else:
+                        await self.client.command(TRY_ADD_WIFI, payload)
+                async with asyncio.timeout(WIFI_TIMEOUT):
+                    await join.done.wait()
+                if not join.connected:
+                    raise ValueError("The mower could not join the Wi-Fi network")
+                async with self._operation_lock:
+                    await self._async_update_wifi_telemetry()
+            except (
+                CommandRejected,
+                MowerConnectionError,
+                ValueError,
+                TimeoutError,
+            ) as err:
+                raise HomeAssistantError(
+                    "The mower did not confirm a Wi-Fi connection"
+                ) from err
+            finally:
+                self._wifi_event_listener = None
+
+    async def async_forget_wifi(self, name: str) -> None:
+        """Remove one saved network and confirm it is absent."""
+        async with self._wifi_operation_lock, self._operation_lock:
+            try:
+                ssid = encode_ssid(name)
+                await self._async_connect_wifi_interface()
+                if name in await async_read_saved_wifi(self.client):
+                    await self.client.command(REMOVE_WIFI, ssid)
+                    if name in await async_read_saved_wifi(self.client):
+                        raise ValueError("The mower retained the saved Wi-Fi network")
+                await self._async_update_wifi_telemetry()
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    "Could not remove the mower's saved Wi-Fi network"
+                ) from err
+
+    async def _async_update_wifi_telemetry(self) -> None:
+        with suppress(CommandRejected, MowerConnectionError, ValueError):
+            status = (
+                await async_read_wifi_status(self.client)
+                if self.data.get("wifi_enabled") == 1
+                else {"wifi_connected": 0}
+            )
+            data = {
+                key: value
+                for key, value in self.data.items()
+                if key not in WIFI_STATUS_KEYS
+            }
+            self.async_set_updated_data({**data, **status})
 
     async def async_start_epos_docking_installation(self) -> None:
         """Ask the docked, paused mower to establish its EPOS docking point."""

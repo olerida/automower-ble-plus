@@ -33,6 +33,12 @@ async def async_setup_entry(
     async_add_detected(
         entry,
         add_entities,
+        {"wifi_connected": None},
+        lambda key, _: WifiConnectionSensor(entry.runtime_data, key),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
         {
             "theft_motion_alarm": None,
             "theft_geofence_alarm": None,
@@ -92,3 +98,14 @@ class DiagnosticStatusSensor(MowerValueEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         value = self.value
         return value == 1 if value in (0, 1) else None
+
+
+class WifiConnectionSensor(DiagnosticStatusSensor):
+    """Report whether the mower is connected to its Wi-Fi network."""
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        name = self.coordinator.data.get("wifi_ssid")
+        return {"ssid": name} if self.is_on and isinstance(name, str) else None

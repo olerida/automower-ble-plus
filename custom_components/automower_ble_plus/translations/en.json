@@ -41,22 +41,69 @@
   "options": {
     "step": {
       "init": {
+        "title": "Mower maintenance",
+        "menu_options": {
+          "wifi": "Wi-Fi networks",
+          "reset": "Reset user settings"
+        }
+      },
+      "reset": {
         "title": "Reset mower user settings",
         "description": "Restore the factory defaults on {name}. This can erase schedules, installation settings and map objects. The mower may restart and briefly disconnect.",
         "data": {
           "confirm_reset": "Restore factory defaults on this mower"
         }
+      },
+      "wifi": {
+        "title": "Mower Wi-Fi",
+        "menu_options": {
+          "wifi_scan": "Find networks near the mower",
+          "wifi_saved": "Manage saved networks"
+        }
+      },
+      "wifi_choose": {
+        "title": "Choose a Wi-Fi network",
+        "data": {
+          "network": "Wi-Fi network"
+        }
+      },
+      "wifi_password": {
+        "title": "Enter the network password",
+        "data": {
+          "password": "Wi-Fi password"
+        }
+      },
+      "wifi_saved": {
+        "title": "Manage saved Wi-Fi networks",
+        "data": {
+          "network": "Saved network",
+          "operation": "Action"
+        }
       }
+    },
+    "progress": {
+      "wifi_scanning": "The mower is scanning for nearby Wi-Fi networks.",
+      "wifi_joining": "The mower is connecting to the selected Wi-Fi network."
     },
     "error": {
       "confirmation_required": "Confirm that you want to reset this mower.",
-      "reset_failed": "The reset request could not be completed. Check the mower and its Bluetooth connection."
+      "reset_failed": "The reset request could not be completed. Check the mower and its Bluetooth connection.",
+      "wifi_invalid_password": "Enter a Wi-Fi password of up to 64 UTF-8 bytes."
     },
     "abort": {
       "mower_unavailable": "This mower's Home Assistant entry is unavailable.",
       "reset_unavailable": "A user-settings reset is unavailable for this mower.",
       "reset_requested": "The mower accepted the reset request. Home Assistant will reconnect and read its settings again.",
-      "reset_unconfirmed": "Home Assistant did not receive a valid confirmation. Check the mower's settings after it reconnects."
+      "reset_unconfirmed": "Home Assistant did not receive a valid confirmation. Check the mower's settings after it reconnects.",
+      "wifi_unavailable": "The mower's Wi-Fi interface is unavailable.",
+      "wifi_scan_failed": "The mower did not complete the Wi-Fi scan.",
+      "wifi_no_networks": "The mower found no compatible Wi-Fi networks.",
+      "wifi_saved_failed": "The mower's saved Wi-Fi networks could not be read.",
+      "wifi_no_saved": "The mower has no saved Wi-Fi networks.",
+      "wifi_joined": "The mower confirmed that it joined the selected Wi-Fi network.",
+      "wifi_join_failed": "The mower did not confirm a Wi-Fi connection. Check the signal and password.",
+      "wifi_forgotten": "The selected network is no longer saved on the mower.",
+      "wifi_forget_failed": "The mower did not confirm removal of the saved network."
     }
   },
   "entity": {
@@ -126,6 +173,14 @@
       }
     },
     "binary_sensor": {
+      "wifi_connected": {
+        "name": "Wi-Fi connection",
+        "state_attributes": {
+          "ssid": {
+            "name": "Network name"
+          }
+        }
+      },
       "charging": {
         "name": "Charging"
       },
@@ -173,6 +228,9 @@
       }
     },
     "switch": {
+      "wifi_enabled": {
+        "name": "Wi-Fi"
+      },
       "eco_mode": {
         "name": "ECO mode"
       },
@@ -415,6 +473,9 @@
       }
     },
     "sensor": {
+      "wifi_signal_strength": {
+        "name": "Wi-Fi signal strength"
+      },
       "battery": {
         "name": "Battery"
       },
@@ -990,6 +1051,12 @@
     }
   },
   "selector": {
+    "wifi_operation": {
+      "options": {
+        "connect": "Connect",
+        "forget": "Forget network"
+      }
+    },
     "mowing_pattern": {
       "options": {
         "random": "Random",

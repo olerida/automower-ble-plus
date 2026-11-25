@@ -119,6 +119,7 @@ def _variant(
 _SETTINGS = (
     Setting("eco_mode", (_variant(4692, 6, 5),)),
     Setting("mower_house", (_variant(4692, 4, 3),)),
+    Setting("wifi_enabled", (_variant(5916, 2, 3, available=0),)),
     Setting("weather_timer", (_variant(4460, 4, 5, available=2),)),
     Setting("spiral_cutting", (_variant(4710, 1, 2, available=0),)),
     Setting(
