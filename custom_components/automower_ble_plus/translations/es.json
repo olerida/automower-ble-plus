@@ -46,7 +46,15 @@
           "wifi": "Redes Wi-Fi",
           "reset": "Restablecer ajustes",
           "change_pin": "Cambiar el PIN",
-          "regenerate_aim_map": "Volver a generar el mapa AIM"
+          "regenerate_aim_map": "Volver a generar el mapa AIM",
+          "setup_epos_origin": "Configurar origen EPOS de Husqvarna Cloud"
+        }
+      },
+      "setup_epos_origin": {
+        "title": "Configurar el origen EPOS",
+        "description": "Coloca {name} en un lugar con el cielo despejado y mantén el enlace Bluetooth. El asistente seleccionará Husqvarna Cloud en el perfil de instalación vacío y esperará hasta cinco minutos a que pueda registrar la posición actual como origen.",
+        "data": {
+          "confirm_epos_origin": "Activar Husqvarna Cloud y registrar el origen"
         }
       },
       "regenerate_aim_map": {
@@ -101,7 +109,8 @@
     },
     "progress": {
       "wifi_scanning": "El cortacésped está buscando redes Wi-Fi cercanas.",
-      "wifi_joining": "El cortacésped está conectándose a la red Wi-Fi seleccionada."
+      "wifi_joining": "El cortacésped está conectándose a la red Wi-Fi seleccionada.",
+      "epos_origin_waiting": "Esperando a que el cortacésped pueda registrar y validar el origen EPOS."
     },
     "error": {
       "confirmation_required": "Confirma que quieres restablecer los ajustes de este cortacésped.",
@@ -111,12 +120,18 @@
       "pin_confirmation_mismatch": "Los dos PIN nuevos deben coincidir.",
       "pin_change_failed": "No se ha podido cambiar el PIN. Comprueba el estado del cortacésped y su conexión Bluetooth.",
       "aim_confirmation_required": "Confirma que quieres volver a generar el mapa.",
+      "epos_origin_confirmation_required": "Confirma que quieres registrar este punto como origen EPOS.",
       "aim_map_failed": "No se ha podido solicitar un nuevo mapa. Comprueba la conexión Bluetooth y el estado del mapa AIM.",
       "reset_failed": "No se ha podido completar la solicitud de restablecimiento. Comprueba el cortacésped y su conexión Bluetooth.",
       "wifi_invalid_password": "Introduce una contraseña Wi-Fi de hasta 64 bytes en UTF-8."
     },
     "abort": {
       "mower_unavailable": "La entrada de este cortacésped no está disponible en Home Assistant.",
+      "epos_origin_unavailable": "El perfil de instalación activo no permite configurar este origen.",
+      "epos_origin_set": "El cortacésped ha registrado y validado el origen EPOS.",
+      "epos_origin_timeout": "El cortacésped no estuvo listo a tiempo. Comprueba la visibilidad del cielo y el estado de Husqvarna Cloud.",
+      "epos_origin_unconfirmed": "Home Assistant no ha podido verificar el origen. Consulta su estado en la ficha del cortacésped.",
+      "epos_origin_failed": "No se ha podido configurar el origen. Comprueba el perfil de instalación activo y el enlace Bluetooth.",
       "aim_map_unavailable": "El cortacésped no permite volver a generar el mapa AIM en este momento.",
       "aim_map_requested": "El cortacésped ha aceptado la solicitud. Puedes seguir el progreso desde su ficha.",
       "aim_map_unconfirmed": "El cortacésped no ha confirmado la solicitud. Comprueba el estado del mapa antes de volver a pedirlo.",
@@ -289,6 +304,9 @@
       },
       "epos_cloud_origin_valid": {
         "name": "Origen EPOS válido"
+      },
+      "epos_cloud_origin_settable": {
+        "name": "Listo para registrar el origen EPOS"
       }
     },
     "switch": {

@@ -204,6 +204,7 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     )
     assert not coordinator.can_configure_wifi
     assert not coordinator.can_regenerate_aim_map
+    assert coordinator.epos_origin_installation_id is None
     assert not any(key.startswith("aim_") for key in coordinator.data)
     assert all(
         command.operation == 2 for command, _ in client.calls if command.family == 5758
@@ -1327,6 +1328,164 @@ async def test_appdrive_panel_permissions_and_websocket_disconnect(tmp_path):
     )
     coordinator.async_set_updated_data({})
     assert not frontend.async_panel_exists(hass, "automower-appdrive")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["valid", "changed", "timeout", "lost_ack"])
+async def test_set_up_epos_cloud_origin(tmp_path, monkeypatch, outcome):
+    hass = HomeAssistant(str(tmp_path))
+    entry = _entry()
+    coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    legacy = outcome == "lost_ack"
+    version = "40.10_Main-App-P14.1_24.71" if legacy else "40.14_Main-App-P22_102.14"
+    monkeypatch.setattr(client, "main_node_version", AsyncMock(return_value=version))
+    monkeypatch.setattr(coordinator_module, "_EPOS_ORIGIN_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(coordinator_module, "_EPOS_ORIGIN_TIMEOUT", 0.1)
+
+    cloud = 6778
+    enable = (Command(cloud, 5), b"\1")
+    set_origin = (Command(cloud, 18), b"")
+    readiness = (Command(cloud, 17), b"")
+    site = (Command(5900, 12), b"")
+    map_available = (Command(5578, 40), b"")
+    client.values.update(
+        {
+            (Command(cloud, 3 if legacy else 23), b""): b"\1",
+            (Command(cloud, 4), b""): b"\0",
+            (Command(cloud, 15), b""): b"\0",
+            (Command(cloud, 16), b""): b"\0",
+            readiness: b"\0",
+            enable: b"",
+            set_origin: b"",
+            (Command(5900, 17), b""): b"\1",
+            site: U32.pack(71),
+            map_available: b"\1",
+            (Command(5578, 38), b""): b"\0",
+            (Command(5578, 43), b""): b"\0",
+        }
+    )
+    if not legacy:
+        client.values[Command(6170, 1), b""] = b"\1"
+        client.values[Command(6170, 2), b""] = b"\1"
+    send = client.command
+
+    async def command(operation, payload=b""):
+        request = (operation, payload)
+        reply = await send(operation, payload)
+        if request == enable:
+            client.values[Command(cloud, 4), b""] = b"\1"
+        elif request == readiness and outcome != "timeout":
+            if outcome == "changed":
+                client.values[site] = U32.pack(72)
+            client.values[readiness] = b"\1"
+        elif request == set_origin:
+            client.values[Command(cloud, 15), b""] = b"\1"
+            client.values[Command(cloud, 16), b""] = b"\1"
+            if outcome == "lost_ack":
+                raise MowerConnectionError("No response after the origin request")
+        return reply
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    await coordinator.async_refresh_optional()
+    assert coordinator.epos_origin_installation_id is None
+    with pytest.raises(HomeAssistantError, match="unavailable"):
+        await coordinator.async_setup_epos_origin(71)
+    assert enable not in client.calls
+    client.values[map_available] = b"\0"
+    await coordinator.async_refresh_optional()
+    assert coordinator.epos_origin_installation_id == 71
+
+    if outcome == "changed":
+        with pytest.raises(HomeAssistantError, match="active installation changed"):
+            await coordinator.async_setup_epos_origin(71)
+    elif outcome == "timeout":
+        with pytest.raises(TimeoutError):
+            await coordinator.async_setup_epos_origin(71)
+    else:
+        assert await coordinator.async_setup_epos_origin(71)
+        assert coordinator.data["epos_cloud_origin_valid"] == 1
+        assert coordinator.epos_origin_installation_id is None
+        assert client.calls.index(enable) < client.calls.index(set_origin)
+        await coordinator.async_refresh_optional()
+        assert coordinator.data["epos_cloud_origin_valid"] == 1
+    assert client.calls.count(enable) == 1
+    assert client.calls.count(set_origin) == (outcome in ("valid", "lost_ack"))
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_epos_origin_options_require_confirmation_and_can_cancel(
+    tmp_path, monkeypatch
+):
+    integrations = Path(__file__).resolve().parents[1] / "custom_components"
+    (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
+    hass = HomeAssistant(str(tmp_path))
+    loader.async_setup(hass)
+    hass.config.skip_pip = True
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
+    hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    entry = _entry()
+    client = FakeAutomower420()
+    monkeypatch.setattr(coordinator_module, "AutomowerClient", lambda *args: client)
+    try:
+        async with asyncio.timeout(15):
+            assert await setup.async_setup_component(hass, DOMAIN, {})
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+            coordinator = entry.runtime_data
+            options = hass.config_entries.options
+            flow = await options.async_init(entry.entry_id)
+            assert flow["step_id"] == "reset"
+            options.async_abort(flow["flow_id"])
+            coordinator.async_set_updated_data(
+                {**coordinator.data, "epos_origin_installation_id": 71}
+            )
+            pending = asyncio.Event()
+            cancelled = asyncio.Event()
+
+            async def wait_for_origin(site_id):
+                assert site_id == 71
+                try:
+                    await pending.wait()
+                finally:
+                    cancelled.set()
+
+            operation = AsyncMock(side_effect=wait_for_origin)
+            monkeypatch.setattr(coordinator, "async_setup_epos_origin", operation)
+            flow = await options.async_init(entry.entry_id)
+            assert "setup_epos_origin" in flow["menu_options"]
+            flow_id = flow["flow_id"]
+            await options.async_configure(
+                flow_id, {"next_step_id": "setup_epos_origin"}
+            )
+            flow = await options.async_configure(
+                flow_id, {"confirm_epos_origin": False}
+            )
+            assert flow["errors"] == {
+                "confirm_epos_origin": "epos_origin_confirmation_required"
+            }
+            operation.assert_not_called()
+            flow = await options.async_configure(flow_id, {"confirm_epos_origin": True})
+            assert flow["type"] == FlowResultType.SHOW_PROGRESS
+            options.async_abort(flow_id)
+            await cancelled.wait()
+            operation.assert_awaited_once_with(71)
+    finally:
+        await hass.async_stop(force=True)
 
 
 @pytest.mark.asyncio

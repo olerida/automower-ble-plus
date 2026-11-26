@@ -56,6 +56,22 @@ async def async_active_installation_id(client: AutomowerClient) -> int | None:
     return U32.unpack(await client.command(_CURRENT))[0]
 
 
+async def async_empty_installation_id(client: AutomowerClient) -> int | None:
+    """Identify the active installation when its firmware confirms no maps."""
+    active = await async_active_installation_id(client)
+    if active is None:
+        return None
+    for _, operation in _MAP_FIELDS:
+        try:
+            if U8.unpack(await client.command(operation))[0] != 0:
+                return None
+        except CommandRejected as err:
+            if not err.unsupported:
+                raise
+            return None
+    return active if active == await async_active_installation_id(client) else None
+
+
 async def async_get_installations(
     client: AutomowerClient, offset: int, limit: int, *, include_maps: bool = True
 ) -> dict:

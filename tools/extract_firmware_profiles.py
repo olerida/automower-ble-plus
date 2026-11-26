@@ -25,6 +25,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     reset_operations = set()
     message_events = 0
     aim_map_regeneration = 0
+    epos_service_operations = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -45,6 +46,8 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             follow_wire_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "MowerApp" and protocol.get("msgType") == "4586":
             mower_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "EposService" and protocol.get("msgType") == "6778":
+            epos_service_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "AutomowerConnect"
             and method["command"] == "SetEnabledNoPin"
@@ -271,6 +274,23 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             )
         )
     )
+    epos_cloud_origin_setup = int(
+        all(
+            epos_service_operations.get(name) == operation
+            for name, operation in (
+                ("GetEnabled", "4"),
+                ("SetEnabled", "5"),
+                ("GetHasOrigin", "15"),
+                ("GetIsOriginValid", "16"),
+                ("GetIsOriginSettable", "17"),
+                ("SetOriginToCurrentPosition", "18"),
+            )
+        )
+        and (
+            epos_service_operations.get("GetAvailable2") == "23"
+            or epos_service_operations.get("GetAvailable") == "3"
+        )
+    )
     result = (
         *reverse,
         *angles,
@@ -294,10 +314,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         park_at_poi,
         connect_enabled_no_pin,
         aim_map_regeneration,
+        epos_cloud_origin_setup,
     )
     return (
         result
-        if any(result[:-9])
+        if any(result[:-10])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -306,6 +327,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or park_at_poi
         or connect_enabled_no_pin
         or aim_map_regeneration
+        or epos_cloud_origin_setup
         else None
     )
 

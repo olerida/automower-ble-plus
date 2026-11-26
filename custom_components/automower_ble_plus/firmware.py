@@ -40,6 +40,7 @@ class FirmwareProfile:
     park_at_poi: int = 0
     connect_enabled_no_pin: int = 0
     aim_map_regeneration: int = 0
+    epos_cloud_origin_setup: int = 0
 
 
 @cache
@@ -106,5 +107,9 @@ def get_firmware_profile(
         aim_map_regeneration=int(
             result.aim_map_regeneration
             and all(profile and profile.aim_map_regeneration for profile in releases)
+        ),
+        epos_cloud_origin_setup=int(
+            result.epos_cloud_origin_setup
+            and all(profile and profile.epos_cloud_origin_setup for profile in releases)
         ),
     )

@@ -170,6 +170,9 @@ class AutomowerMaintenanceFlow(OptionsFlow):
         self._selected_network: WifiNetwork | None = None
         self._saved_networks: tuple[str, ...] | None = None
         self._network_result = "wifi_joined"
+        self._epos_origin_site: int | None = None
+        self._epos_origin_task: asyncio.Task[bool] | None = None
+        self._epos_origin_result = "epos_origin_set"
 
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         """Offer maintenance for the capabilities this mower reports."""
@@ -184,6 +187,10 @@ class AutomowerMaintenanceFlow(OptionsFlow):
                 ("reset", coordinator.can_reset_user_settings),
                 ("change_pin", coordinator.can_change_pin),
                 ("regenerate_aim_map", coordinator.can_regenerate_aim_map),
+                (
+                    "setup_epos_origin",
+                    coordinator.epos_origin_installation_id is not None,
+                ),
             )
             if supported
         ]
@@ -191,6 +198,66 @@ class AutomowerMaintenanceFlow(OptionsFlow):
             return self.async_show_menu(step_id="init", menu_options=options)
         step = options[0] if options else "reset"
         return await getattr(self, f"async_step_{step}")()
+
+    async def async_step_setup_epos_origin(self, user_input=None) -> ConfigFlowResult:
+        """Ask to set up Husqvarna Cloud corrections for the selected empty profile."""
+        entry = self.config_entry
+        if entry.state is not ConfigEntryState.LOADED:
+            return self.async_abort(reason="mower_unavailable")
+        coordinator = entry.runtime_data
+        active = coordinator.epos_origin_installation_id
+        if active is None or (
+            self._epos_origin_site is not None and self._epos_origin_site != active
+        ):
+            return self.async_abort(reason="epos_origin_unavailable")
+        self._epos_origin_site = active
+        errors = {}
+        if user_input is not None:
+            if not user_input["confirm_epos_origin"]:
+                errors["confirm_epos_origin"] = "epos_origin_confirmation_required"
+            else:
+                self._epos_origin_task = entry.async_create_background_task(
+                    self.hass,
+                    coordinator.async_setup_epos_origin(active),
+                    "configure the Automower EPOS cloud origin",
+                )
+                return await self.async_step_epos_origin_progress()
+        return self.async_show_form(
+            step_id="setup_epos_origin",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        "confirm_epos_origin", default=False
+                    ): selector.BooleanSelector()
+                }
+            ),
+            errors=errors,
+            description_placeholders={"name": entry.title},
+        )
+
+    async def async_step_epos_origin_progress(
+        self, user_input=None
+    ) -> ConfigFlowResult:
+        """Show progress while the mower is determining a valid origin."""
+        assert self._epos_origin_task is not None
+        if not self._epos_origin_task.done():
+            return self.async_show_progress(
+                step_id="epos_origin_progress",
+                progress_action="epos_origin_waiting",
+                progress_task=self._epos_origin_task,
+            )
+        try:
+            if not self._epos_origin_task.result():
+                self._epos_origin_result = "epos_origin_unconfirmed"
+        except TimeoutError:
+            self._epos_origin_result = "epos_origin_timeout"
+        except HomeAssistantError:
+            self._epos_origin_result = "epos_origin_failed"
+        return self.async_show_progress_done(next_step_id="epos_origin_result")
+
+    async def async_step_epos_origin_result(self, user_input=None) -> ConfigFlowResult:
+        """Report whether the mower established a valid origin."""
+        return self.async_abort(reason=self._epos_origin_result)
 
     async def async_step_regenerate_aim_map(self, user_input=None) -> ConfigFlowResult:
         """Confirm replacement of the current AIM map."""

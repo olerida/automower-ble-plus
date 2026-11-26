@@ -46,7 +46,15 @@
           "wifi": "Wi-Fi networks",
           "reset": "Reset user settings",
           "change_pin": "Change PIN",
-          "regenerate_aim_map": "Regenerate AIM map"
+          "regenerate_aim_map": "Regenerate AIM map",
+          "setup_epos_origin": "Set up Husqvarna Cloud EPOS origin"
+        }
+      },
+      "setup_epos_origin": {
+        "title": "Set the EPOS origin",
+        "description": "Place {name} where it has a clear view of the sky and keep it in Bluetooth range. This selects Husqvarna Cloud for the empty installation profile and waits up to five minutes to register its current position as the origin.",
+        "data": {
+          "confirm_epos_origin": "Enable Husqvarna Cloud and register the origin"
         }
       },
       "regenerate_aim_map": {
@@ -101,7 +109,8 @@
     },
     "progress": {
       "wifi_scanning": "The mower is scanning for nearby Wi-Fi networks.",
-      "wifi_joining": "The mower is connecting to the selected Wi-Fi network."
+      "wifi_joining": "The mower is connecting to the selected Wi-Fi network.",
+      "epos_origin_waiting": "Waiting for the mower to register and validate the EPOS origin."
     },
     "error": {
       "confirmation_required": "Confirm that you want to reset this mower.",
@@ -111,12 +120,18 @@
       "pin_confirmation_mismatch": "Both entries for the new PIN must match.",
       "pin_change_failed": "The PIN could not be changed. Check the mower and its Bluetooth connection.",
       "aim_confirmation_required": "Confirm that you want to regenerate the map.",
+      "epos_origin_confirmation_required": "Confirm that you want to register this point as the EPOS origin.",
       "aim_map_failed": "A new map could not be requested. Check the Bluetooth connection and the AIM map status.",
       "reset_failed": "The reset request could not be completed. Check the mower and its Bluetooth connection.",
       "wifi_invalid_password": "Enter a Wi-Fi password of up to 64 UTF-8 bytes."
     },
     "abort": {
       "mower_unavailable": "This mower's Home Assistant entry is unavailable.",
+      "epos_origin_unavailable": "The active installation profile does not allow this origin setup.",
+      "epos_origin_set": "The mower registered and validated the EPOS origin.",
+      "epos_origin_timeout": "The mower was not ready in time. Check its view of the sky and the Husqvarna Cloud status.",
+      "epos_origin_unconfirmed": "Home Assistant could not verify the origin. Check its status on the mower's device page.",
+      "epos_origin_failed": "The origin could not be configured. Check the active installation profile and the Bluetooth connection.",
       "aim_map_unavailable": "The mower cannot regenerate its AIM map right now.",
       "aim_map_requested": "The mower accepted the request. You can follow progress on its device page.",
       "aim_map_unconfirmed": "The mower did not confirm the request. Check the map status before requesting it again.",
@@ -289,6 +304,9 @@
       },
       "epos_cloud_origin_valid": {
         "name": "EPOS origin valid"
+      },
+      "epos_cloud_origin_settable": {
+        "name": "Ready to register EPOS origin"
       }
     },
     "switch": {

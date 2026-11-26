@@ -64,8 +64,13 @@ from .epos import (
     EPOS_EVENTS,
     EPOS_STATUS_KEYS,
     RUN_DOCKING_PATTERN,
+    SET_CLOUD_ORIGIN,
     STOP_DOCKING_PATTERN,
+    async_enable_epos_cloud,
+    async_epos_cloud_accepts_origin_setup,
     async_epos_enabled,
+    async_epos_origin_confirmed,
+    async_epos_origin_settable,
     async_read_docking_status,
     async_read_epos_status,
     async_set_dock_by_wire,
@@ -174,6 +179,7 @@ from .sites import (
     async_active_installation_id,
     async_create_installation,
     async_delete_installation,
+    async_empty_installation_id,
     async_get_installation_selection,
     async_get_installations,
     async_rename_installation,
@@ -251,6 +257,8 @@ _CALENDAR_TIME_UPDATED = 0
 _CALENDAR_TASKS_UPDATED = 1
 _MAP_PREVIEW_RECHECK_SECONDS = 900
 _AIM_REGENERATION_RECHECK_SECONDS = 60
+_EPOS_ORIGIN_POLL_SECONDS = 5
+_EPOS_ORIGIN_TIMEOUT = 300
 _DOCKING_INSTALLATION_START_GRACE = 15
 _SECTOR_MAXIMUM = {
     Command(4716, 3): Command(4716, 4),
@@ -293,6 +301,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._calendar_update_pending = False
         self._connect_refresh_pending = False
         self._epos_refresh_pending = False
+        self._epos_origin_lock = asyncio.Lock()
         self._aim_refresh_pending = False
         self._aim_map_requested_until = 0.0
         self._calendar_time: int | None = None
@@ -386,6 +395,14 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             and data.get("aim_enabled") == 1
             and data.get("aim_map_state") == AIM_READY
         )
+
+    @property
+    def epos_origin_installation_id(self) -> int | None:
+        """Return the empty profile eligible for cloud origin setup."""
+        site_id = (self.data or {}).get("epos_origin_installation_id")
+        if not self._epos_origin_lock.locked() and isinstance(site_id, int):
+            return site_id
+        return None
 
     @property
     def can_reset_user_settings(self) -> bool:
@@ -570,7 +587,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._connect_refresh_pending = bool(
             CONNECT_STATUS_KEYS & (self.data or {}).keys()
         )
-        self._epos_refresh_pending = "epos_enabled" in (self.data or {})
+        self._epos_refresh_pending = bool(EPOS_STATUS_KEYS & (self.data or {}).keys())
         self._aim_refresh_pending = bool(AIM_KEYS & (self.data or {}).keys())
         if self.data and "weekly_schedule" in self.data:
             self._calendar_update_pending = True
@@ -596,7 +613,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             commands += CONNECT_EVENTS
         if self.data and "epos_enabled" in self.data:
             commands += (EPOS_EVENTS,)
-        if self.data and "epos_cloud_enabled" in self.data:
+        if self.data and (
+            "epos_cloud_enabled" in self.data
+            or "epos_origin_installation_id" in self.data
+        ):
             commands += EPOS_CLOUD_EVENTS
         if self.data and AIM_KEYS & self.data.keys():
             commands += (AIM_EVENTS,)
@@ -1045,11 +1065,93 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def _async_refresh_epos(self, data: MowerData) -> None:
         profile = self.firmware_profile
         status = await async_read_epos_status(
-            self.client, docking_pattern=bool(profile and profile.docking_pattern)
+            self.client,
+            docking_pattern=bool(profile and profile.docking_pattern),
+            cloud_origin_setup=bool(profile and profile.epos_cloud_origin_setup),
         )
+        if profile and profile.epos_cloud_origin_setup:
+            with suppress(CommandRejected, StructError):
+                if await async_epos_cloud_accepts_origin_setup(self.client):
+                    site_id = await async_empty_installation_id(self.client)
+                    if site_id is not None:
+                        status["epos_origin_installation_id"] = site_id
         for key in EPOS_STATUS_KEYS.difference(status):
             data.pop(key, None)
         data.update(status)
+
+    async def _async_require_empty_epos_profile(self, site_id: int) -> None:
+        if (
+            self.appdrive_active
+            or not await async_epos_cloud_accepts_origin_setup(self.client)
+            or await async_empty_installation_id(self.client) != site_id
+        ):
+            raise ValueError("EPOS setup requires the selected empty installation")
+
+    async def async_setup_epos_origin(self, site_id: int) -> bool:
+        """Enable direct corrections and establish the origin in an empty installation."""
+        if self.epos_origin_installation_id != site_id:
+            raise HomeAssistantError("EPOS origin setup is currently unavailable")
+        async with self._epos_origin_lock:
+            requested = False
+            try:
+                async with asyncio.timeout(_EPOS_ORIGIN_TIMEOUT):
+                    async with self._operation_lock:
+                        await self._async_connect()
+                        await self._async_require_empty_epos_profile(site_id)
+                        await async_enable_epos_cloud(self.client)
+                    while True:
+                        async with self._operation_lock:
+                            try:
+                                await self._async_connect()
+                                if (
+                                    await async_active_installation_id(self.client)
+                                    != site_id
+                                ):
+                                    raise ValueError("The active installation changed")
+                                if requested:
+                                    if await async_epos_origin_confirmed(self.client):
+                                        active = await async_active_installation_id(
+                                            self.client
+                                        )
+                                        if active != site_id:
+                                            return False
+                                        data = dict(self.data)
+                                        data.pop("epos_origin_installation_id", None)
+                                        data.update(
+                                            epos_cloud_enabled=1,
+                                            epos_correction_source=1,
+                                            epos_cloud_has_origin=1,
+                                            epos_cloud_origin_valid=1,
+                                        )
+                                        self.async_set_updated_data(data)
+                                        return True
+                                elif await async_epos_origin_settable(self.client):
+                                    await self._async_require_empty_epos_profile(
+                                        site_id
+                                    )
+                                    requested = True
+                                    await self.client.command(SET_CLOUD_ORIGIN)
+                            except MowerConnectionError:
+                                # A lost acknowledgement also uses the read-back path.
+                                pass
+                        await asyncio.sleep(_EPOS_ORIGIN_POLL_SECONDS)
+            except TimeoutError:
+                if requested:
+                    return False
+                raise
+            except (
+                CommandRejected,
+                MowerConnectionError,
+                StructError,
+                ValueError,
+            ) as err:
+                if requested and not isinstance(err, CommandRejected):
+                    return False
+                raise HomeAssistantError(
+                    f"Could not configure the EPOS origin: {err}"
+                ) from err
+            finally:
+                self._epos_refresh_pending = True
 
     async def _async_refresh_aim(self, data: MowerData) -> None:
         status = await async_read_aim_status(self.client)

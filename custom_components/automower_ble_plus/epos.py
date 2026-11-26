@@ -14,7 +14,14 @@ EPOS_EVENTS = Command(6170, 0)
 EPOS_CLOUD_EVENTS = (Command(6778, 1), Command(6778, 2))
 EPOS_AVAILABLE = Reading(Command(6170, 1), U8)
 _EPOS_ENABLED = Reading(Command(6170, 2), U8)
+_CLOUD_AVAILABLE = Reading(Command(6778, 23), U8)
+_CLOUD_AVAILABLE_LEGACY = Reading(Command(6778, 3), U8)
 _CLOUD_ENABLED = Reading(Command(6778, 4), U8)
+_SET_CLOUD_ENABLED = Command(6778, 5)
+_CLOUD_HAS_ORIGIN = Reading(Command(6778, 15), U8)
+_CLOUD_ORIGIN_VALID = Reading(Command(6778, 16), U8)
+_CLOUD_ORIGIN_SETTABLE = Reading(Command(6778, 17), U8)
+SET_CLOUD_ORIGIN = Command(6778, 18)
 _LOCAL_POSITION = Command(5242, 0)
 _LOCAL_COORDINATES = Struct("<iii")
 _DOCK_BY_WIRE_AVAILABLE = Reading(Command(6170, 10), U8)
@@ -66,8 +73,8 @@ _DOCKING_STATUS = {
 }
 _STATION_CHANNEL = Reading(Command(5650, 17), U8)
 _CLOUD_STATUS = {
-    "epos_cloud_has_origin": Reading(Command(6778, 15), U8),
-    "epos_cloud_origin_valid": Reading(Command(6778, 16), U8),
+    "epos_cloud_has_origin": _CLOUD_HAS_ORIGIN,
+    "epos_cloud_origin_valid": _CLOUD_ORIGIN_VALID,
     "epos_cloud_connection_state": Reading(Command(6778, 19), U8),
     "epos_cloud_service_state": Reading(Command(6778, 7), U8),
     "epos_cloud_correction_format": Reading(Command(6778, 29), U8),
@@ -82,6 +89,7 @@ EPOS_BINARY_KEYS = frozenset(
         "epos_dock_by_wire",
         "epos_cloud_has_origin",
         "epos_cloud_origin_valid",
+        "epos_cloud_origin_settable",
     }
 )
 EPOS_STATUS_KEYS = (
@@ -93,6 +101,7 @@ EPOS_STATUS_KEYS = (
         "epos_reference_station_distance",
         "epos_reference_station_id",
         "epos_cloud_enabled",
+        "epos_origin_installation_id",
     }
 )
 
@@ -103,7 +112,7 @@ def is_epos_update(event: Event) -> bool:
         return event.event_id == 0 and 2 <= len(event.payload) <= 7
     return (
         event.family == EPOS_CLOUD_EVENTS[0].family
-        and event.event_id in (0, 1, 3, 4, 6, 7, 8, 12)
+        and event.event_id in (0, 1, 3, 4, 5, 6, 7, 8, 12)
         and len(event.payload) == 1
     )
 
@@ -123,6 +132,45 @@ async def _read(client: AutomowerClient, reading: Reading) -> int | None:
 async def async_epos_enabled(client: AutomowerClient) -> bool:
     """Check whether the robot is operating with EPOS positioning enabled."""
     return await _read(client, _EPOS_ENABLED) == 1
+
+
+async def async_epos_cloud_accepts_origin_setup(client: AutomowerClient) -> bool:
+    """Check whether the cloud service on the active profile can take a first origin."""
+    available = await _read(client, _CLOUD_AVAILABLE)
+    if available is None:
+        available = await _read(client, _CLOUD_AVAILABLE_LEGACY)
+    return (
+        available == 1
+        and await _read(client, _EPOS_ENABLED) in (None, 1)
+        and await _read(client, _CLOUD_HAS_ORIGIN) == 0
+    )
+
+
+async def async_enable_epos_cloud(client: AutomowerClient) -> None:
+    """Enable EPOS over Husqvarna Cloud and confirm the selected source."""
+    enabled = await _read(client, _CLOUD_ENABLED)
+    if enabled == 0:
+        await client.command(_SET_CLOUD_ENABLED, b"\x01")
+        enabled = await _read(client, _CLOUD_ENABLED)
+    if enabled != 1:
+        raise ValueError("The mower did not confirm the EPOS cloud service")
+
+
+async def async_epos_origin_settable(client: AutomowerClient) -> bool:
+    """Confirm the cloud service is enabled and can establish the origin now."""
+    return (
+        await _read(client, _CLOUD_ENABLED) == 1
+        and await _read(client, _CLOUD_ORIGIN_SETTABLE) == 1
+    )
+
+
+async def async_epos_origin_confirmed(client: AutomowerClient) -> bool:
+    """Read back a valid origin from the selected service."""
+    return (
+        await _read(client, _CLOUD_ENABLED) == 1
+        and await _read(client, _CLOUD_HAS_ORIGIN) == 1
+        and await _read(client, _CLOUD_ORIGIN_VALID) == 1
+    )
 
 
 async def async_set_dock_by_wire(client: AutomowerClient, enabled: bool) -> int:
@@ -161,15 +209,27 @@ async def async_read_docking_status(
 
 
 async def async_read_epos_status(
-    client: AutomowerClient, *, docking_pattern: bool = False
+    client: AutomowerClient,
+    *,
+    docking_pattern: bool = False,
+    cloud_origin_setup: bool = False,
 ) -> dict[str, int]:
     """Return status for the currently available positioning hardware and source."""
     available = await _read(client, EPOS_AVAILABLE)
     if available != 1:
+        data = {}
         # Some EPOS firmware declares the station pattern without an EPOS node.
         if available is None and docking_pattern:
-            return await async_read_docking_status(client)
-        return {}
+            data.update(await async_read_docking_status(client))
+        if available is None and cloud_origin_setup:
+            cloud_enabled = await _read(client, _CLOUD_ENABLED)
+            if cloud_enabled == 1:
+                data.update(
+                    epos_cloud_enabled=1,
+                    epos_correction_source=1,
+                    **await _async_read_cloud_status(client),
+                )
+        return data
     enabled = await _read(client, _EPOS_ENABLED)
     if enabled not in (0, 1):
         return {}
@@ -213,12 +273,7 @@ async def async_read_epos_status(
         data[key] = quality
     if source:
         data["epos_correction_source"] = 1
-        for key, reading in _CLOUD_STATUS.items():
-            value = await _read(client, reading)
-            if value is not None and 0 <= value < len(
-                EPOS_ENUM_OPTIONS.get(key, (0, 1))
-            ):
-                data[key] = value
+        data.update(await _async_read_cloud_status(client))
     else:
         channel = await _read(client, _STATION_CHANNEL)
         if channel in (0, 1):
@@ -235,4 +290,16 @@ async def async_read_epos_status(
                 east, north, accuracy = _LOCAL_COORDINATES.unpack(position)
                 if accuracy >= 0:
                     data["epos_reference_station_distance"] = round(hypot(east, north))
+    return data
+
+
+async def _async_read_cloud_status(client: AutomowerClient) -> dict[str, int]:
+    data = {}
+    for key, reading in _CLOUD_STATUS.items():
+        value = await _read(client, reading)
+        if value is not None and 0 <= value < len(EPOS_ENUM_OPTIONS.get(key, (0, 1))):
+            data[key] = value
+    origin_settable = await _read(client, _CLOUD_ORIGIN_SETTABLE)
+    if origin_settable in (0, 1):
+        data["epos_cloud_origin_settable"] = origin_settable
     return data
