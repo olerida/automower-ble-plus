@@ -27,17 +27,22 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .appdrive import (
     APPDRIVE_ABORT,
+    APPDRIVE_DOCK,
+    APPDRIVE_DRIVE,
     APPDRIVE_EVENTS,
+    APPDRIVE_INPUT_TIMEOUT,
     APPDRIVE_MANOEUVRE_TIMEOUT,
     APPDRIVE_MANOEUVRES,
     APPDRIVE_STATE,
     APPDRIVE_STATUS_KEYS,
     APPDRIVE_SUPPORTED,
+    AppDriveControl,
     AppDriveManoeuvre,
     AppDriveManoeuvreStatus,
     AppDriveState,
     async_read_appdrive_status,
     async_remote_control_available,
+    drive_payload,
 )
 from .connect_module import (
     CONNECT_EVENTS,
@@ -282,6 +287,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._wifi_operation_lock = asyncio.Lock()
         self._wifi_event_listener: Callable[[Event], None] | None = None
         self._appdrive_manoeuvre_task: asyncio.Task[None] | None = None
+        self._appdrive_control: AppDriveControl | None = None
+        self._appdrive_stop_error: tuple[str, str] | None = None
         self._gps_tracking = False
         self._gps_resync_pending = False
         self._gps_report_pending: dict[str, int] | None = None
@@ -326,12 +333,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     @property
     def appdrive_active(self) -> bool:
         """Whether appDrive reports a session that may be stopped."""
-        return self.appdrive_manoeuvre is not None or (self.data or {}).get(
-            "appdrive_state"
-        ) in (
-            AppDriveState.IN_OPERATION,
-            AppDriveState.PERFORMING_ACTION,
-            AppDriveState.PENDING_START,
+        return (
+            self._appdrive_control is not None
+            or self.appdrive_manoeuvre is not None
+            or (self.data or {}).get("appdrive_state")
+            in (
+                AppDriveState.IN_OPERATION,
+                AppDriveState.PERFORMING_ACTION,
+                AppDriveState.PENDING_START,
+            )
         )
 
     @property
@@ -619,6 +629,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def _async_update_data(self) -> MowerData:
         try:
             async with self._operation_lock:
+                if self._appdrive_control is not None:
+                    return self.data
                 await self._async_connect()
                 battery = await self._read(Reading(GET_BATTERY, U8))
                 state = await self._read(Reading(GET_STATE, U8))
@@ -802,7 +814,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             if key in self._unsupported:
                 continue
             async with self._operation_lock:
-                if not self.client.is_connected():
+                if not self.client.is_connected() or self._appdrive_control is not None:
                     return
                 values = dict(self.data)
                 try:
@@ -933,7 +945,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
 
     async def async_keep_alive(self, _now=None) -> None:
         """Keep the link open between updates when no other request is in flight."""
-        if self._operation_lock.locked() or not self.client.is_connected():
+        if (
+            self._operation_lock.locked()
+            or not self.client.is_connected()
+            or self._appdrive_control is not None
+        ):
             return
         async with self._operation_lock:
             try:
@@ -1359,6 +1375,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         """Run a named mowing action and publish the next reported state."""
         async with self._operation_lock:
             try:
+                if self._appdrive_control is not None:
+                    if action != "pause":
+                        raise ValueError("Release the appDrive control first")
+                    with suppress(HomeAssistantError):
+                        await self._async_finish_appdrive_control()
                 await self._async_connect()
                 if action == "start":
                     if self.data["state"] == MowerState.PAUSED:
@@ -1597,6 +1618,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     await task
         await super().async_shutdown()
         async with self._operation_lock:
+            if self._appdrive_control is not None:
+                with suppress(HomeAssistantError):
+                    await self._async_finish_appdrive_control()
             if self.reference_scan_active and self.client.is_connected():
                 with suppress(CommandRejected, MowerConnectionError):
                     await self.client.command(STOP_REFERENCE_SCAN)
@@ -2118,11 +2142,150 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             }
             self.async_set_updated_data({**data, **status})
 
+    async def async_begin_appdrive_control(self, owner: object) -> str:
+        """Claim the joystick only after the mower confirms it is ready."""
+        async with self._operation_lock:
+            if (
+                self._appdrive_control is not None
+                or self.appdrive_manoeuvre is not None
+            ):
+                raise HomeAssistantError("appDrive is already in use")
+            if self.docking_installation_active or self.wire_test_active:
+                raise HomeAssistantError(
+                    "Finish the installation manoeuvre before using appDrive"
+                )
+            try:
+                await self._async_connect()
+                if await self._read(APPDRIVE_SUPPORTED) != 1:
+                    raise ValueError("The mower does not support appDrive")
+                if await async_remote_control_available(self.client) not in (None, 1):
+                    raise ValueError("Enable remote control on the mower first")
+                state = AppDriveState(await self._read(APPDRIVE_STATE))
+                mower_state = await self._read(Reading(GET_STATE, U8))
+                if state not in (
+                    AppDriveState.IDLE,
+                    AppDriveState.IN_OPERATION,
+                ) or not APPDRIVE_DOCK.allows_start(mower_state, state):
+                    raise ValueError("Pause the mower before using appDrive")
+                docked = await self._async_appdrive_station_contact(APPDRIVE_DOCK)
+                if docked == 1 or (
+                    docked is None
+                    and await self._read(Reading(GET_ACTIVITY, U8))
+                    == MowerActivity.CHARGING
+                ):
+                    raise ValueError("Undock the mower before using the joystick")
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not start appDrive control: {err}"
+                ) from err
+            control = self._appdrive_control = AppDriveControl(owner, uuid4().hex)
+            self._async_arm_appdrive_control(
+                control, monotonic() + APPDRIVE_INPUT_TIMEOUT
+            )
+            self.async_update_listeners()
+            return control.token
+
+    @callback
+    def _async_arm_appdrive_control(
+        self, control: AppDriveControl, deadline: float
+    ) -> None:
+        control.deadline = deadline
+        if control.expiry is not None:
+            control.expiry.cancel()
+        control.expiry = self.hass.loop.call_later(
+            max(0, deadline - monotonic()), self._async_expire_appdrive_control, control
+        )
+
+    @callback
+    def _async_expire_appdrive_control(self, control: AppDriveControl) -> None:
+        self.hass.async_create_task(
+            self._async_check_appdrive_expiry(control),
+            "expire Automower joystick control",
+        )
+
+    async def _async_check_appdrive_expiry(self, control: AppDriveControl) -> None:
+        async with self._operation_lock:
+            if self._appdrive_control is control and control.deadline <= monotonic():
+                try:
+                    await self._async_finish_appdrive_control()
+                except HomeAssistantError as err:
+                    LOGGER.debug(
+                        "Could not confirm the automatic appDrive stop: %s", err
+                    )
+
+    async def async_drive_appdrive(
+        self, owner: object, token: str, forward: float, steering: float
+    ) -> None:
+        """Send fresh joystick input over the original BLE session."""
+        deadline = monotonic() + APPDRIVE_INPUT_TIMEOUT
+        payload = drive_payload(forward, steering)
+        async with self._operation_lock:
+            control = self._appdrive_control
+            if control is None or control.owner is not owner or control.token != token:
+                raise HomeAssistantError("The appDrive control has ended")
+            remaining = min(deadline, control.deadline) - monotonic()
+            if remaining <= 0 or not self.client.is_connected():
+                with suppress(HomeAssistantError):
+                    await self._async_finish_appdrive_control()
+                raise HomeAssistantError("The appDrive control has expired")
+            self._async_arm_appdrive_control(control, deadline)
+            control.sent_input = True
+            try:
+                await self.client.command(APPDRIVE_DRIVE, payload, timeout=remaining)
+            except (CommandRejected, MowerConnectionError) as err:
+                with suppress(HomeAssistantError):
+                    await self._async_finish_appdrive_control()
+                raise HomeAssistantError(
+                    f"appDrive movement could not be confirmed: {err}"
+                ) from err
+
+    async def async_release_appdrive_control(self, owner: object, token: str) -> None:
+        """Stop the joystick session owned by this Home Assistant connection."""
+        async with self._operation_lock:
+            control = self._appdrive_control
+            if (
+                control is not None
+                and control.owner is owner
+                and control.token == token
+            ):
+                await self._async_finish_appdrive_control()
+            elif self._appdrive_stop_error and self._appdrive_stop_error[0] == token:
+                raise HomeAssistantError(self._appdrive_stop_error[1])
+
+    async def _async_finish_appdrive_control(self) -> None:
+        control, self._appdrive_control = self._appdrive_control, None
+        if control is None:
+            return
+        if control.expiry is not None:
+            control.expiry.cancel()
+        try:
+            if control.sent_input:
+                if not self.client.is_connected():
+                    raise MowerConnectionError("Bluetooth disconnected")
+                try:
+                    await self.client.command(
+                        APPDRIVE_DRIVE,
+                        drive_payload(0, 0),
+                        timeout=APPDRIVE_INPUT_TIMEOUT,
+                    )
+                except CommandRejected:
+                    await self.client.command(
+                        APPDRIVE_ABORT, timeout=APPDRIVE_INPUT_TIMEOUT
+                    )
+        except (CommandRejected, MowerConnectionError) as err:
+            message = f"The appDrive stop was not confirmed: {err}"
+            self._appdrive_stop_error = (control.token, message)
+            raise HomeAssistantError(message) from err
+        finally:
+            self.async_update_listeners()
+
     async def async_start_appdrive_manoeuvre(
         self, manoeuvre: AppDriveManoeuvre
     ) -> None:
         """Request an eligible firmware-controlled appDrive manoeuvre."""
         async with self._operation_lock:
+            if self._appdrive_control is not None:
+                raise HomeAssistantError("Release the appDrive control first")
             if self.appdrive_manoeuvre is not None:
                 raise HomeAssistantError("An appDrive manoeuvre is already in progress")
             try:
@@ -2255,6 +2418,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         """Send the firmware's abort command for an active appDrive session."""
         async with self._operation_lock:
             try:
+                if self._appdrive_control is not None:
+                    await self._async_finish_appdrive_control()
+                    return
                 await self._async_connect()
                 if await self._read(APPDRIVE_SUPPORTED) != 1:
                     raise ValueError("The mower does not support appDrive")

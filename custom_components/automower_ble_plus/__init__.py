@@ -10,6 +10,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.service import async_register_platform_entity_service
 
+from .appdrive_panel import async_attach_appdrive_panel, async_setup_appdrive_panel
 from .config_flow import core_controls_address
 from .const import DOMAIN
 from .coordinator import MowerCoordinator, MowerEntry
@@ -202,6 +203,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             )
             else SupportsResponse.NONE,
         )
+    await async_setup_appdrive_panel(hass)
     return True
 
 
@@ -219,6 +221,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MowerEntry) -> None:
     except BaseException:
         await coordinator.async_shutdown()
         raise
+
+    async_attach_appdrive_panel(hass, entry)
 
     entry.async_on_unload(
         async_track_time_interval(

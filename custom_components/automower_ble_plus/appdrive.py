@@ -1,7 +1,10 @@
 """Read appDrive state and eligibility for its built-in manoeuvres."""
 
+from asyncio import TimerHandle
 from dataclasses import dataclass
 from enum import IntEnum
+from math import copysign, floor, isfinite
+from struct import Struct
 
 from automower_ble.protocol import MowerState
 
@@ -12,11 +15,40 @@ from .wire import Command
 _FAMILY = 5358
 APPDRIVE_EVENTS = Command(_FAMILY, 6)
 APPDRIVE_ABORT = Command(_FAMILY, 7)
+APPDRIVE_DRIVE = Command(_FAMILY, 1)
 APPDRIVE_STATE = Reading(Command(_FAMILY, 0), U8)
 APPDRIVE_SUPPORTED = Reading(Command(_FAMILY, 8), U8)
 _APPDRIVE_ACTIVITY = Reading(Command(_FAMILY, 10), U8)
 APPDRIVE_REMOTE_CONTROL = Reading(Command(5100, 12), U8)
 APPDRIVE_MANOEUVRE_TIMEOUT = 90
+APPDRIVE_INPUT_TIMEOUT = 0.7
+_DRIVE_PAYLOAD = Struct("<hh")
+
+
+@dataclass(slots=True)
+class AppDriveControl:
+    """A joystick session owned by one Home Assistant connection."""
+
+    owner: object
+    token: str
+    deadline: float = 0
+    expiry: TimerHandle | None = None
+    sent_input: bool = False
+
+
+def drive_payload(forward: float, steering: float) -> bytes:
+    """Apply the app's joystick curves and encode speed and steering."""
+    if not all(isfinite(axis) and -1 <= axis <= 1 for axis in (forward, steering)):
+        raise ValueError("Joystick axes must be between -1 and 1")
+    speed = copysign(forward * forward, forward)
+    # Browser input is positive to the right. The app inverts this axis for HCP.
+    angle = copysign(steering * steering, -steering)
+    if not forward:
+        speed = abs(angle)
+        angle = copysign(1, angle) if angle else 0
+    else:
+        angle *= 0.8 if forward < 0.8 else 0.15
+    return _DRIVE_PAYLOAD.pack(floor(speed * 100 + 0.5), floor(angle * 900 + 0.5))
 
 
 class AppDriveState(IntEnum):

@@ -1,6 +1,7 @@
 {
   "domain": "automower_ble_plus",
   "name": "Automower BLE Plus",
+  "after_dependencies": ["frontend", "http", "panel_custom", "websocket_api"],
   "bluetooth": [
     {"connectable": true, "service_uuid": "98bd0001-0b0e-421a-84e5-ddbf75dc6de4"}
   ],
@@ -14,5 +15,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/olerida/automower-ble-plus/issues",
   "requirements": ["automower-ble>=0.2.9"],
-  "version": "0.20.0"
+  "version": "0.21.0"
 }

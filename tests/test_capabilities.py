@@ -2,6 +2,7 @@
 
 import asyncio
 import gzip
+import json
 from datetime import UTC, datetime, time, timedelta
 from hashlib import md5
 from pathlib import Path
@@ -14,6 +15,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from automower_ble.protocol import MowerActivity, MowerState, ResponseResult
 from homeassistant import auth, loader, setup
+from homeassistant.components import frontend, websocket_api
 from homeassistant.components.image import async_get_image
 from homeassistant.components.image.const import DATA_COMPONENT as IMAGE_COMPONENT
 from homeassistant.config_entries import (
@@ -33,6 +35,7 @@ from homeassistant.helpers import (
 )
 
 from custom_components.automower_ble_plus import (
+    appdrive_panel,
     binary_sensor,
     button,
     calendar,
@@ -1121,6 +1124,149 @@ async def test_appdrive_manoeuvre_checks_firmware_and_tracks_its_outcome(
         assert entities["appdrive_state"].native_value == "in_operation"
         assert entities["in_charging_station"].is_on == (not starts_in_station)
     await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("finish", ["release", "expire", "abort", "disconnect"])
+async def test_appdrive_joystick_requires_a_live_lease_and_stops(
+    tmp_path, monkeypatch, finish
+):
+    entry = _entry()
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = coordinator.client = FakeAutomower420()
+    entry.runtime_data = coordinator
+    drive = Command(5358, 1)
+    abort = Command(5358, 7)
+    client.values.update(
+        {
+            (Command(5358, 8), b""): b"\x01",
+            (Command(5358, 0), b""): b"\0",
+            (Command(4586, 2), b""): b"\x05",
+            (Command(5100, 12), b""): b"\x01",
+            (Command(4692, 27), b""): b"\0",
+        }
+    )
+    monkeypatch.setattr(coordinator_module, "APPDRIVE_INPUT_TIMEOUT", 0.15)
+    connected = True
+    sent = []
+    neutral = b"\0" * 4
+    stopped = asyncio.Event()
+    send = client.command
+    monkeypatch.setattr(client, "is_connected", lambda: connected)
+
+    async def command(operation, payload=b"", **kwargs):
+        if operation in (drive, abort):
+            sent.append((operation, payload))
+            if operation == drive and payload == neutral and finish == "abort":
+                raise CommandRejected(operation, ResponseResult.NOT_ALLOWED)
+            if payload == neutral or operation == abort:
+                stopped.set()
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    owner = object()
+    token = await coordinator.async_begin_appdrive_control(owner)
+    assert not sent
+    with pytest.raises(HomeAssistantError, match="already in use"):
+        await coordinator.async_begin_appdrive_control(object())
+    with pytest.raises(HomeAssistantError, match="control has ended"):
+        await coordinator.async_drive_appdrive(object(), token, 1, 0)
+    await coordinator.async_drive_appdrive(owner, token, 0.5, -0.5)
+    assert sent == [(drive, pack("<hh", 25, 180))]
+    if finish == "expire":
+        await asyncio.wait_for(stopped.wait(), 1)
+    elif finish == "disconnect":
+        connected = False
+        with pytest.raises(HomeAssistantError, match="stop was not confirmed"):
+            await coordinator.async_release_appdrive_control(owner, token)
+        with pytest.raises(HomeAssistantError, match="stop was not confirmed"):
+            await coordinator.async_release_appdrive_control(owner, token)
+    else:
+        await coordinator.async_release_appdrive_control(owner, token)
+    if finish != "disconnect":
+        assert sent[1] == (drive, neutral)
+        assert stopped.is_set()
+    if finish == "abort":
+        assert sent[2] == (abort, b"")
+    with pytest.raises(HomeAssistantError, match="control has ended"):
+        await coordinator.async_drive_appdrive(owner, token, 1, 0)
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_appdrive_panel_permissions_and_websocket_disconnect(tmp_path):
+    hass = HomeAssistant(str(tmp_path))
+    hass.config.components.add("frontend")
+    hass.http = Mock(async_register_static_paths=AsyncMock())
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    await appdrive_panel.async_setup_appdrive_panel(hass)
+    entry = _entry()
+    coordinator = MowerCoordinator(hass, entry)
+    entry.runtime_data = coordinator
+    coordinator.async_set_updated_data({"appdrive_state": 0})
+    entity = entity_registry.async_get(hass).async_get_or_create(
+        "lawn_mower", DOMAIN, f"{coordinator.address}_mower"
+    )
+    appdrive_panel.async_attach_appdrive_panel(hass, entry)
+    await hass.async_block_till_done()
+    assert frontend.async_panel_exists(hass, "automower-appdrive")
+    paths = hass.http.async_register_static_paths.await_args.args[0]
+    assert Path(paths[0].path).is_file()
+
+    coordinator.async_begin_appdrive_control = AsyncMock(return_value="unit-lease")
+    coordinator.async_drive_appdrive = AsyncMock()
+    coordinator.async_release_appdrive_control = AsyncMock()
+    messages = []
+
+    def record(message):
+        messages.append(
+            json.loads(message) if isinstance(message, (str, bytes)) else message
+        )
+
+    user = Mock()
+    user.permissions.check_entity.return_value = False
+    connection = websocket_api.ActiveConnection(Mock(), hass, record, user, None, None)
+    connection.async_handle({"id": 1, "type": f"{DOMAIN}/appdrive_list"})
+    assert messages[-1]["result"] == []
+    user.permissions.check_entity.return_value = True
+    connection.async_handle({"id": 2, "type": f"{DOMAIN}/appdrive_list"})
+    assert messages[-1]["result"] == [{"entry_id": entry.entry_id, "name": entry.title}]
+    assert user.permissions.check_entity.call_args.args[0] == entity.entity_id
+    connection.async_handle(
+        {"id": 3, "type": f"{DOMAIN}/appdrive_start", "entry_id": entry.entry_id}
+    )
+    assert messages[-1]["event"] == {"token": "unit-lease"}
+    connection.async_handle(
+        {
+            "id": 4,
+            "type": f"{DOMAIN}/appdrive_input",
+            "entry_id": entry.entry_id,
+            "token": "unit-lease",
+            "forward": 0.5,
+            "steering": -0.2,
+        }
+    )
+    coordinator.async_drive_appdrive.assert_awaited_once_with(
+        connection, "unit-lease", 0.5, -0.2
+    )
+    connection.async_handle_close()
+    await hass.async_block_till_done()
+    coordinator.async_release_appdrive_control.assert_awaited_once_with(
+        connection, "unit-lease"
+    )
+    coordinator.async_set_updated_data({})
+    assert not frontend.async_panel_exists(hass, "automower-appdrive")
 
 
 @pytest.mark.asyncio
