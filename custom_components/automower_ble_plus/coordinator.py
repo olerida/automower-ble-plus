@@ -233,6 +233,8 @@ _START = Command(4586, 4)
 _PAUSE = Command(4586, 5)
 _RESET_USER_SETTINGS = Command(4698, 8)
 _RESET_USER_SETTINGS_AND_RESTART = Command(4698, 42)
+_IS_OPERATOR_LOGGED_IN = Command(4664, 3)
+_SET_OPERATOR_PIN = Command(4664, 5)
 _START_SPOT_CUTTING = Command(4710, 7)
 _MOWER_EVENTS = Command(4586, 7)
 _MESSAGE_EVENTS = Command(4730, 4)
@@ -289,6 +291,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self.reference_candidates: tuple[int, ...] = ()
         self._docking_installation_start_until = 0.0
         self._reset_request_sent = False
+        self._operator_logged_in = False
+        self._pin_change_unconfirmed = False
         self._wifi_operation_lock = asyncio.Lock()
         self._wifi_event_listener: Callable[[Event], None] | None = None
         self._appdrive_manoeuvre_task: asyncio.Task[None] | None = None
@@ -353,6 +357,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     def can_configure_wifi(self) -> bool:
         """Whether the mower reported an available Wi-Fi interface."""
         return self.data is not None and "wifi_enabled" in self.data
+
+    @property
+    def can_change_pin(self) -> bool:
+        """Whether the firmware and operator session support PIN maintenance."""
+        return self.firmware_profile is not None and self._operator_logged_in
 
     @property
     def can_reset_user_settings(self) -> bool:
@@ -506,6 +515,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             await self.async_request_refresh()
 
     async def _async_connect(self) -> None:
+        if self._pin_change_unconfirmed:
+            raise ConfigEntryAuthFailed("The mower's PIN change was unconfirmed")
         if self.client.is_connected():
             return
         if (scan := self._reference_scan) is not None:
@@ -610,6 +621,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         node_version = await self.client.main_node_version()
                     except CommandRejected, MowerConnectionError, UnicodeError:
                         pass
+                if self._configured_pin is not None and self.client.is_connected():
+                    with suppress(CommandRejected, MowerConnectionError):
+                        self._operator_logged_in = (
+                            await self.client.command(_IS_OPERATOR_LOGGED_IN) == b"\x01"
+                        )
         except (
             MowerConnectionError,
             CommandRejected,
@@ -2033,6 +2049,55 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self._reset_request_sent = True
             self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
             return confirmed
+
+    async def async_change_pin(self, current_pin: str, new_pin: str) -> bool:
+        """Change the operator PIN once, then reconnect with the confirmed value."""
+        entry = self.config_entry
+        async with self._operation_lock:
+            if (
+                not self.can_change_pin
+                or self.appdrive_active
+                or entry.data.get(CONF_PIN) != current_pin
+            ):
+                raise HomeAssistantError("PIN maintenance is unavailable")
+            try:
+                await self._async_connect()
+                operator_logged_in = await self.client.command(_IS_OPERATOR_LOGGED_IN)
+            except (CommandRejected, MowerConnectionError) as err:
+                raise HomeAssistantError("Could not validate the BLE session") from err
+            if operator_logged_in != b"\x01":
+                raise HomeAssistantError("The mower requires an operator session")
+
+            payload = U16.pack(int(current_pin)) + U16.pack(int(new_pin))
+            try:
+                response = await self.client.command(_SET_OPERATOR_PIN, payload)
+            except CommandRejected as err:
+                if err.unsupported:
+                    self._operator_logged_in = False
+                raise HomeAssistantError("The mower rejected the PIN change") from err
+            except asyncio.CancelledError:
+                self._async_require_pin_reauth()
+                raise
+            except MowerConnectionError:
+                self._async_require_pin_reauth()
+                return False
+            if response:
+                self._async_require_pin_reauth()
+                await self.client.disconnect()
+                return False
+
+            self.hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_PIN: new_pin}
+            )
+            self.client.pin = int(new_pin)
+            self.hass.config_entries.async_schedule_reload(entry.entry_id)
+            return True
+
+    @callback
+    def _async_require_pin_reauth(self) -> None:
+        self._pin_change_unconfirmed = True
+        self._operator_logged_in = False
+        self.config_entry.async_start_reauth(self.hass)
 
     async def _async_connect_wifi_interface(self, *, enable: bool = False) -> None:
         await self._async_connect()

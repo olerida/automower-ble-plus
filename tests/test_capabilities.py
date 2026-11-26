@@ -26,7 +26,11 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import (
     area_registry,
     device_registry,
@@ -2617,6 +2621,104 @@ async def test_wifi_options_scan_join_and_forget_without_storing_credentials(
                 await coordinator.async_scan_wifi()
             assert client.calls[-1] == (Command(wifi, 28), b"")
             assert await hass.config_entries.async_unload(entry.entry_id)
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reply", ["acknowledged", "disconnected", "unsupported", "guest"]
+)
+async def test_change_operator_pin_from_home_assistant(tmp_path, monkeypatch, reply):
+    integrations = Path(__file__).resolve().parents[1] / "custom_components"
+    (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
+    hass = HomeAssistant(str(tmp_path))
+    loader.async_setup(hass)
+    hass.config.skip_pip = True
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
+    hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    entry = _entry("0042")
+    client = FakeAutomower420()
+    client.values[Command(4664, 3), b""] = b"\0" if reply == "guest" else b"\1"
+    change = Command(4664, 5)
+    expected = (change, pack("<HH", 42, 73))
+    if reply == "acknowledged":
+        client.values[expected] = b""
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation == change and reply == "disconnected":
+            client.calls.append((operation, payload))
+            raise MowerConnectionError("BLE link lost after writing")
+        return await send(operation, payload)
+
+    reload_entry = Mock()
+    start_reauth = Mock()
+    monkeypatch.setattr(ConfigEntry, "async_start_reauth", start_reauth)
+    monkeypatch.setattr(hass.config_entries, "async_schedule_reload", reload_entry)
+    monkeypatch.setattr(client, "command", command)
+    monkeypatch.setattr(coordinator_module, "AutomowerClient", lambda *args: client)
+    try:
+        async with asyncio.timeout(15):
+            assert await setup.async_setup_component(hass, DOMAIN, {})
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+            options = hass.config_entries.options
+            flow = await options.async_init(entry.entry_id)
+            if reply == "guest":
+                assert flow["step_id"] == "reset"
+                assert not any(op == change for op, _ in client.calls)
+                return
+
+            assert flow["menu_options"] == ["reset", "change_pin"]
+            flow_id = flow["flow_id"]
+            flow = await options.async_configure(
+                flow_id, {"next_step_id": "change_pin"}
+            )
+            assert flow["step_id"] == "change_pin"
+            flow = await options.async_configure(
+                flow_id,
+                {"current_pin": "9999", "new_pin": "0073", "confirm_pin": "0074"},
+            )
+            assert flow["errors"] == {
+                "current_pin": "pin_current_mismatch",
+                "confirm_pin": "pin_confirmation_mismatch",
+            }
+            assert not any(op == change for op, _ in client.calls)
+
+            flow = await options.async_configure(
+                flow_id,
+                {"current_pin": "0042", "new_pin": "0073", "confirm_pin": "0073"},
+            )
+            assert flow["type"] == FlowResultType.ABORT
+            assert [call for call in client.calls if call[0] == change] == [expected]
+            if reply == "acknowledged":
+                assert flow["reason"] == "pin_changed"
+                assert entry.data["pin"] == "0073"
+                assert client.pin == 73
+                reload_entry.assert_called_once_with(entry.entry_id)
+                start_reauth.assert_not_called()
+            else:
+                assert entry.data["pin"] == "0042"
+                reload_entry.assert_not_called()
+                if reply == "disconnected":
+                    assert flow["reason"] == "pin_change_unconfirmed"
+                    start_reauth.assert_called_once_with(hass)
+                    with pytest.raises(ConfigEntryAuthFailed, match="unconfirmed"):
+                        await entry.runtime_data._async_connect()
+                else:
+                    assert flow["reason"] == "pin_change_unavailable"
+                    start_reauth.assert_not_called()
+                assert not entry.runtime_data.can_change_pin
     finally:
         await hass.async_stop(force=True)
 

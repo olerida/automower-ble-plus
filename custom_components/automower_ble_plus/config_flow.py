@@ -30,6 +30,7 @@ _SECRET = selector.TextSelector(
     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
 )
 _MAC = re.compile(r"(?:[A-F0-9]{2}:){5}[A-F0-9]{2}")
+_PIN = re.compile(r"[0-9]{4}")
 
 
 def normalize_address(value: str) -> str:
@@ -108,7 +109,7 @@ class AutomowerConfigFlow(ConfigFlow, domain=DOMAIN):
                 if core_controls_address(self.hass, self.address):
                     return self.async_abort(reason="core_entry_enabled")
                 pin = user_input.get(CONF_PIN) or None
-                if pin is not None and not re.fullmatch(r"[0-9]{4}", pin):
+                if pin is not None and not _PIN.fullmatch(pin):
                     errors[CONF_PIN] = "invalid_pin"
                 else:
                     error, model = await self._async_validate(pin)
@@ -176,11 +177,72 @@ class AutomowerMaintenanceFlow(OptionsFlow):
         if entry.state is not ConfigEntryState.LOADED:
             return self.async_abort(reason="mower_unavailable")
         coordinator = entry.runtime_data
+        options = []
         if coordinator.can_configure_wifi:
-            if not coordinator.can_reset_user_settings:
-                return await self.async_step_wifi()
-            return self.async_show_menu(step_id="init", menu_options=["wifi", "reset"])
+            options.append("wifi")
+        if coordinator.can_reset_user_settings:
+            options.append("reset")
+        if coordinator.can_change_pin:
+            options.append("change_pin")
+        if len(options) > 1:
+            return self.async_show_menu(step_id="init", menu_options=options)
+        if options == ["wifi"]:
+            return await self.async_step_wifi()
+        if options == ["change_pin"]:
+            return await self.async_step_change_pin()
         return await self.async_step_reset()
+
+    async def async_step_change_pin(self, user_input=None) -> ConfigFlowResult:
+        """Use masked inputs for an operator-authorized PIN change."""
+        entry = self.config_entry
+        if (
+            entry.state is not ConfigEntryState.LOADED
+            or not entry.runtime_data.can_change_pin
+        ):
+            return self.async_abort(reason="pin_change_unavailable")
+
+        errors = {}
+        if user_input is not None:
+            current_pin = user_input["current_pin"]
+            new_pin = user_input["new_pin"]
+            confirmation = user_input["confirm_pin"]
+            if not _PIN.fullmatch(current_pin):
+                errors["current_pin"] = "invalid_pin"
+            elif current_pin != entry.data.get(CONF_PIN):
+                errors["current_pin"] = "pin_current_mismatch"
+            if not _PIN.fullmatch(new_pin):
+                errors["new_pin"] = "invalid_pin"
+            elif new_pin == current_pin:
+                errors["new_pin"] = "pin_unchanged"
+            if new_pin != confirmation:
+                errors["confirm_pin"] = "pin_confirmation_mismatch"
+            if not errors:
+                try:
+                    acknowledged = await entry.runtime_data.async_change_pin(
+                        current_pin, new_pin
+                    )
+                except HomeAssistantError:
+                    if not entry.runtime_data.can_change_pin:
+                        return self.async_abort(reason="pin_change_unavailable")
+                    errors["base"] = "pin_change_failed"
+                else:
+                    return self.async_abort(
+                        reason="pin_changed"
+                        if acknowledged
+                        else "pin_change_unconfirmed"
+                    )
+
+        return self.async_show_form(
+            step_id="change_pin",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(vol.Secret(field)): _SECRET
+                    for field in ("current_pin", "new_pin", "confirm_pin")
+                }
+            ),
+            errors=errors,
+            description_placeholders={"name": entry.title},
+        )
 
     async def async_step_reset(self, user_input=None) -> ConfigFlowResult:
         """Show the effect of a reset before sending the BLE command."""

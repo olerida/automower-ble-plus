@@ -44,7 +44,17 @@
         "title": "Mantenimiento del cortacésped",
         "menu_options": {
           "wifi": "Redes Wi-Fi",
-          "reset": "Restablecer ajustes"
+          "reset": "Restablecer ajustes",
+          "change_pin": "Cambiar el PIN"
+        }
+      },
+      "change_pin": {
+        "title": "Cambiar el PIN del cortacésped",
+        "description": "Introduce el PIN actual y el nuevo PIN de {name}. Cuando el cortacésped confirme el cambio, Home Assistant se volverá a conectar con el nuevo PIN.",
+        "data": {
+          "current_pin": "PIN actual",
+          "new_pin": "Nuevo PIN",
+          "confirm_pin": "Repite el nuevo PIN"
         }
       },
       "reset": {
@@ -87,11 +97,19 @@
     },
     "error": {
       "confirmation_required": "Confirma que quieres restablecer los ajustes de este cortacésped.",
+      "invalid_pin": "Introduce un PIN de cuatro cifras.",
+      "pin_current_mismatch": "El PIN actual debe coincidir con el configurado en Home Assistant.",
+      "pin_unchanged": "El nuevo PIN debe ser distinto del actual.",
+      "pin_confirmation_mismatch": "Los dos PIN nuevos deben coincidir.",
+      "pin_change_failed": "No se ha podido cambiar el PIN. Comprueba el estado del cortacésped y su conexión Bluetooth.",
       "reset_failed": "No se ha podido completar la solicitud de restablecimiento. Comprueba el cortacésped y su conexión Bluetooth.",
       "wifi_invalid_password": "Introduce una contraseña Wi-Fi de hasta 64 bytes en UTF-8."
     },
     "abort": {
       "mower_unavailable": "La entrada de este cortacésped no está disponible en Home Assistant.",
+      "pin_change_unavailable": "El cambio de PIN por Bluetooth no está disponible para este cortacésped.",
+      "pin_changed": "El cortacésped ha confirmado el cambio. Home Assistant se volverá a conectar con el nuevo PIN.",
+      "pin_change_unconfirmed": "El cortacésped no ha confirmado el cambio. Comprueba qué PIN acepta y usa la solicitud de reautenticación en Home Assistant.",
       "reset_unavailable": "El restablecimiento de ajustes no está disponible para este cortacésped.",
       "reset_requested": "El cortacésped ha aceptado la solicitud. Home Assistant se volverá a conectar y leerá sus ajustes.",
       "reset_unconfirmed": "Home Assistant no ha recibido una confirmación válida. Comprueba los ajustes del cortacésped cuando vuelva a conectarse.",

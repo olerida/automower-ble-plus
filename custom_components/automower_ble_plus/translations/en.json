@@ -44,7 +44,17 @@
         "title": "Mower maintenance",
         "menu_options": {
           "wifi": "Wi-Fi networks",
-          "reset": "Reset user settings"
+          "reset": "Reset user settings",
+          "change_pin": "Change PIN"
+        }
+      },
+      "change_pin": {
+        "title": "Change the mower PIN",
+        "description": "Enter the current PIN and the new PIN for {name}. When the mower confirms the change, Home Assistant will reconnect with the new PIN.",
+        "data": {
+          "current_pin": "Current PIN",
+          "new_pin": "New PIN",
+          "confirm_pin": "Repeat new PIN"
         }
       },
       "reset": {
@@ -87,11 +97,19 @@
     },
     "error": {
       "confirmation_required": "Confirm that you want to reset this mower.",
+      "invalid_pin": "Enter a four-digit PIN.",
+      "pin_current_mismatch": "The current PIN must match the one configured in Home Assistant.",
+      "pin_unchanged": "The new PIN must differ from the current PIN.",
+      "pin_confirmation_mismatch": "Both entries for the new PIN must match.",
+      "pin_change_failed": "The PIN could not be changed. Check the mower and its Bluetooth connection.",
       "reset_failed": "The reset request could not be completed. Check the mower and its Bluetooth connection.",
       "wifi_invalid_password": "Enter a Wi-Fi password of up to 64 UTF-8 bytes."
     },
     "abort": {
       "mower_unavailable": "This mower's Home Assistant entry is unavailable.",
+      "pin_change_unavailable": "Changing the PIN over Bluetooth is unavailable for this mower.",
+      "pin_changed": "The mower confirmed the change. Home Assistant will reconnect with the new PIN.",
+      "pin_change_unconfirmed": "The mower did not confirm the change. Check which PIN it accepts and use the Home Assistant reauthentication prompt.",
       "reset_unavailable": "A user-settings reset is unavailable for this mower.",
       "reset_requested": "The mower accepted the reset request. Home Assistant will reconnect and read its settings again.",
       "reset_unconfirmed": "Home Assistant did not receive a valid confirmation. Check the mower's settings after it reconnects.",
