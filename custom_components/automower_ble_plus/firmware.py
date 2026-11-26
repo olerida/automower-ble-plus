@@ -39,6 +39,7 @@ class FirmwareProfile:
     reset_user_settings: int = 0
     park_at_poi: int = 0
     connect_enabled_no_pin: int = 0
+    aim_map_regeneration: int = 0
 
 
 @cache
@@ -101,5 +102,9 @@ def get_firmware_profile(
         connect_enabled_no_pin=int(
             result.connect_enabled_no_pin
             and all(profile and profile.connect_enabled_no_pin for profile in releases)
+        ),
+        aim_map_regeneration=int(
+            result.aim_map_regeneration
+            and all(profile and profile.aim_map_regeneration for profile in releases)
         ),
     )

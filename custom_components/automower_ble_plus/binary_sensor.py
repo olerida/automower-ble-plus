@@ -64,7 +64,7 @@ async def async_setup_entry(
             VISION_STATUS_KEYS
             | EPOS_BINARY_KEYS
             | APPDRIVE_BINARY_KEYS
-            | {"is_daylight"}
+            | {"is_daylight", "aim_enabled"}
         ),
         lambda key, _: DiagnosticStatusSensor(entry.runtime_data, key),
     )

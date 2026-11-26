@@ -203,6 +203,11 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
         command.family == 5358 and command.operation != 8 for command, _ in client.calls
     )
     assert not coordinator.can_configure_wifi
+    assert not coordinator.can_regenerate_aim_map
+    assert not any(key.startswith("aim_") for key in coordinator.data)
+    assert all(
+        command.operation == 2 for command, _ in client.calls if command.family == 5758
+    )
     assert not any(
         command.family == 5916 and command.operation != 0 for command, _ in client.calls
     )
@@ -2719,6 +2724,113 @@ async def test_change_operator_pin_from_home_assistant(tmp_path, monkeypatch, re
                     assert flow["reason"] == "pin_change_unavailable"
                     start_reauth.assert_not_called()
                 assert not entry.runtime_data.can_change_pin
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+async def test_aim_map_progress_and_regeneration_from_options(tmp_path, monkeypatch):
+    integrations = Path(__file__).resolve().parents[1] / "custom_components"
+    (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
+    hass = HomeAssistant(str(tmp_path))
+    loader.async_setup(hass)
+    hass.config.skip_pip = True
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
+    hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    entry = _entry()
+    client = FakeAutomower420()
+    monkeypatch.setattr(coordinator_module, "AutomowerClient", lambda *args: client)
+    monkeypatch.setattr(
+        client, "main_node_version", AsyncMock(return_value="40.3_Main-App-P16_81.4")
+    )
+    client.values[Command(4698, 9), b""] = bytes((28, 2))
+    aim = 5758
+    updated = 1795719999
+    client.values.update(
+        {
+            (Command(aim, 0), b""): b"",
+            (Command(aim, 2), b""): b"\1",
+            (Command(aim, 4), b""): b"\1",
+            (Command(aim, 5), b""): U32.pack(updated),
+            (Command(aim, 6), b""): b"",
+            (Command(aim, 7), b""): b"\2",
+            (Command(aim, 10), b""): bytes((100,)),
+            (Command(5578, 0), b""): b"\1",
+            (Command(5578, 43), b""): b"\1",
+        }
+    )
+    try:
+        async with asyncio.timeout(15):
+            assert await setup.async_setup_component(hass, DOMAIN, {})
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+            coordinator = entry.runtime_data
+            await coordinator.async_refresh_optional()
+            coordinator.async_set_updated_data(await coordinator._async_update_data())
+            assert coordinator.device_info["model"] == "Automower 415X"
+            assert (Command(aim, 0), b"") in client.calls
+            assert coordinator.data["map_generated_preview"].endswith(f":{updated}")
+            await hass.async_block_till_done()
+            status_id = entity_registry.async_get(hass).async_get_entity_id(
+                "sensor", DOMAIN, f"{coordinator.address}_aim_map_state"
+            )
+            assert hass.states.get(status_id).state == "ready"
+            options = hass.config_entries.options
+
+            async def confirm_flow():
+                flow = await options.async_init(entry.entry_id)
+                assert "regenerate_aim_map" in flow["menu_options"]
+                flow_id = flow["flow_id"]
+                flow = await options.async_configure(
+                    flow_id, {"next_step_id": "regenerate_aim_map"}
+                )
+                assert flow["step_id"] == "regenerate_aim_map"
+                return flow_id
+
+            flow_id = await confirm_flow()
+            result = await options.async_configure(flow_id, {"confirm_aim_map": False})
+            assert result["errors"] == {"confirm_aim_map": "aim_confirmation_required"}
+            assert (Command(aim, 6), b"") not in client.calls
+            # Re-check the active state even when the user already opened the form.
+            client.values[Command(aim, 7), b""] = b"\1"
+            result = await options.async_configure(flow_id, {"confirm_aim_map": True})
+            assert result["reason"] == "aim_map_unavailable"
+            assert (Command(aim, 6), b"") not in client.calls
+            client.values[Command(aim, 7), b""] = b"\2"
+            await coordinator.async_refresh_optional()
+
+            flow_id = await confirm_flow()
+            result = await options.async_configure(flow_id, {"confirm_aim_map": True})
+            assert result["reason"] == "aim_map_requested"
+            assert client.calls.count((Command(aim, 6), b"")) == 1
+            assert not coordinator.can_regenerate_aim_map
+            client.values[Command(aim, 7), b""] = b"\1"
+            client.values[Command(aim, 10), b""] = bytes((48,))
+            coordinator._async_on_event(Event(aim, 0, pack("<BIB", 1, updated, 48)))
+            coordinator.async_set_updated_data(await coordinator._async_update_data())
+            assert coordinator.data["aim_map_progress"] == 48
+            client.values[Command(aim, 5), b""] = U32.pack(updated + 1)
+            client.values[Command(aim, 7), b""] = b"\2"
+            client.values[Command(aim, 10), b""] = bytes((100,))
+            coordinator._async_on_event(
+                Event(aim, 0, pack("<BIB", 2, updated + 1, 100))
+            )
+            coordinator.async_set_updated_data(await coordinator._async_update_data())
+            assert coordinator.data["map_generated_preview"].endswith(f":{updated + 1}")
+            assert coordinator.can_regenerate_aim_map
+            client.values[Command(aim, 2), b""] = b"\0"
+            coordinator._async_on_event(Event(aim, 1, b"\0\0"))
+            coordinator.async_set_updated_data(await coordinator._async_update_data())
+            assert not any(key.startswith("aim_") for key in coordinator.data)
     finally:
         await hass.async_stop(force=True)
 

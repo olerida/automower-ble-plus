@@ -25,6 +25,14 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .aim import (
+    AIM_EVENTS,
+    AIM_KEYS,
+    AIM_READY,
+    START_AIM_MAPPING,
+    async_read_aim_status,
+    is_aim_update,
+)
 from .appdrive import (
     APPDRIVE_ABORT,
     APPDRIVE_DOCK,
@@ -242,6 +250,7 @@ _CALENDAR_EVENTS = Command(4690, 0)
 _CALENDAR_TIME_UPDATED = 0
 _CALENDAR_TASKS_UPDATED = 1
 _MAP_PREVIEW_RECHECK_SECONDS = 900
+_AIM_REGENERATION_RECHECK_SECONDS = 60
 _DOCKING_INSTALLATION_START_GRACE = 15
 _SECTOR_MAXIMUM = {
     Command(4716, 3): Command(4716, 4),
@@ -284,6 +293,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._calendar_update_pending = False
         self._connect_refresh_pending = False
         self._epos_refresh_pending = False
+        self._aim_refresh_pending = False
+        self._aim_map_requested_until = 0.0
         self._calendar_time: int | None = None
         self.wire_test: WireTest | None = None
         self._reference_scan: ReferenceScan | None = None
@@ -364,6 +375,19 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         return self.firmware_profile is not None and self._operator_logged_in
 
     @property
+    def can_regenerate_aim_map(self) -> bool:
+        """Offer regeneration for a completed map on a known firmware."""
+        data = self.data or {}
+        return (
+            self.firmware_profile is not None
+            and self.firmware_profile.aim_map_regeneration == 1
+            and "aim_map_regenerate" not in self._unsupported
+            and monotonic() >= self._aim_map_requested_until
+            and data.get("aim_enabled") == 1
+            and data.get("aim_map_state") == AIM_READY
+        )
+
+    @property
     def can_reset_user_settings(self) -> bool:
         """Whether the identified firmware offers a user-settings reset."""
         profile = self.firmware_profile
@@ -431,6 +455,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self._async_schedule_event_refresh()
         elif is_epos_update(event):
             self._epos_refresh_pending = True
+            self._async_schedule_event_refresh()
+        elif is_aim_update(event):
+            self._aim_refresh_pending = True
             self._async_schedule_event_refresh()
         elif (
             self._gps_tracking
@@ -510,6 +537,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             or self._map_refresh_pending
             or self._connect_refresh_pending
             or self._epos_refresh_pending
+            or self._aim_refresh_pending
         ) and self.client.is_connected():
             # An event received during the read still needs a later snapshot.
             await self.async_request_refresh()
@@ -543,6 +571,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             CONNECT_STATUS_KEYS & (self.data or {}).keys()
         )
         self._epos_refresh_pending = "epos_enabled" in (self.data or {})
+        self._aim_refresh_pending = bool(AIM_KEYS & (self.data or {}).keys())
         if self.data and "weekly_schedule" in self.data:
             self._calendar_update_pending = True
 
@@ -569,6 +598,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             commands += (EPOS_EVENTS,)
         if self.data and "epos_cloud_enabled" in self.data:
             commands += EPOS_CLOUD_EVENTS
+        if self.data and AIM_KEYS & self.data.keys():
+            commands += (AIM_EVENTS,)
         for command in commands:
             if (
                 command in self._unavailable_subscriptions
@@ -716,6 +747,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     self._epos_refresh_pending = False
                     with suppress(CommandRejected, MowerConnectionError, ValueError):
                         await self._async_refresh_epos(data)
+                if self._aim_refresh_pending and self.client.is_connected():
+                    self._aim_refresh_pending = False
+                    with suppress(CommandRejected, MowerConnectionError):
+                        await self._async_refresh_aim(data)
                 if self._gps_resync_pending and self.client.is_connected():
                     self._gps_resync_pending = False
                     with suppress(CommandRejected, MowerConnectionError, ValueError):
@@ -827,6 +862,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ("map_previews", None),
                 ("vision", None),
                 ("epos", None),
+                ("aim", None),
                 ("wifi", None),
                 ("connect_module", None),
                 ("appdrive", None),
@@ -926,6 +962,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         values.update(vision)
                     elif key == "epos":
                         await self._async_refresh_epos(values)
+                    elif key == "aim":
+                        await self._async_refresh_aim(values)
                     elif key == "wifi":
                         wifi = {}
                         if values.get("wifi_enabled") == 1:
@@ -1013,6 +1051,17 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             data.pop(key, None)
         data.update(status)
 
+    async def _async_refresh_aim(self, data: MowerData) -> None:
+        status = await async_read_aim_status(self.client)
+        revision_changed = data.get("aim_map_updated") != status.get("aim_map_updated")
+        if revision_changed:
+            self._map_refresh_pending = True
+        if revision_changed or status.get("aim_map_state") not in (None, AIM_READY):
+            self._aim_map_requested_until = 0.0
+        for key in AIM_KEYS.difference(status):
+            data.pop(key, None)
+        data.update(status)
+
     async def _async_refresh_epos_docking(self, data: MowerData) -> None:
         try:
             status = await async_read_docking_status(self.client)
@@ -1078,6 +1127,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             data[kind.preview_key] = ":".join(
                 (str(self._map_generation), checksum or str(refresh_interval), *events)
             )
+            if kind is MapKind.GENERATED and (updated := data.get("aim_map_updated")):
+                data[kind.preview_key] += f":{updated}"
         revision = data.get(MapKind.SITE.preview_key)
         if not isinstance(revision, str) or not (
             self.firmware_profile and self.firmware_profile.park_at_poi
@@ -2092,6 +2143,40 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self.client.pin = int(new_pin)
             self.hass.config_entries.async_schedule_reload(entry.entry_id)
             return True
+
+    async def async_regenerate_aim_map(self) -> bool:
+        """Request a new map after confirming that the current map is ready."""
+        async with self._operation_lock:
+            if not self.can_regenerate_aim_map or self.appdrive_active:
+                raise HomeAssistantError("AIM map regeneration is unavailable")
+            try:
+                await self._async_connect()
+                data = dict(self.data)
+                await self._async_refresh_aim(data)
+                self.async_set_updated_data(data)
+                if not self.can_regenerate_aim_map:
+                    raise HomeAssistantError("The mower does not have a ready AIM map")
+            except (CommandRejected, MowerConnectionError) as err:
+                raise HomeAssistantError("Could not read the AIM map state") from err
+
+            self._aim_map_requested_until = (
+                monotonic() + _AIM_REGENERATION_RECHECK_SECONDS
+            )
+            try:
+                response = await self.client.command(START_AIM_MAPPING)
+            except CommandRejected as err:
+                self._aim_map_requested_until = 0.0
+                if err.unsupported:
+                    self._unsupported.add("aim_map_regenerate")
+                raise HomeAssistantError(
+                    "The mower rejected AIM map regeneration"
+                ) from err
+            except MowerConnectionError:
+                return False
+            finally:
+                self._aim_refresh_pending = True
+                self._async_schedule_event_refresh()
+            return not response
 
     @callback
     def _async_require_pin_reauth(self) -> None:

@@ -177,20 +177,58 @@ class AutomowerMaintenanceFlow(OptionsFlow):
         if entry.state is not ConfigEntryState.LOADED:
             return self.async_abort(reason="mower_unavailable")
         coordinator = entry.runtime_data
-        options = []
-        if coordinator.can_configure_wifi:
-            options.append("wifi")
-        if coordinator.can_reset_user_settings:
-            options.append("reset")
-        if coordinator.can_change_pin:
-            options.append("change_pin")
+        options = [
+            step
+            for step, supported in (
+                ("wifi", coordinator.can_configure_wifi),
+                ("reset", coordinator.can_reset_user_settings),
+                ("change_pin", coordinator.can_change_pin),
+                ("regenerate_aim_map", coordinator.can_regenerate_aim_map),
+            )
+            if supported
+        ]
         if len(options) > 1:
             return self.async_show_menu(step_id="init", menu_options=options)
-        if options == ["wifi"]:
-            return await self.async_step_wifi()
-        if options == ["change_pin"]:
-            return await self.async_step_change_pin()
-        return await self.async_step_reset()
+        step = options[0] if options else "reset"
+        return await getattr(self, f"async_step_{step}")()
+
+    async def async_step_regenerate_aim_map(self, user_input=None) -> ConfigFlowResult:
+        """Confirm replacement of the current AIM map."""
+        entry = self.config_entry
+        if (
+            entry.state is not ConfigEntryState.LOADED
+            or not entry.runtime_data.can_regenerate_aim_map
+        ):
+            return self.async_abort(reason="aim_map_unavailable")
+        errors = {}
+        if user_input is not None:
+            if not user_input["confirm_aim_map"]:
+                errors["confirm_aim_map"] = "aim_confirmation_required"
+            else:
+                try:
+                    acknowledged = await entry.runtime_data.async_regenerate_aim_map()
+                except HomeAssistantError:
+                    if not entry.runtime_data.can_regenerate_aim_map:
+                        return self.async_abort(reason="aim_map_unavailable")
+                    errors["base"] = "aim_map_failed"
+                else:
+                    return self.async_abort(
+                        reason="aim_map_requested"
+                        if acknowledged
+                        else "aim_map_unconfirmed"
+                    )
+        return self.async_show_form(
+            step_id="regenerate_aim_map",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        "confirm_aim_map", default=False
+                    ): selector.BooleanSelector()
+                }
+            ),
+            errors=errors,
+            description_placeholders={"name": entry.title},
+        )
 
     async def async_step_change_pin(self, user_input=None) -> ConfigFlowResult:
         """Use masked inputs for an operator-authorized PIN change."""

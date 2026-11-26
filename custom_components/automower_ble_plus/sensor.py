@@ -24,6 +24,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from .aim import AIM_STATES
 from .appdrive import APPDRIVE_ENUM_OPTIONS
 from .connect_module import CONNECT_SIGNAL_KEY, CONNECT_STATE_KEY, CONNECT_STATE_OPTIONS
 from .coordinator import MowerCoordinator, MowerEntry
@@ -105,6 +106,9 @@ _DESCRIPTIONS = (
         _MEASUREMENT,
     ),
     _description("next_start", SensorDeviceClass.TIMESTAMP),
+    _description("aim_map_state", SensorDeviceClass.ENUM, options=AIM_STATES),
+    _description("aim_map_progress", unit=PERCENTAGE, state_class=_MEASUREMENT),
+    _description("aim_map_updated", SensorDeviceClass.TIMESTAMP),
     _description("mower_clock"),
     _description("wire_test_status", SensorDeviceClass.ENUM, options=WIRE_TEST_OPTIONS),
     _description("wire_test_distance", SensorDeviceClass.DISTANCE, UnitOfLength.METERS),
@@ -213,6 +217,8 @@ class AutomowerSensor(MowerValueEntity, SensorEntity):
             return (
                 datetime.fromtimestamp(value, UTC).replace(tzinfo=None).isoformat(" ")
             )
+        if self.key == "aim_map_updated" and value is not None:
+            return datetime.fromtimestamp(value, UTC)
         if self.key != "next_start" or value is None:
             return value
         if value in (0, 0xFFFFFFFF):

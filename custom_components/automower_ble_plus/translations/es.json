@@ -45,7 +45,15 @@
         "menu_options": {
           "wifi": "Redes Wi-Fi",
           "reset": "Restablecer ajustes",
-          "change_pin": "Cambiar el PIN"
+          "change_pin": "Cambiar el PIN",
+          "regenerate_aim_map": "Volver a generar el mapa AIM"
+        }
+      },
+      "regenerate_aim_map": {
+        "title": "Volver a generar el mapa AIM",
+        "description": "Solicita a {name} que cree un mapa AIM para sustituir el actual. El cortacésped empezará a recopilar datos cuando vuelva a cortar según su horario.",
+        "data": {
+          "confirm_aim_map": "Solicitar un nuevo mapa AIM"
         }
       },
       "change_pin": {
@@ -102,11 +110,16 @@
       "pin_unchanged": "El nuevo PIN debe ser distinto del actual.",
       "pin_confirmation_mismatch": "Los dos PIN nuevos deben coincidir.",
       "pin_change_failed": "No se ha podido cambiar el PIN. Comprueba el estado del cortacésped y su conexión Bluetooth.",
+      "aim_confirmation_required": "Confirma que quieres volver a generar el mapa.",
+      "aim_map_failed": "No se ha podido solicitar un nuevo mapa. Comprueba la conexión Bluetooth y el estado del mapa AIM.",
       "reset_failed": "No se ha podido completar la solicitud de restablecimiento. Comprueba el cortacésped y su conexión Bluetooth.",
       "wifi_invalid_password": "Introduce una contraseña Wi-Fi de hasta 64 bytes en UTF-8."
     },
     "abort": {
       "mower_unavailable": "La entrada de este cortacésped no está disponible en Home Assistant.",
+      "aim_map_unavailable": "El cortacésped no permite volver a generar el mapa AIM en este momento.",
+      "aim_map_requested": "El cortacésped ha aceptado la solicitud. Puedes seguir el progreso desde su ficha.",
+      "aim_map_unconfirmed": "El cortacésped no ha confirmado la solicitud. Comprueba el estado del mapa antes de volver a pedirlo.",
       "pin_change_unavailable": "El cambio de PIN por Bluetooth no está disponible para este cortacésped.",
       "pin_changed": "El cortacésped ha confirmado el cambio. Home Assistant se volverá a conectar con el nuevo PIN.",
       "pin_change_unconfirmed": "El cortacésped no ha confirmado el cambio. Comprueba qué PIN acepta y usa la solicitud de reautenticación en Home Assistant.",
@@ -261,6 +274,9 @@
       },
       "epos_enabled": {
         "name": "EPOS activado"
+      },
+      "aim_enabled": {
+        "name": "Mapeo inteligente activado"
       },
       "epos_dock_by_wire": {
         "name": "Acoplamiento EPOS por cable"
@@ -789,6 +805,21 @@
           "virtual": "Virtual",
           "virtual_assisted_by_wire": "Virtual con asistencia por cable"
         }
+      },
+      "aim_map_state": {
+        "name": "Estado del mapa AIM",
+        "state": {
+          "disabled": "Desactivado",
+          "building": "Recopilando datos",
+          "ready": "Listo",
+          "not_on_site": "Fuera de la instalación"
+        }
+      },
+      "aim_map_progress": {
+        "name": "Progreso del mapa AIM"
+      },
+      "aim_map_updated": {
+        "name": "Última actualización del mapa AIM"
       },
       "epos_correction_source": {
         "name": "Fuente de correcciones EPOS",

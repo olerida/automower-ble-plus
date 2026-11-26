@@ -24,6 +24,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     connect_enabled_no_pin = 0
     reset_operations = set()
     message_events = 0
+    aim_map_regeneration = 0
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -71,6 +72,15 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             and protocol.get("subCmd") == "4"
         ):
             message_events = 1
+        if (
+            method["family"] == "Lona"
+            and method["command"] == "StartNewDataCollection"
+            and protocol.get("msgType") == "5758"
+            and protocol.get("subCmd") == "6"
+            and not method["inParams"]
+            and not method["outParams"]
+        ):
+            aim_map_regeneration = 1
         if (
             method["family"] == "Missions"
             and protocol.get("msgType") == "5604"
@@ -283,10 +293,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         reset_user_settings,
         park_at_poi,
         connect_enabled_no_pin,
+        aim_map_regeneration,
     )
     return (
         result
-        if any(result[:-8])
+        if any(result[:-9])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -294,6 +305,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or reset_user_settings
         or park_at_poi
         or connect_enabled_no_pin
+        or aim_map_regeneration
         else None
     )
 

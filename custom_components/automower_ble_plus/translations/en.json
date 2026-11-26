@@ -45,7 +45,15 @@
         "menu_options": {
           "wifi": "Wi-Fi networks",
           "reset": "Reset user settings",
-          "change_pin": "Change PIN"
+          "change_pin": "Change PIN",
+          "regenerate_aim_map": "Regenerate AIM map"
+        }
+      },
+      "regenerate_aim_map": {
+        "title": "Regenerate the AIM map",
+        "description": "Ask {name} to create an AIM map to replace the current one. The mower starts collecting data when it next mows on its schedule.",
+        "data": {
+          "confirm_aim_map": "Request a new AIM map"
         }
       },
       "change_pin": {
@@ -102,11 +110,16 @@
       "pin_unchanged": "The new PIN must differ from the current PIN.",
       "pin_confirmation_mismatch": "Both entries for the new PIN must match.",
       "pin_change_failed": "The PIN could not be changed. Check the mower and its Bluetooth connection.",
+      "aim_confirmation_required": "Confirm that you want to regenerate the map.",
+      "aim_map_failed": "A new map could not be requested. Check the Bluetooth connection and the AIM map status.",
       "reset_failed": "The reset request could not be completed. Check the mower and its Bluetooth connection.",
       "wifi_invalid_password": "Enter a Wi-Fi password of up to 64 UTF-8 bytes."
     },
     "abort": {
       "mower_unavailable": "This mower's Home Assistant entry is unavailable.",
+      "aim_map_unavailable": "The mower cannot regenerate its AIM map right now.",
+      "aim_map_requested": "The mower accepted the request. You can follow progress on its device page.",
+      "aim_map_unconfirmed": "The mower did not confirm the request. Check the map status before requesting it again.",
       "pin_change_unavailable": "Changing the PIN over Bluetooth is unavailable for this mower.",
       "pin_changed": "The mower confirmed the change. Home Assistant will reconnect with the new PIN.",
       "pin_change_unconfirmed": "The mower did not confirm the change. Check which PIN it accepts and use the Home Assistant reauthentication prompt.",
@@ -261,6 +274,9 @@
       },
       "epos_enabled": {
         "name": "EPOS enabled"
+      },
+      "aim_enabled": {
+        "name": "Intelligent mapping enabled"
       },
       "epos_dock_by_wire": {
         "name": "EPOS wire docking"
@@ -789,6 +805,21 @@
           "virtual": "Virtual",
           "virtual_assisted_by_wire": "Virtual with wire assistance"
         }
+      },
+      "aim_map_state": {
+        "name": "AIM map status",
+        "state": {
+          "disabled": "Disabled",
+          "building": "Collecting data",
+          "ready": "Ready",
+          "not_on_site": "Off site"
+        }
+      },
+      "aim_map_progress": {
+        "name": "AIM mapping progress"
+      },
+      "aim_map_updated": {
+        "name": "AIM map last updated"
       },
       "epos_correction_source": {
         "name": "EPOS correction source",

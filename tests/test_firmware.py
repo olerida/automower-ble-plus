@@ -78,3 +78,13 @@ def test_parking_at_poi_requires_the_operation_mode_in_the_firmware():
     assert not get_firmware_profile((26, 1), "40.1_Main-App-P25_26.19").park_at_poi
     assert get_firmware_profile((26, 1), "40.1_Main-App-P25_32.22").park_at_poi
     assert not get_firmware_profile((26, 1), "40.1_Main-App-P25_other").park_at_poi
+
+
+def test_aim_map_regeneration_requires_a_firmware_with_the_start_command():
+    assert get_firmware_profile((28, 2), "40.3_Main-App-P16_34.18").aim_map_regeneration
+    assert not get_firmware_profile(
+        (28, 2), "40.3_Main-App-P16_29.47"
+    ).aim_map_regeneration
+    assert not get_firmware_profile(
+        (28, 2), "40.3_Main-App-P16_unknown"
+    ).aim_map_regeneration
