@@ -489,6 +489,67 @@ set_map_feature_settings:
           max: 5000
           mode: box
           unit_of_measurement: mm
+create_map_feature:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    feature_type:
+      required: true
+      selector:
+        select:
+          translation_key: map_feature_type
+          options:
+            - work_area
+            - stay_out_zone
+            - transport_path
+            - poi_path
+    name:
+      required: true
+      selector:
+        text:
+    points:
+      required: true
+      selector:
+        object:
+    width_mm:
+      selector:
+        number:
+          min: 1200
+          max: 5000
+          mode: box
+          unit_of_measurement: mm
+    expected_checksum:
+      required: true
+      selector:
+        text:
+    expected_installation_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          mode: box
+delete_map_feature:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    feature_id:
+      required: true
+      selector:
+        text:
+    expected_checksum:
+      required: true
+      selector:
+        text:
+    expected_installation_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          mode: box
 get_geofence:
   target:
     entity:

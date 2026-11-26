@@ -13,7 +13,12 @@ from homeassistant.helpers.service import async_register_platform_entity_service
 from .config_flow import core_controls_address
 from .const import DOMAIN
 from .coordinator import MowerCoordinator, MowerEntry
-from .map_features import MAX_COORDINATE, MAX_PATH_WIDTH, MIN_COORDINATE
+from .map_features import (
+    CREATABLE_MAP_TYPES,
+    MAX_COORDINATE,
+    MAX_PATH_WIDTH,
+    MIN_COORDINATE,
+)
 from .mapfiles import MapKind
 from .schedule import WEEKDAYS
 from .work_areas import (
@@ -69,10 +74,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         {vol.Required("x_mm"): coordinate, vol.Required("y_mm"): coordinate}
     )
     map_revision = {
-        vol.Required("feature_id"): cv.string,
         vol.Required("expected_checksum"): cv.string,
         vol.Optional("expected_installation_id"): mission,
     }
+    selected_feature = {**map_revision, vol.Required("feature_id"): cv.string}
+    map_points = vol.All([point], vol.Length(min=2))
+    map_width = _bounded_integer(1, MAX_PATH_WIDTH)
     schemas = {
         "mow_for": {
             vol.Required("minutes"): duration,
@@ -120,15 +127,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             ),
         },
         "edit_map_geometry": {
-            **map_revision,
-            vol.Required("points"): vol.All([point], vol.Length(min=2)),
+            **selected_feature,
+            vol.Required("points"): map_points,
         },
         "set_map_feature_settings": {
-            **map_revision,
+            **selected_feature,
             vol.Optional("name"): cv.string,
             vol.Optional("enabled"): cv.boolean,
-            vol.Optional("width_mm"): _bounded_integer(1, MAX_PATH_WIDTH),
+            vol.Optional("width_mm"): map_width,
         },
+        "create_map_feature": {
+            **map_revision,
+            vol.Required("feature_type"): vol.In(CREATABLE_MAP_TYPES),
+            vol.Required("name"): cv.string,
+            vol.Required("points"): map_points,
+            vol.Optional("width_mm"): map_width,
+        },
+        "delete_map_feature": selected_feature,
         "replace_map": {
             vol.Required("svg"): cv.string,
             vol.Required("expected_checksum"): cv.string,
@@ -182,6 +197,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 "replace_map",
                 "edit_map_geometry",
                 "set_map_feature_settings",
+                "create_map_feature",
+                "delete_map_feature",
             )
             else SupportsResponse.NONE,
         )

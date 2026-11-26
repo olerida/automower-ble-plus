@@ -59,6 +59,11 @@ async def _read(client: AutomowerClient, reading: Reading) -> int | None:
     return None
 
 
+async def async_epos_enabled(client: AutomowerClient) -> bool:
+    """Check whether the robot is operating with EPOS positioning enabled."""
+    return await _read(client, _EPOS_ENABLED) == 1
+
+
 async def async_read_docking_status(
     client: AutomowerClient, *, check_epos: bool = False
 ) -> dict[str, int]:

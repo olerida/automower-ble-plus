@@ -145,8 +145,8 @@ def parse_map_svg(
     return raw, root
 
 
-def _prepare_map(svg: str) -> tuple[bytes, bytes]:
-    raw, _ = parse_map_svg(svg)
+def _prepare_map(svg: str, allow_empty: bool) -> tuple[bytes, bytes]:
+    raw, _ = parse_map_svg(svg, allow_empty=allow_empty)
     return gzip.compress(raw, mtime=0), md5(raw, usedforsecurity=False).digest()
 
 
@@ -265,12 +265,16 @@ async def async_verify_mowing_area(
 
 
 async def async_replace_map(
-    client: AutomowerClient, svg: str, expected_checksum: str
+    client: AutomowerClient,
+    svg: str,
+    expected_checksum: str,
+    *,
+    allow_empty: bool = False,
 ) -> dict:
     """Upload a confirmed revision and publish its checksum after the last chunk."""
     if not re.fullmatch(r"[0-9a-fA-F]{32}", expected_checksum):
         raise ValueError("Enter the checksum returned for the active map")
-    compressed, digest = await asyncio.to_thread(_prepare_map, svg)
+    compressed, digest = await asyncio.to_thread(_prepare_map, svg, allow_empty)
     if not await _async_available(client, _MAPS_AVAILABLE):
         raise ValueError("The mower does not advertise map support")
     current = await _async_checksum(client)

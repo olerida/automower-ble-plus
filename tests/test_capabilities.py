@@ -1831,6 +1831,8 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             }
             reads = []
             uploads = []
+            missions = {}
+            refuse_mission = False
             send = client.command
 
             async def command(operation, payload=b""):
@@ -1861,6 +1863,30 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
                     assert payload == md5(uploads[-1], usedforsecurity=False).digest()
                     maps[100] = uploads[-1]
                     return b""
+                if operation == Command(5604, 1):
+                    if refuse_mission:
+                        raise CommandRejected(operation, ResponseResult.INVALID_VALUE)
+                    missions[20] = {"name": payload, "area": b"", "schedulable": b"\0"}
+                    return U32.pack(20)
+                if operation == Command(5604, 2):
+                    return U32.pack(len(missions))
+                if operation == Command(5604, 3):
+                    mission_id = sorted(missions)[U32.unpack(payload)[0]]
+                    return U32.pack(mission_id) + missions[mission_id]["name"]
+                if operation == Command(5604, 5):
+                    del missions[U32.unpack(payload)[0]]
+                    return b""
+                mission_fields = {7: "name", 11: "area", 18: "schedulable"}
+                writable_fields = {12: "area", 19: "schedulable"}
+                if operation.family == 5604 and operation.operation in mission_fields:
+                    return missions[U32.unpack(payload)[0]][
+                        mission_fields[operation.operation]
+                    ]
+                if operation.family == 5604 and operation.operation in writable_fields:
+                    missions[U32.unpack_from(payload)[0]][
+                        writable_fields[operation.operation]
+                    ] = payload[4:]
+                    return b""
                 return await send(operation, payload)
 
             monkeypatch.setattr(client, "command", command)
@@ -1872,6 +1898,7 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
                     (Command(5578, 40), b""): b"\x01",
                     (Command(5578, 43), b""): b"\x01",
                     (Command(5786, 13), b""): U32.pack(1024),
+                    (Command(5604, 38), b""): U32.pack(5),
                 }
             )
             await coordinator.async_refresh_optional()
@@ -1979,6 +2006,65 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert path["name"] == change["name"]
             assert path["width_mm"] == 3500
             assert path["width_limits_mm"] == {"min": 3000, "max": 5000}
+            new_area = {
+                "expected_checksum": settings["checksum"],
+                "expected_installation_id": 7,
+                "feature_type": "work_area",
+                "name": "Patio",
+                "points": edit["points"],
+            }
+            before_create = maps[100]
+            refuse_mission = True
+            with pytest.raises(HomeAssistantError, match="polygon was reverted"):
+                await map_action("create_map_feature", **new_area)
+            assert maps[100] == before_create
+            assert not missions
+            refuse_mission = False
+            created = await map_action("create_map_feature", **new_area)
+            assert created["mission_id"] == 20
+            assert (
+                missions[20]["area"].decode("ascii").strip("\0")
+                == created["feature_id"]
+            )
+            request_drop = {
+                "feature_id": created["feature_id"],
+                "expected_checksum": created["checksum"],
+                "expected_installation_id": 7,
+            }
+            task_key = (Command(4690, 5), U32.pack(0))
+            general = client.values[task_key]
+            client.values[task_key] = ScheduleTask.from_action(
+                time(11), 45, ["mon"], 20
+            ).encode()[1]
+            with pytest.raises(
+                HomeAssistantError, match="Remove the schedule intervals"
+            ):
+                await map_action("delete_map_feature", **request_drop)
+            assert 20 in missions
+            assert created["feature_id"].encode() in maps[100]
+            client.values[task_key] = general
+            await map_action("delete_map_feature", **request_drop)
+            assert not missions
+            assert maps[100] == before_create
+            client.values[(Command(5578, 40), b"")] = b"\0"
+            client.values[(Command(6170, 2), b"")] = b"\0"
+            empty = await map_action("get_map_features")
+            assert not empty["available"]
+            assert not empty["can_create"]
+            first_zone = {
+                **new_area,
+                "feature_type": "stay_out_zone",
+                "expected_checksum": empty["checksum"],
+            }
+            with pytest.raises(HomeAssistantError, match="enabled EPOS installation"):
+                await map_action("create_map_feature", **first_zone)
+            assert maps[100] == before_create
+            client.values[(Command(6170, 2), b"")] = b"\x01"
+            assert (await map_action("get_map_features"))["can_create"]
+            first = await map_action("create_map_feature", **first_zone)
+            assert first["feature_id"].encode() in maps[100]
+            assert b'fill="red"' in maps[100]
+            assert b'id="lawn"' not in maps[100]
             reset = (Command(4698, 8), b"")
             client.values[reset] = b""
             flow = await hass.config_entries.options.async_init(entry.entry_id)

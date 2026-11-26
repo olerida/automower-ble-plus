@@ -209,6 +209,36 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
             width_mm,
         )
 
+    async def async_create_map_feature(
+        self,
+        feature_type: str,
+        name: str,
+        points: list[dict[str, int]],
+        expected_checksum: str,
+        expected_installation_id: int | None = None,
+        width_mm: int | None = None,
+    ) -> dict:
+        """Add a polygon or route to the active map."""
+        return await self.coordinator.async_create_map_feature(
+            feature_type,
+            name,
+            points,
+            expected_checksum,
+            expected_installation_id,
+            width_mm,
+        )
+
+    async def async_delete_map_feature(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None = None,
+    ) -> dict:
+        """Remove a feature from the selected map revision."""
+        return await self.coordinator.async_delete_map_feature(
+            feature_id, expected_checksum, expected_installation_id
+        )
+
     async def async_get_position(self) -> dict:
         """Read the mower's geographic and local positions over BLE."""
         return await self.coordinator.async_read_position()

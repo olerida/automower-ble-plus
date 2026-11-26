@@ -16,6 +16,9 @@ _PATH_TYPES = {
 _READ_ONLY = {"charging_station", "unknown"}
 _PATH_WIDTH_TYPES = {"transport_path", "poi_path"}
 _MAIN_AREA_ID = "main_area_0"
+_NEW_AREAS = {"work_area": "green", "stay_out_zone": "red"}
+_NEW_PATHS = {"transport_path": "blue", "poi_path": "cyan"}
+CREATABLE_MAP_TYPES = (*_NEW_AREAS, *_NEW_PATHS)
 MAX_PATH_WIDTH = 5000
 MIN_COORDINATE = -(1 << 31)
 MAX_COORDINATE = (1 << 31) - 1
@@ -125,7 +128,7 @@ def _validate_geometry(vertices: list[Point], polygon: bool) -> None:
 
 
 def _find_editable_feature(svg: str, feature_id: str) -> tuple[bytes, Element]:
-    raw, root = parse_map_svg(svg)
+    raw, root = parse_map_svg(svg, allow_empty=True)
     shape = next((shape for shape in root if shape.get("id") == feature_id), None)
     if shape is None:
         raise ValueError("The active map does not contain the selected feature")
@@ -156,6 +159,15 @@ def _set_feature_attributes(
 def update_map_geometry(svg: str, feature_id: str, points: list[dict[str, int]]) -> str:
     """Update only the coordinates of an existing area or path."""
     raw, shape = _find_editable_feature(svg, feature_id)
+    encoded = _encode_points(
+        points, polygon=shape.tag.removeprefix(SVG_NAMESPACE) == "polygon"
+    )
+    if points == _points(shape):
+        return svg
+    return _set_feature_attributes(raw, feature_id, {"points": encoded})
+
+
+def _encode_points(points: list[dict[str, int]], *, polygon: bool) -> str:
     vertices = [(point["x_mm"], point["y_mm"]) for point in points]
     if any(
         type(value) is not int or not MIN_COORDINATE <= value <= MAX_COORDINATE
@@ -163,12 +175,83 @@ def update_map_geometry(svg: str, feature_id: str, points: list[dict[str, int]])
         for value in vertex
     ):
         raise ValueError("Coordinates outside the mower's signed millimetre range")
-    _validate_geometry(vertices, shape.tag.removeprefix(SVG_NAMESPACE) == "polygon")
-    if points == _points(shape):
-        return svg
-    return _set_feature_attributes(
-        raw, feature_id, {"points": " ".join(f"{x},{y}" for x, y in vertices)}
-    )
+    _validate_geometry(vertices, polygon)
+    return " ".join(f"{x},{y}" for x, y in vertices)
+
+
+def _validate_name(name: str) -> None:
+    if not name.strip() or any(ord(character) < 32 for character in name):
+        raise ValueError("Enter a nonempty map feature name without control characters")
+
+
+def _validate_width(width_mm: int, minimum: int) -> None:
+    if not minimum <= width_mm <= MAX_PATH_WIDTH:
+        raise ValueError(f"Path width must be {minimum} to {MAX_PATH_WIDTH} mm")
+
+
+def add_map_feature(
+    svg: str,
+    feature_id: str,
+    feature_type: str,
+    name: str,
+    points: list[dict[str, int]],
+    width_mm: int | None,
+    path_width_min: int,
+) -> str:
+    """Append an app-supported polygon or path to the active site map."""
+    if feature_type not in CREATABLE_MAP_TYPES:
+        raise ValueError("Unsupported new map feature type")
+    raw, root = parse_map_svg(svg, allow_empty=True)
+    if any(shape.get("id") == feature_id for shape in root):
+        raise ValueError("The map already contains this feature ID")
+    if feature_type == "poi_path" and any(
+        _feature_type(shape, MapKind.SITE) == "poi_path" for shape in root
+    ):
+        raise ValueError("The active map already has a point of interest path")
+    polygon = feature_type in _NEW_AREAS
+    _validate_name(name)
+    attributes = {
+        "id": feature_id,
+        "title": name,
+        "points": _encode_points(points, polygon=polygon),
+    }
+    if polygon:
+        if width_mm is not None:
+            raise ValueError("Only map paths have a width")
+        attributes.update(
+            fill=_NEW_AREAS[feature_type], stroke=_NEW_AREAS[feature_type]
+        )
+    else:
+        if width_mm is None:
+            raise ValueError("Enter the width of the new path in millimetres")
+        _validate_width(width_mm, path_width_min)
+        attributes.update(
+            {"stroke": _NEW_PATHS[feature_type], "stroke-width": str(width_mm)}
+        )
+    tag = "polygon" if polygon else "polyline"
+    with minidom.parseString(raw) as document:
+        base = document.documentElement
+        qualified_tag = f"{base.prefix}:{tag}" if base.prefix else tag
+        node = document.createElementNS(base.namespaceURI, qualified_tag)
+        for key, value in attributes.items():
+            node.setAttribute(key, value)
+        base.appendChild(node)
+        return base.toxml()
+
+
+def remove_map_feature(svg: str, feature_id: str) -> tuple[str, str]:
+    """Remove one feature and return its type for mission consistency checks."""
+    raw, shape = _find_editable_feature(svg, feature_id)
+    with minidom.parseString(raw) as document:
+        base = document.documentElement
+        for node in base.childNodes:
+            if (
+                node.nodeType == node.ELEMENT_NODE
+                and node.getAttribute("id") == feature_id
+            ):
+                base.removeChild(node)
+                break
+        return base.toxml(), _feature_type(shape, MapKind.SITE)
 
 
 def update_map_feature_settings(
@@ -190,10 +273,7 @@ def update_map_feature_settings(
         )
     attributes: dict[str, str | None] = {}
     if name is not None:
-        if not name.strip() or any(ord(character) < 32 for character in name):
-            raise ValueError(
-                "Enter a nonempty map feature name without control characters"
-            )
+        _validate_name(name)
         if name != shape.get("title"):
             attributes["title"] = name
     if enabled is not None and enabled != (shape.get("display", "").lower() != "none"):
@@ -201,10 +281,7 @@ def update_map_feature_settings(
     if width_mm is not None:
         if feature_type not in _PATH_WIDTH_TYPES:
             raise ValueError("Only map paths have an editable width")
-        if not path_width_min <= width_mm <= MAX_PATH_WIDTH:
-            raise ValueError(
-                f"Path width must be {path_width_min} to {MAX_PATH_WIDTH} mm"
-            )
+        _validate_width(width_mm, path_width_min)
         if str(width_mm) != shape.get("stroke-width"):
             attributes["stroke-width"] = str(width_mm)
     return _set_feature_attributes(raw, feature_id, attributes) if attributes else svg

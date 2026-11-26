@@ -1184,6 +1184,54 @@
           "description": "Width in millimetres within the model limits returned by Read map features."
         }
       }
+    },
+    "create_map_feature": {
+      "name": "Create map feature",
+      "description": "Add an area or route to the active map.",
+      "fields": {
+        "feature_type": {
+          "name": "Feature type",
+          "description": "Type of area or route to create."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New feature name."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Ordered list of points with signed integer x_mm and y_mm coordinates."
+        },
+        "width_mm": {
+          "name": "Path width",
+          "description": "Width in millimetres within the model limits returned by Read map features."
+        },
+        "expected_checksum": {
+          "name": "Expected checksum",
+          "description": "Checksum returned by Read map features."
+        },
+        "expected_installation_id": {
+          "name": "Expected installation ID",
+          "description": "Installation ID returned by Read map features when available."
+        }
+      }
+    },
+    "delete_map_feature": {
+      "name": "Delete map feature",
+      "description": "Remove the selected feature from the active map.",
+      "fields": {
+        "feature_id": {
+          "name": "Feature ID",
+          "description": "ID returned by Read map features."
+        },
+        "expected_checksum": {
+          "name": "Expected checksum",
+          "description": "Checksum returned by Read map features."
+        },
+        "expected_installation_id": {
+          "name": "Expected installation ID",
+          "description": "Installation ID returned by Read map features when available."
+        }
+      }
     }
   },
   "selector": {
@@ -1220,6 +1268,14 @@
         "site": "Active installation",
         "generated": "Generated map",
         "zones": "Zone map"
+      }
+    },
+    "map_feature_type": {
+      "options": {
+        "work_area": "Work area",
+        "stay_out_zone": "Stay-out zone",
+        "transport_path": "Transport path",
+        "poi_path": "Point-of-interest path"
       }
     }
   },

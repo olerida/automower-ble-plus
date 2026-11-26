@@ -11,7 +11,9 @@ import pytest
 from PIL import Image
 
 from custom_components.automower_ble_plus.map_features import (
+    add_map_feature,
     describe_map_features,
+    remove_map_feature,
     update_map_feature_settings,
     update_map_geometry,
 )
@@ -27,6 +29,20 @@ from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command
 
 SVG = '<svg><polygon id="lawn" stroke="green" fill="green" points="0,0 1500,0 0,1200"/></svg>'
+
+
+def test_create_and_remove_poi_path_in_empty_namespaced_map():
+    empty = '<svg xmlns="http://www.w3.org/2000/svg"/>'
+    path = [{"x_mm": -3000, "y_mm": -10}, {"x_mm": 5000, "y_mm": 15}]
+    path_type = "poi_path"
+    changed = add_map_feature(empty, "poi", path_type, "Limpieza", path, 2000, 2000)
+    features = describe_map_features(changed, MapKind.SITE, True, 2000)
+    assert len(features) == 1
+    assert features[0]["points"] == path
+    assert features[0]["type"] == path_type
+    with pytest.raises(ValueError, match="already has a point of interest path"):
+        add_map_feature(changed, "another", path_type, "Duplicado", path, 2000, 2000)
+    assert remove_map_feature(changed, "poi") == (empty, path_type)
 
 
 def test_map_geometry_update_preserves_namespace_and_other_features():

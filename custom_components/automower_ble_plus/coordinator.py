@@ -1,12 +1,13 @@
 """Manage one authenticated BLE session per mower."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterable, Sequence
-from contextlib import suppress
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
+from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import timedelta
 from struct import error as StructError
 from time import monotonic
+from uuid import uuid4
 
 from automower_ble.models import MowerModels
 from automower_ble.protocol import (
@@ -43,6 +44,7 @@ from .epos import (
     EPOS_STATUS_KEYS,
     RUN_DOCKING_PATTERN,
     STOP_DOCKING_PATTERN,
+    async_epos_enabled,
     async_read_docking_status,
     async_read_epos_status,
 )
@@ -92,7 +94,9 @@ from .identity import (
     encode_mower_name,
 )
 from .map_features import (
+    add_map_feature,
     describe_map_features,
+    remove_map_feature,
     update_map_feature_settings,
     update_map_geometry,
 )
@@ -105,6 +109,7 @@ from .mapfiles import (
     async_read_map_kind,
     async_read_map_status,
     async_replace_map,
+    async_verify_mowing_area,
 )
 from .models import DEFAULT_MAP_PATH_WIDTH_MINIMUM, MAP_PATH_WIDTH_MINIMUMS
 from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
@@ -177,8 +182,11 @@ from .work_areas import (
     async_create_work_area,
     async_delete_work_area,
     async_get_area_mowing_settings,
+    async_get_linked_work_areas,
     async_get_work_area_status,
     async_get_work_areas,
+    async_mission_ids,
+    async_require_work_area_capacity,
     async_reset_work_area_progress,
     async_set_area_mowing_setting,
     async_update_work_area,
@@ -1680,19 +1688,24 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 result = await async_read_map_kind(
                     self.client, kind, check_revision=True
                 )
-                if not result["available"]:
+                checksum = result.get("checksum") if kind is MapKind.SITE else None
+                if not result["available"] and checksum is None:
                     return {"available": False, "map_type": kind.value, "features": []}
                 if installation_id != await async_active_installation_id(self.client):
                     raise ValueError(
                         "The active installation changed while reading the map"
                     )
-                checksum = result.get("checksum") if kind is MapKind.SITE else None
-                features = await self.hass.async_add_executor_job(
-                    describe_map_features,
-                    result["svg"],
-                    kind,
-                    checksum is not None,
-                    self._map_path_min_width,
+                features = []
+                if result["available"]:
+                    features = await self.hass.async_add_executor_job(
+                        describe_map_features,
+                        result["svg"],
+                        kind,
+                        checksum is not None,
+                        self._map_path_min_width,
+                    )
+                can_create = checksum is not None and (
+                    result["available"] or await async_epos_enabled(self.client)
                 )
             except (
                 MowerConnectionError,
@@ -1703,11 +1716,16 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not read the mower map: {err}"
                 ) from err
-        response = {"available": True, "map_type": kind.value, "features": features}
+        response = {
+            "available": result["available"],
+            "map_type": kind.value,
+            "features": features,
+        }
         if installation_id is not None:
             response["installation_id"] = installation_id
         if checksum is not None:
             response["checksum"] = checksum
+            response["can_create"] = can_create
         return response
 
     async def async_map_preview(self, kind: MapKind) -> bytes | None:
@@ -2360,19 +2378,163 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         change: Callable[..., str],
         *args,
     ) -> dict:
+        async with self._async_map_revision(
+            expected_checksum, expected_installation_id
+        ) as old_svg:
+            svg = await self.hass.async_add_executor_job(
+                change, old_svg, feature_id, *args
+            )
+            await self._async_confirm_map_installation(expected_installation_id)
+            if svg == old_svg:
+                return {"checksum": expected_checksum.lower(), "feature_id": feature_id}
+            result = await self._async_publish_map(svg, expected_checksum)
+            return {**result, "feature_id": feature_id}
+
+    async def async_create_map_feature(
+        self,
+        feature_type: str,
+        name: str,
+        points: list[dict[str, int]],
+        expected_checksum: str,
+        expected_installation_id: int | None,
+        width_mm: int | None,
+    ) -> dict:
+        """Add geometry and link a mowing mission when adding a work area."""
+        async with self._async_map_revision(
+            expected_checksum, expected_installation_id, allow_unavailable=True
+        ) as old_svg:
+            feature_id = str(uuid4())
+            svg = await self.hass.async_add_executor_job(
+                add_map_feature,
+                old_svg,
+                feature_id,
+                feature_type,
+                name,
+                points,
+                width_mm,
+                self._map_path_min_width,
+            )
+            missions_before = None
+            if feature_type == "work_area":
+                missions_before = await async_require_work_area_capacity(
+                    self.client, name
+                )
+            await self._async_confirm_map_installation(expected_installation_id)
+            result = await self._async_publish_map(svg, expected_checksum)
+            result["feature_id"] = feature_id
+            if missions_before is not None:
+                try:
+                    await self._async_confirm_map_installation(expected_installation_id)
+                    result.update(
+                        await async_create_work_area(
+                            self.client, name, feature_id, result["checksum"]
+                        )
+                    )
+                except (
+                    MowerConnectionError,
+                    CommandRejected,
+                    ValueError,
+                    StructError,
+                ) as err:
+                    reverted = False
+                    with suppress(
+                        MowerConnectionError, CommandRejected, ValueError, StructError
+                    ):
+                        await self._async_connect()
+                        await self._async_confirm_map_installation(
+                            expected_installation_id
+                        )
+                        if missions_before == await async_mission_ids(
+                            self.client
+                        ) and not await async_get_linked_work_areas(
+                            self.client, feature_id
+                        ):
+                            await self._async_confirm_map_installation(
+                                expected_installation_id
+                            )
+                            await self._async_publish_map(
+                                old_svg, result["checksum"], allow_empty=True
+                            )
+                            reverted = True
+                    if reverted:
+                        raise ValueError(
+                            f"The polygon was reverted after mission creation failed: {err}"
+                        ) from err
+                    raise ValueError(
+                        f"Check polygon {feature_id} and its mission after the interrupted creation: {err}"
+                    ) from err
+            return result
+
+    async def async_delete_map_feature(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None,
+    ) -> dict:
+        """Remove one polygon or path, preserving scheduled mowing missions."""
+        async with self._async_map_revision(
+            expected_checksum, expected_installation_id
+        ) as old_svg:
+            svg, feature_type = await self.hass.async_add_executor_job(
+                remove_map_feature, old_svg, feature_id
+            )
+            linked = []
+            if feature_type == "work_area":
+                linked = await async_get_linked_work_areas(self.client, feature_id)
+            if len(linked) > 1:
+                raise ValueError(
+                    "Multiple mowing missions reference this polygon. Delete those missions before removing it"
+                )
+            await self._async_confirm_map_installation(expected_installation_id)
+            if linked:
+                mission_id, name = linked[0]
+                await async_verify_mowing_area(
+                    self.client, feature_id, expected_checksum
+                )
+                await self._async_confirm_map_installation(expected_installation_id)
+                await async_delete_work_area(self.client, mission_id, name)
+            try:
+                await self._async_confirm_map_installation(expected_installation_id)
+                result = await self._async_publish_map(
+                    svg, expected_checksum, allow_empty=True
+                )
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                if not linked:
+                    raise
+                raise ValueError(
+                    f"Mission {mission_id} was removed. Check polygon {feature_id} before retrying: {err}"
+                ) from err
+            return {**result, "feature_id": feature_id}
+
+    async def _async_confirm_map_installation(
+        self, expected_installation_id: int | None
+    ) -> None:
+        if expected_installation_id != await async_active_installation_id(self.client):
+            raise ValueError("Read the map again and pass its current installation ID")
+
+    @asynccontextmanager
+    async def _async_map_revision(
+        self,
+        expected_checksum: str,
+        expected_installation_id: int | None,
+        *,
+        allow_unavailable: bool = False,
+    ) -> AsyncIterator[str]:
         async with self._operation_lock:
             try:
                 await self._async_connect()
-                if expected_installation_id != await async_active_installation_id(
-                    self.client
-                ):
-                    raise ValueError(
-                        "Read the map again and pass its current installation ID"
-                    )
+                await self._async_confirm_map_installation(expected_installation_id)
                 current = await async_read_map_kind(
                     self.client, MapKind.SITE, check_revision=True
                 )
-                if not current["available"] or "checksum" not in current:
+                if "checksum" not in current or (
+                    not allow_unavailable and not current["available"]
+                ):
                     raise ValueError(
                         "The mower does not report a revision for its active map"
                     )
@@ -2380,21 +2542,13 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     raise ValueError(
                         "The active map changed. Read it again before updating"
                     )
-                svg = await self.hass.async_add_executor_job(
-                    change, current["svg"], feature_id, *args
-                )
-                if expected_installation_id != await async_active_installation_id(
+                if not current["available"] and not await async_epos_enabled(
                     self.client
                 ):
                     raise ValueError(
-                        "The active installation changed while editing the map"
+                        "The mower does not report an active map or enabled EPOS installation"
                     )
-                if svg == current["svg"]:
-                    return {"checksum": current["checksum"], "feature_id": feature_id}
-                return {
-                    **await self._async_publish_map(svg, expected_checksum),
-                    "feature_id": feature_id,
-                }
+                yield current.get("svg", "<svg/>")
             except (
                 MowerConnectionError,
                 CommandRejected,
@@ -2405,8 +2559,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     f"Could not update the mower map: {err}"
                 ) from err
 
-    async def _async_publish_map(self, svg: str, expected_checksum: str) -> dict:
-        result = await async_replace_map(self.client, svg, expected_checksum)
+    async def _async_publish_map(
+        self, svg: str, expected_checksum: str, *, allow_empty: bool = False
+    ) -> dict:
+        result = await async_replace_map(
+            self.client, svg, expected_checksum, allow_empty=allow_empty
+        )
         data = dict(self.data)
         with suppress(CommandRejected, MowerConnectionError, ValueError, StructError):
             await self._async_refresh_map_previews(data)

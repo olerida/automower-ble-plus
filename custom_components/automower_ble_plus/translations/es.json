@@ -1184,6 +1184,54 @@
           "description": "Anchura en milímetros dentro del intervalo que devuelve Leer elementos del mapa."
         }
       }
+    },
+    "create_map_feature": {
+      "name": "Crear elemento del mapa",
+      "description": "Añade un área o una ruta al mapa activo.",
+      "fields": {
+        "feature_type": {
+          "name": "Tipo de elemento",
+          "description": "Tipo de área o ruta que quieres crear."
+        },
+        "name": {
+          "name": "Nombre",
+          "description": "Nombre del nuevo elemento."
+        },
+        "points": {
+          "name": "Puntos",
+          "description": "Lista ordenada de puntos con coordenadas enteras x_mm e y_mm."
+        },
+        "width_mm": {
+          "name": "Anchura de la ruta",
+          "description": "Anchura en milímetros dentro del intervalo que devuelve Leer elementos del mapa."
+        },
+        "expected_checksum": {
+          "name": "Suma de comprobación",
+          "description": "Valor checksum devuelto por Leer elementos del mapa."
+        },
+        "expected_installation_id": {
+          "name": "ID de la instalación",
+          "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
+        }
+      }
+    },
+    "delete_map_feature": {
+      "name": "Eliminar elemento del mapa",
+      "description": "Retira el elemento seleccionado del mapa activo.",
+      "fields": {
+        "feature_id": {
+          "name": "ID del elemento",
+          "description": "ID devuelto por Leer elementos del mapa."
+        },
+        "expected_checksum": {
+          "name": "Suma de comprobación",
+          "description": "Valor checksum devuelto por Leer elementos del mapa."
+        },
+        "expected_installation_id": {
+          "name": "ID de la instalación",
+          "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
+        }
+      }
     }
   },
   "selector": {
@@ -1220,6 +1268,14 @@
         "site": "Instalación activa",
         "generated": "Mapa generado",
         "zones": "Mapa de zonas"
+      }
+    },
+    "map_feature_type": {
+      "options": {
+        "work_area": "Área de trabajo",
+        "stay_out_zone": "Zona de exclusión",
+        "transport_path": "Ruta de paso",
+        "poi_path": "Ruta a un punto de interés"
       }
     }
   },

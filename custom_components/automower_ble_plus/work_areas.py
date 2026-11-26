@@ -21,6 +21,7 @@ from .wire import Command
 
 _AVAILABLE = Command(5604, 20)
 _COUNT = Command(5604, 2)
+_MAX_COUNT = Command(5604, 38)
 _ENTRY = Command(5604, 3)
 _CREATE = Command(5604, 1)
 _DELETE = Command(5604, 5)
@@ -111,12 +112,55 @@ async def _async_available(client: AutomowerClient) -> bool:
         return True  # Older profiles expose the list without an availability command.
 
 
-async def _async_mission_ids(client: AutomowerClient) -> set[int]:
+async def async_mission_ids(client: AutomowerClient) -> set[int]:
+    """Read the IDs of the missions in the active installation."""
     count = U32.unpack(await client.command(_COUNT))[0]
     return {
         U32.unpack_from(raw)[0]
         async for _, raw in async_indexed_page(client, _ENTRY, count, 0, count)
     }
+
+
+async def async_require_work_area_capacity(
+    client: AutomowerClient, name: str
+) -> set[int]:
+    """Check that a mapped work area can have a mission before uploading its polygon."""
+    encode_name(name)
+    if not await _async_available(client):
+        raise ValueError("This mower reports that work areas are unavailable")
+    mission_ids = await async_mission_ids(client)
+    try:
+        maximum = U32.unpack(await client.command(_MAX_COUNT))[0]
+    except CommandRejected as err:
+        if not err.unsupported:
+            raise
+    else:
+        if len(mission_ids) >= maximum:
+            raise ValueError("The mower reports that its work area list is full")
+    return mission_ids
+
+
+async def async_get_linked_work_areas(
+    client: AutomowerClient, area_id: str
+) -> list[tuple[int, str]]:
+    """Find every mission that references the selected polygon."""
+    if not await _async_available(client):
+        return []
+    try:
+        mission_ids = await async_mission_ids(client)
+    except CommandRejected as err:
+        if err.command == _COUNT and err.unsupported:
+            return []
+        raise
+    linked = []
+    for mission_id in sorted(mission_ids):
+        identity = U32.pack(mission_id)
+        raw = await client.command(_GET_MOWING_AREA, identity)
+        if raw.partition(b"\0")[0].decode("ascii") == area_id:
+            linked.append(
+                (mission_id, decode_name(await client.command(_GET_NAME, identity)))
+            )
+    return linked
 
 
 async def async_get_work_areas(
@@ -196,7 +240,7 @@ async def async_create_work_area(
         raise ValueError("Enter a valid mowing polygon ID")
     if not await _async_available(client):
         raise ValueError("This mower reports that work areas are unavailable")
-    existing = await _async_mission_ids(client)
+    existing = await async_mission_ids(client)
     await async_verify_mowing_area(client, area_id, expected_checksum)
     mission_id = U32.unpack(await client.command(_CREATE, encoded_name))[0]
     if mission_id in existing:
@@ -220,7 +264,7 @@ async def async_create_work_area(
         if client.is_connected():
             try:
                 await client.command(_DELETE, identity)
-                reverted = mission_id not in await _async_mission_ids(client)
+                reverted = mission_id not in await async_mission_ids(client)
             except CommandRejected, MowerConnectionError, StructError:
                 reverted = False
             if reverted:
@@ -249,7 +293,7 @@ async def async_delete_work_area(
             "Remove the schedule intervals assigned to this work area before deleting it"
         )
     await client.command(_DELETE, identity)
-    if mission_id in await _async_mission_ids(client):
+    if mission_id in await async_mission_ids(client):
         raise ValueError("The mower still reports this work area after deletion")
 
 
