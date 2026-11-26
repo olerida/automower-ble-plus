@@ -12,6 +12,7 @@ from .appdrive import APPDRIVE_BINARY_KEYS
 from .coordinator import MowerEntry
 from .entity import MowerValueEntity, async_add_detected
 from .epos import EPOS_BINARY_KEYS
+from .features import CONNECT_ENABLED_KEY
 from .vision import VISION_STATUS_KEYS
 
 
@@ -37,6 +38,15 @@ async def async_setup_entry(
         {"wifi_connected": None},
         lambda key, _: WifiConnectionSensor(entry.runtime_data, key),
     )
+    if all(
+        setting.key != CONNECT_ENABLED_KEY for setting in entry.runtime_data.settings
+    ):
+        async_add_detected(
+            entry,
+            add_entities,
+            {CONNECT_ENABLED_KEY: None},
+            lambda key, _: DiagnosticStatusSensor(entry.runtime_data, key),
+        )
     async_add_detected(
         entry,
         add_entities,

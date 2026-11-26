@@ -25,6 +25,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .appdrive import APPDRIVE_ENUM_OPTIONS
+from .connect_module import CONNECT_SIGNAL_KEY, CONNECT_STATE_KEY, CONNECT_STATE_OPTIONS
 from .coordinator import MowerCoordinator, MowerEntry
 from .entity import MowerEntity, MowerValueEntity, async_add_detected
 from .epos import EPOS_ENUM_OPTIONS
@@ -78,6 +79,10 @@ _DESCRIPTIONS = (
         SensorDeviceClass.SIGNAL_STRENGTH,
         SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
         _MEASUREMENT,
+    ),
+    _description(CONNECT_SIGNAL_KEY, unit=PERCENTAGE, state_class=_MEASUREMENT),
+    _description(
+        CONNECT_STATE_KEY, SensorDeviceClass.ENUM, options=CONNECT_STATE_OPTIONS
     ),
     _description(
         "battery_voltage",

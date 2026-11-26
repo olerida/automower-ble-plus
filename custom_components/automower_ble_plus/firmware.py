@@ -38,6 +38,7 @@ class FirmwareProfile:
     docking_pattern_stop: int = 0
     reset_user_settings: int = 0
     park_at_poi: int = 0
+    connect_enabled_no_pin: int = 0
 
 
 @cache
@@ -75,10 +76,10 @@ def get_firmware_profile(
     result = FirmwareProfile(*catalog["profiles"][profile])
     if exact:
         return result
-    # Treat POI mode as a family capability only if all known releases agree.
+    # Infer protocol support by family only when every known release agrees.
     family = match[1]
-    poi_supported = result.park_at_poi and all(
-        index is not None and FirmwareProfile(*catalog["profiles"][index]).park_at_poi
+    releases = tuple(
+        FirmwareProfile(*catalog["profiles"][index]) if index is not None else None
         for version, index in catalog["release"].items()
         if version.startswith(f"{family}_Main-App-")
     )
@@ -93,5 +94,12 @@ def get_firmware_profile(
         wire_test_states="",
         docking_pattern_stop=0,
         reset_user_settings=8 if result.reset_user_settings else 0,
-        park_at_poi=int(poi_supported),
+        park_at_poi=int(
+            result.park_at_poi
+            and all(profile and profile.park_at_poi for profile in releases)
+        ),
+        connect_enabled_no_pin=int(
+            result.connect_enabled_no_pin
+            and all(profile and profile.connect_enabled_no_pin for profile in releases)
+        ),
     )

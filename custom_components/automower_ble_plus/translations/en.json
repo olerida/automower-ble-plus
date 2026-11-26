@@ -243,6 +243,9 @@
       },
       "epos_dock_by_wire": {
         "name": "EPOS wire docking"
+      },
+      "automower_connect_enabled": {
+        "name": "Automower Connect module"
       }
     },
     "switch": {
@@ -359,6 +362,9 @@
       },
       "epos_wire_assistance": {
         "name": "EPOS wire assistance"
+      },
+      "automower_connect_enabled": {
+        "name": "Automower Connect module"
       }
     },
     "number": {
@@ -718,6 +724,19 @@
             "name": "Work area ID"
           }
         }
+      },
+      "automower_connect_state": {
+        "name": "Automower Connect status",
+        "state": {
+          "not_applicable": "Not applicable",
+          "connected": "Connected",
+          "disconnected": "Disconnected",
+          "sim_card_error": "SIM card error",
+          "no_sim_card": "No SIM card"
+        }
+      },
+      "automower_connect_signal_strength": {
+        "name": "Automower Connect signal strength"
       }
     },
     "device_tracker": {

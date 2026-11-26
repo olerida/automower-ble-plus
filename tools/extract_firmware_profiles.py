@@ -21,6 +21,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     vision_operations = {}
     follow_wire_operations = {}
     mower_operations = {}
+    connect_enabled_no_pin = 0
     reset_operations = set()
     message_events = 0
     for method in profile.get("methods", ()):
@@ -43,6 +44,14 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             follow_wire_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "MowerApp" and protocol.get("msgType") == "4586":
             mower_operations[method["command"]] = protocol.get("subCmd")
+        if (
+            method["family"] == "AutomowerConnect"
+            and method["command"] == "SetEnabledNoPin"
+            and protocol.get("msgType") == "4738"
+            and protocol.get("subCmd") == "17"
+            and method["inParams"] == [{"name": "enabled", "type": "bool"}]
+        ):
+            connect_enabled_no_pin = 1
         if (
             method["family"] == "System"
             and protocol.get("msgType") == "4698"
@@ -273,16 +282,18 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         int(docking_pattern_stop),
         reset_user_settings,
         park_at_poi,
+        connect_enabled_no_pin,
     )
     return (
         result
-        if any(result[:-7])
+        if any(result[:-8])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
         or docking_pattern
         or reset_user_settings
         or park_at_poi
+        or connect_enabled_no_pin
         else None
     )
 

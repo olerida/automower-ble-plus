@@ -39,6 +39,8 @@ VISION_OBSTACLE_AVOIDANCE_AVAILABLE = Command(7338, 2)
 BOUNDARY_EDGE_DETECTION_AVAILABLE = Command(7414, 2)
 VISION_POSITIONING_AVAILABLE = Command(6170, 14)
 IS_DAYLIGHT = Command(5472, 2)
+CONNECT_FAMILY = 4738
+CONNECT_ENABLED_KEY = "automower_connect_enabled"
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +70,7 @@ class SettingVariant:
     write: Command
     availability: Command | None = None
     requires_pin: bool = False
+    pin_after_value: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,12 +110,14 @@ def _variant(
     codec: Struct = U8,
     arguments: bytes = b"",
     requires_pin: bool = False,
+    pin_after_value: bool = False,
 ) -> SettingVariant:
     return SettingVariant(
         Reading(Command(family, get), codec, arguments),
         Command(family, set_),
         Command(family, available) if available is not None else None,
         requires_pin,
+        pin_after_value,
     )
 
 
@@ -211,6 +216,21 @@ def settings_for_model(
     bounds = BOUNDARY_RANGES.get(model)
     settings = list(_SETTINGS)
     if has_pin:
+        settings.append(
+            Setting(
+                CONNECT_ENABLED_KEY,
+                (
+                    _variant(
+                        CONNECT_FAMILY,
+                        2,
+                        1,
+                        available=0,
+                        requires_pin=True,
+                        pin_after_value=True,
+                    ),
+                ),
+            )
+        )
         settings.extend(_THEFT_SETTINGS)
         if model in LIFT_TILT_ALARM_MODELS:
             settings.extend(
@@ -221,6 +241,12 @@ def settings_for_model(
             )
         if model in MOTION_ALARM_MODELS:
             settings.append(Setting("theft_alarm_on_motion", (_variant(4736, 13, 14),)))
+    elif limits and limits.connect_enabled_no_pin:
+        settings.append(
+            Setting(
+                CONNECT_ENABLED_KEY, (_variant(CONNECT_FAMILY, 2, 17, available=0),)
+            )
+        )
     if limits:
         if limits.vision_obstacle_profile:
             settings.append(

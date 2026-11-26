@@ -1510,6 +1510,74 @@ async def test_theft_alarm_configuration_requires_the_operator_pin(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("version", "pin", "writer", "expected_payload"),
+    [
+        ("App-G3_devicetype-5.0", None, None, None),
+        ("App-G3_devicetype-5.0", "0042", Command(4738, 1), b"\x00\x2a\x00"),
+        ("40.1_Main-App-P25_109.3", None, Command(4738, 17), b"\x00"),
+    ],
+)
+async def test_connect_module_controls_follow_module_and_pin_capabilities(
+    tmp_path, monkeypatch, version, pin, writer, expected_payload
+):
+    entry = _entry(pin)
+    coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    entry.runtime_data = coordinator
+    available = Command(4738, 0)
+    enabled = Command(4738, 2)
+    client.values.update(
+        {
+            (available, b""): b"\x01",
+            (enabled, b""): b"\x01",
+            (Command(4738, 7), b""): b"\x03",
+            (Command(4738, 8), b""): b"\x32",
+        }
+    )
+    monkeypatch.setattr(client, "main_node_version", AsyncMock(return_value=version))
+    send = client.command
+    writes = []
+
+    async def command(operation, payload=b""):
+        if operation in (Command(4738, 1), Command(4738, 17)):
+            writes.append((operation, payload))
+            client.values[(enabled, b"")] = payload[:1]
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    await coordinator._async_setup()
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    entities = []
+    for platform in (sensor, binary_sensor, switch):
+        await platform.async_setup_entry(coordinator.hass, entry, entities.extend)
+    await coordinator.async_refresh_optional()
+    detected = {
+        entity.key: entity
+        for entity in entities
+        if entity.key.startswith("automower_connect_")
+    }
+    assert detected["automower_connect_state"].native_value == "sim_card_error"
+    assert detected["automower_connect_signal_strength"].native_value == 50
+    control = detected["automower_connect_enabled"]
+    assert control.is_on
+    if writer is None:
+        assert isinstance(control, binary_sensor.DiagnosticStatusSensor)
+        assert not writes
+    else:
+        assert isinstance(control, switch.AutomowerSwitch)
+        await control.async_turn_off()
+        assert not control.is_on
+        assert writes == [(writer, expected_payload)]
+    client.values[(available, b"")] = b"\0"
+    await coordinator.async_refresh_optional()
+    assert all(not entity.available for entity in detected.values())
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("key", "family", "state_id", "version_id", "check_id", "install_id", "installed"),
     [
         ("mower_firmware_update", 5296, 6, 9, 8, 10, Command(4698, 22)),
@@ -1703,6 +1771,11 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             (Command(5264, 0), b""): pack("<ii", 22_500_000, 520_000_000),
             (Command(5242, 5), b""): pack("<iiihiih", 910, -1200, 45, -900, 20, 30, 11),
             (Command(5242, 11), b""): pack("<ii", 22_499_900, 519_999_900),
+            (Command(4738, 0), b""): b"\x01",
+            (Command(4738, 2), b""): b"\x01",
+            (Command(4738, 10), b""): b"\x01\x44",
+            (Command(4738, 12), b""): b"",
+            (Command(4738, 13), b""): b"",
         }
     )
     monkeypatch.setattr(
@@ -1721,6 +1794,14 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             await entry.runtime_data.async_refresh_optional()
             await hass.async_block_till_done()
             assert not hass.states.async_entity_ids("image")
+            radio_state = "sensor.automower_420_automower_connect_status"
+            assert hass.states.get(radio_state).state == "connected"
+            client.values[(Command(4738, 10), b"")] = b"\x04\x00"
+            entry.runtime_data._async_on_event(Event(4738, 2, b"\x04\x00"))
+            await entry.runtime_data._event_refresh_task
+            assert hass.states.get(radio_state).state == "no_sim_card"
+            assert (Command(4738, 13), b"") in client.calls
+            entry.runtime_data._debounced_refresh.async_cancel()
             (calendar_id,) = hass.states.async_entity_ids("calendar")
             monday = datetime(2026, 11, 23, tzinfo=UTC)
             calendar_response = await hass.services.async_call(

@@ -39,6 +39,12 @@ from .appdrive import (
     async_read_appdrive_status,
     async_remote_control_available,
 )
+from .connect_module import (
+    CONNECT_EVENTS,
+    CONNECT_STATUS_KEYS,
+    async_read_connect_module,
+    is_connect_update,
+)
 from .const import DOMAIN, LOGGER
 from .epos import (
     EPOS_STATUS_KEYS,
@@ -50,6 +56,8 @@ from .epos import (
 )
 from .faults import CONFIRM_ERROR, FAULT_READINGS
 from .features import (
+    CONNECT_ENABLED_KEY,
+    CONNECT_FAMILY,
     GET_ACTIVITY,
     GET_BATTERY,
     GET_FIRMWARE,
@@ -263,6 +271,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._subscription_retry: dict[Command, float] = {}
         self._event_refresh_task: asyncio.Task | None = None
         self._calendar_update_pending = False
+        self._connect_refresh_pending = False
         self._calendar_time: int | None = None
         self.wire_test: WireTest | None = None
         self._reference_scan: ReferenceScan | None = None
@@ -386,6 +395,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self._wifi_event_listener(event)
         elif event.family == MAP_EVENTS.family:
             self._async_handle_map_update(event)
+        elif event.family == CONNECT_FAMILY and is_connect_update(event):
+            self._connect_refresh_pending = True
+            self._async_schedule_event_refresh()
         elif (
             self._gps_tracking
             and event.family == GPS_POSITION_EVENTS.family
@@ -460,7 +472,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def _async_refresh_after_event(self) -> None:
         await self.async_request_refresh()
         if (
-            self._calendar_update_pending or self._map_refresh_pending
+            self._calendar_update_pending
+            or self._map_refresh_pending
+            or self._connect_refresh_pending
         ) and self.client.is_connected():
             # An event received during the read still needs a later snapshot.
             await self.async_request_refresh()
@@ -488,6 +502,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._map_generation += 1
         self._map_event_payloads.clear()
         self._map_refresh_pending = bool(MAP_PREVIEW_KEYS & (self.data or {}).keys())
+        self._connect_refresh_pending = bool(
+            CONNECT_STATUS_KEYS & (self.data or {}).keys()
+        )
         if self.data and "weekly_schedule" in self.data:
             self._calendar_update_pending = True
 
@@ -508,6 +525,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             commands += (GPS_POSITION_EVENTS,)
         if self.data and MAP_PREVIEW_KEYS & self.data.keys():
             commands += (MAP_EVENTS,)
+        if self.data and CONNECT_STATUS_KEYS & self.data.keys():
+            commands += CONNECT_EVENTS
         for command in commands:
             if (
                 command in self._unavailable_subscriptions
@@ -640,6 +659,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 )
                 if self._calendar_update_pending and self.client.is_connected():
                     await self._async_refresh_calendar(data)
+                if self._connect_refresh_pending and self.client.is_connected():
+                    self._connect_refresh_pending = False
+                    with suppress(CommandRejected, MowerConnectionError):
+                        await self._async_refresh_connect_module(data)
                 if self._gps_resync_pending and self.client.is_connected():
                     self._gps_resync_pending = False
                     with suppress(CommandRejected, MowerConnectionError, ValueError):
@@ -728,7 +751,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         """Discover controls and refresh telemetry without holding up core polling."""
         if not self.last_update_success:
             return
-        probes = [(setting.key, setting) for setting in self.settings]
+        probes = [
+            (setting.key, setting)
+            for setting in self.settings
+            if setting.key != CONNECT_ENABLED_KEY
+        ]
         setting_keys = {setting.key for setting in self.settings}
         probes.extend(
             (key, reading)
@@ -748,6 +775,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ("vision", None),
                 ("epos", None),
                 ("wifi", None),
+                ("connect_module", None),
                 ("appdrive", None),
             )
         )
@@ -862,6 +890,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         values.update(wifi)
                     elif key == "appdrive":
                         await self._async_refresh_appdrive(values)
+                    elif key == "connect_module":
+                        await self._async_refresh_connect_module(values)
                     elif key == "position":
                         await self._async_refresh_gps(values)
                     elif key == "local_position":
@@ -954,6 +984,18 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         gps = await async_read_gps_position(self.client)
         data.pop("gps_position_supported", None)
         data.update(gps)
+
+    async def _async_refresh_connect_module(self, data: MowerData) -> None:
+        status = await async_read_connect_module(self.client)
+        for key in CONNECT_STATUS_KEYS.difference(status):
+            data.pop(key, None)
+        data.update(status)
+        self.setting_variants.pop(CONNECT_ENABLED_KEY, None)
+        if CONNECT_ENABLED_KEY in status:
+            for setting in self.settings:
+                if setting.key == CONNECT_ENABLED_KEY:
+                    self.setting_variants[CONNECT_ENABLED_KEY] = setting.variants[0]
+                    break
 
     async def _async_refresh_map_previews(self, data: MowerData) -> None:
         data.pop("poi_parking_available", None)
@@ -1188,9 +1230,16 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def async_set_setting(self, setting: Setting, value: int) -> None:
         """Change a supported setting and retrieve the value stored by the mower."""
         async with self._operation_lock:
-            await self._async_write_setting(setting, value)
+            actual = await self._async_write_setting(setting, value)
             if setting.key == "wifi_enabled":
                 await self._async_update_wifi_telemetry()
+            elif setting.key == CONNECT_ENABLED_KEY:
+                if actual != value:
+                    raise HomeAssistantError(
+                        "The mower did not confirm the Automower Connect setting"
+                    )
+                self._connect_refresh_pending = True
+                self._async_schedule_event_refresh()
 
     async def _async_write_setting(self, setting: Setting, value: int) -> int:
         """Write and read back a setting while the operation lock is held."""
@@ -1202,6 +1251,14 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         try:
             await self._async_connect()
             payload = setting.encode(variant, value)
+            if (
+                setting.key == CONNECT_ENABLED_KEY
+                and variant.availability is not None
+                and await self._read(Reading(variant.availability, U8)) != 1
+            ):
+                raise ValueError(
+                    "The mower does not report an available Automower Connect module"
+                )
             if variant.write == SET_LEGACY_BOUNDARY_CORRIDOR:
                 minimum_corridor = await self._read(MINIMUM_LEGACY_BOUNDARY_CORRIDOR)
                 if value < minimum_corridor:
@@ -1210,7 +1267,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     )
                 payload = U8.pack(minimum_corridor) + payload[1:]
             if variant.requires_pin:
-                payload = self._pin_payload() + payload
+                pin = self._pin_payload()
+                payload = payload + pin if variant.pin_after_value else pin + payload
             if (
                 maximum := _SECTOR_MAXIMUM.get(variant.write)
             ) and value > await self._read(Reading(maximum, U16)):
