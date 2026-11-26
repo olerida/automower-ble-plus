@@ -417,6 +417,45 @@ get_zone_map:
     entity:
       integration: automower_ble_plus
       domain: lawn_mower
+get_map_features:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    map_type:
+      default: site
+      selector:
+        select:
+          translation_key: map_type
+          options:
+            - site
+            - generated
+            - zones
+edit_map_geometry:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    feature_id:
+      required: true
+      selector:
+        text:
+    expected_checksum:
+      required: true
+      selector:
+        text:
+    points:
+      required: true
+      selector:
+        object:
+    expected_installation_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          mode: box
 get_geofence:
   target:
     entity:

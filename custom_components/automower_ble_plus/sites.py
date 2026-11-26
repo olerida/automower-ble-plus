@@ -49,6 +49,13 @@ async def _async_require_available(client: AutomowerClient) -> None:
         raise ValueError("Installation profiles are unavailable on this mower")
 
 
+async def async_active_installation_id(client: AutomowerClient) -> int | None:
+    """Return the current profile ID on models with installation profiles."""
+    if not await _async_available(client):
+        return None
+    return U32.unpack(await client.command(_CURRENT))[0]
+
+
 async def async_get_installations(
     client: AutomowerClient, offset: int, limit: int, *, include_maps: bool = True
 ) -> dict:

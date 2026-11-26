@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import MowerEntry
 from .entity import MowerEntity
+from .mapfiles import MapKind
 from .schedule import ScheduleTask
 
 
@@ -172,6 +173,22 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
     async def async_get_zone_map(self) -> dict:
         """Read the separate zone map directly from the mower."""
         return await self.coordinator.async_read_zone_map()
+
+    async def async_get_map_features(self, map_type: str) -> dict:
+        """Return the named areas and paths reported in the selected map."""
+        return await self.coordinator.async_read_map_features(MapKind(map_type))
+
+    async def async_edit_map_geometry(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        points: list[dict[str, int]],
+        expected_installation_id: int | None = None,
+    ) -> dict:
+        """Update the vertices of a selected feature in the active map."""
+        return await self.coordinator.async_edit_map_geometry(
+            feature_id, expected_checksum, points, expected_installation_id
+        )
 
     async def async_get_position(self) -> dict:
         """Read the mower's geographic and local positions over BLE."""

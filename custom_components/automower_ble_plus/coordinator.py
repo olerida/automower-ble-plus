@@ -91,6 +91,7 @@ from .identity import (
     decode_mower_name,
     encode_mower_name,
 )
+from .map_features import describe_map_features, update_map_geometry
 from .map_preview import render_map_png
 from .mapfiles import (
     MAP_EVENT_KINDS,
@@ -134,6 +135,7 @@ from .schedule import (
 from .sites import (
     InstallationSelection,
     async_activate_installation,
+    async_active_installation_id,
     async_create_installation,
     async_delete_installation,
     async_get_installation_selection,
@@ -1660,6 +1662,44 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         """Read the mower's separate zone map when available."""
         return await self._async_fetch_map(MapKind.ZONES)
 
+    async def async_read_map_features(self, kind: MapKind) -> dict:
+        """Read structured map geometry from a consistent installation snapshot."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                installation_id = await async_active_installation_id(self.client)
+                result = await async_read_map_kind(
+                    self.client, kind, check_revision=True
+                )
+                if not result["available"]:
+                    return {"available": False, "map_type": kind.value, "features": []}
+                if installation_id != await async_active_installation_id(self.client):
+                    raise ValueError(
+                        "The active installation changed while reading the map"
+                    )
+                checksum = result.get("checksum") if kind is MapKind.SITE else None
+                features = await self.hass.async_add_executor_job(
+                    describe_map_features,
+                    result["svg"],
+                    kind,
+                    checksum is not None,
+                )
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not read the mower map: {err}"
+                ) from err
+        response = {"available": True, "map_type": kind.value, "features": features}
+        if installation_id is not None:
+            response["installation_id"] = installation_id
+        if checksum is not None:
+            response["checksum"] = checksum
+        return response
+
     async def async_map_preview(self, kind: MapKind) -> bytes | None:
         """Download the mower's map and render it off the event loop."""
         result = await self._async_fetch_map(kind, check_revision=True)
@@ -2254,7 +2294,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         async with self._operation_lock:
             try:
                 await self._async_connect()
-                result = await async_replace_map(self.client, svg, expected_checksum)
+                return await self._async_publish_map(svg, expected_checksum)
             except (
                 MowerConnectionError,
                 CommandRejected,
@@ -2264,11 +2304,65 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not update the mower map: {err}"
                 ) from err
-            data = dict(self.data)
-            with suppress(
-                CommandRejected, MowerConnectionError, ValueError, StructError
-            ):
-                await self._async_refresh_map_previews(data)
-            if data != self.data:
-                self.async_set_updated_data(data)
-            return result
+
+    async def async_edit_map_geometry(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        points: list[dict[str, int]],
+        expected_installation_id: int | None,
+    ) -> dict:
+        """Replace one feature using the map revision and profile returned by the read."""
+        async with self._operation_lock:
+            try:
+                await self._async_connect()
+                if expected_installation_id != await async_active_installation_id(
+                    self.client
+                ):
+                    raise ValueError(
+                        "Read the map again and pass its current installation ID"
+                    )
+                current = await async_read_map_kind(
+                    self.client, MapKind.SITE, check_revision=True
+                )
+                if not current["available"] or "checksum" not in current:
+                    raise ValueError(
+                        "The mower does not report a revision for its active map"
+                    )
+                if expected_checksum.lower() != current["checksum"]:
+                    raise ValueError(
+                        "The active map changed. Read it again before updating"
+                    )
+                svg = await self.hass.async_add_executor_job(
+                    update_map_geometry, current["svg"], feature_id, points
+                )
+                if expected_installation_id != await async_active_installation_id(
+                    self.client
+                ):
+                    raise ValueError(
+                        "The active installation changed while editing the map"
+                    )
+                if svg == current["svg"]:
+                    return {"checksum": current["checksum"], "feature_id": feature_id}
+                return {
+                    **await self._async_publish_map(svg, expected_checksum),
+                    "feature_id": feature_id,
+                }
+            except (
+                MowerConnectionError,
+                CommandRejected,
+                ValueError,
+                StructError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not update the mower map: {err}"
+                ) from err
+
+    async def _async_publish_map(self, svg: str, expected_checksum: str) -> dict:
+        result = await async_replace_map(self.client, svg, expected_checksum)
+        data = dict(self.data)
+        with suppress(CommandRejected, MowerConnectionError, ValueError, StructError):
+            await self._async_refresh_map_previews(data)
+        if data != self.data:
+            self.async_set_updated_data(data)
+        return result

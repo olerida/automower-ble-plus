@@ -1827,6 +1827,7 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
                 103: b'<svg><polygon fill="red" points="0,0 1000,0 0,1000"/></svg>',
             }
             reads = []
+            uploads = []
             send = client.command
 
             async def command(operation, payload=b""):
@@ -1838,6 +1839,25 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
                     reads.append(attribute)
                     raw = gzip.compress(maps[attribute])
                     return pack("<IIBI", crc32(raw), len(raw), 1, len(raw)) + raw
+                if operation == Command(5786, 11):
+                    family, attribute, _, crc, size, last, chunk_size = unpack_from(
+                        "<HHIIIBI", payload
+                    )
+                    raw = payload[21:]
+                    assert (family, attribute, crc, size, last, chunk_size) == (
+                        5578,
+                        100,
+                        crc32(raw),
+                        len(raw),
+                        1,
+                        len(raw),
+                    )
+                    uploads.append(gzip.decompress(raw))
+                    return b""
+                if operation == Command(5578, 24):
+                    assert payload == md5(uploads[-1], usedforsecurity=False).digest()
+                    maps[100] = uploads[-1]
+                    return b""
                 return await send(operation, payload)
 
             monkeypatch.setattr(client, "command", command)
@@ -1848,6 +1868,7 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
                     (Command(5578, 38), b""): b"\x01",
                     (Command(5578, 40), b""): b"\x01",
                     (Command(5578, 43), b""): b"\x01",
+                    (Command(5786, 13), b""): U32.pack(1024),
                 }
             )
             await coordinator.async_refresh_optional()
@@ -1888,6 +1909,54 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
                 return_response=True,
             )
             assert zones["lawn_mower.automower_420"]["svg"] == maps[103].decode()
+            map_target = {"entity_id": "lawn_mower.automower_420"}
+            client.values[(Command(5900, 17), b"")] = b"\x01"
+            client.values[(Command(5900, 12), b"")] = U32.pack(7)
+
+            async def map_action(action, **data):
+                response = await hass.services.async_call(
+                    DOMAIN,
+                    action,
+                    {**map_target, **data},
+                    blocking=True,
+                    return_response=True,
+                )
+                return response[map_target["entity_id"]]
+
+            initial = await map_action("get_map_features")
+            assert initial["installation_id"] == 7
+            assert initial["features"][0]["type"] == "work_area"
+            assert initial["features"][0]["editable"]
+            generated_features = await map_action(
+                "get_map_features", map_type="generated"
+            )
+            assert generated_features["features"][0]["type"] == "island"
+            assert not generated_features["features"][0]["editable"]
+            edit = {
+                "feature_id": "lawn",
+                "expected_checksum": initial["checksum"],
+                "expected_installation_id": 7,
+                "points": [
+                    {"x_mm": 0, "y_mm": 0},
+                    {"x_mm": 2000, "y_mm": 0},
+                    {"x_mm": 0, "y_mm": 1000},
+                ],
+            }
+            client.values[(Command(5900, 12), b"")] = U32.pack(8)
+            with pytest.raises(HomeAssistantError, match="current installation ID"):
+                await map_action("edit_map_geometry", **edit)
+            assert not uploads
+            client.values[(Command(5900, 12), b"")] = U32.pack(7)
+            updated = await map_action("edit_map_geometry", **edit)
+            assert updated["checksum"] != initial["checksum"]
+            assert updated["feature_id"] == "lawn"
+            assert uploads == [maps[100]]
+            with pytest.raises(HomeAssistantError, match="map changed"):
+                await map_action("edit_map_geometry", **edit)
+            assert len(uploads) == 1
+            assert (await map_action("get_map_features"))["features"][0][
+                "points"
+            ] == edit["points"]
             reset = (Command(4698, 8), b"")
             client.values[reset] = b""
             flow = await hass.config_entries.options.async_init(entry.entry_id)

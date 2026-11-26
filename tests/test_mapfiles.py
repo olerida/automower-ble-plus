@@ -10,6 +10,10 @@ from zlib import crc32
 import pytest
 from PIL import Image
 
+from custom_components.automower_ble_plus.map_features import (
+    describe_map_features,
+    update_map_geometry,
+)
 from custom_components.automower_ble_plus.map_preview import render_map_png
 from custom_components.automower_ble_plus.mapfiles import (
     MapKind,
@@ -22,6 +26,49 @@ from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command
 
 SVG = '<svg><polygon id="lawn" stroke="green" fill="green" points="0,0 1500,0 0,1200"/></svg>'
+
+
+def test_map_geometry_update_preserves_namespace_and_other_features():
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg">'
+        '<polygon id="lawn" title="Jardín" fill="green" points="0,0 1500,0 0,1200"/>'
+        '<polygon id="wild" title="Flores" fill="red" display="none" '
+        'rewildingzone="true" points="0,0 100,0 0,100"/>'
+        '<polyline id="dock" stroke="yellow" points="0,0 100,0"/></svg>'
+    )
+    initial = describe_map_features(svg, MapKind.SITE, True)
+    assert initial[1]["type"] == "rewilding_zone"
+    assert not initial[1]["enabled"]
+    assert not initial[2]["editable"]
+    assert update_map_geometry(svg, "lawn", initial[0]["points"]) == svg
+    points = [
+        {"x_mm": 0, "y_mm": 0},
+        {"x_mm": 1400, "y_mm": 0},
+        {"x_mm": 0, "y_mm": 1200},
+    ]
+    updated = update_map_geometry(svg, "lawn", points)
+    assert updated == svg.replace("1500,0", "1400,0")
+    assert describe_map_features(updated, MapKind.SITE, True) == [
+        {**initial[0], "points": points},
+        *initial[1:],
+    ]
+    with pytest.raises(ValueError, match="does not support geometry editing"):
+        update_map_geometry(svg, "dock", points[:2])
+
+
+@pytest.mark.parametrize(
+    "coordinates",
+    [
+        [(0, 0), (10, 10), (0, 10), (10, 0)],
+        [(0, 0), (0, 100), (0, 50), (100, 50)],
+        [(0, 0), (10, 0), (20, 0)],
+    ],
+)
+def test_map_geometry_rejects_crossing_overlapping_or_degenerate_polygons(coordinates):
+    with pytest.raises(ValueError, match="crosses or overlaps itself"):
+        update_map_geometry(
+            SVG, "lawn", [{"x_mm": x, "y_mm": y} for x, y in coordinates]
+        )
 
 
 def test_preview_renders_polygons_paths_and_disabled_areas_as_png():

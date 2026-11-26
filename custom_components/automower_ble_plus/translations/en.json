@@ -1122,6 +1122,38 @@
           "description": "ID returned by Read work areas."
         }
       }
+    },
+    "get_map_features": {
+      "name": "Read map features",
+      "description": "Read the areas, paths and charging station in a Bluetooth map.",
+      "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map to read."
+        }
+      }
+    },
+    "edit_map_geometry": {
+      "name": "Edit map geometry",
+      "description": "Change the vertices of an existing feature in the active installation map.",
+      "fields": {
+        "feature_id": {
+          "name": "Feature ID",
+          "description": "ID returned by Read map features."
+        },
+        "expected_checksum": {
+          "name": "Expected checksum",
+          "description": "Checksum returned by Read map features."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Ordered list of points with signed integer x_mm and y_mm coordinates."
+        },
+        "expected_installation_id": {
+          "name": "Expected installation ID",
+          "description": "Installation ID returned by Read map features when available."
+        }
+      }
     }
   },
   "selector": {
@@ -1151,6 +1183,13 @@
         "medium": "Medium",
         "high": "High",
         "highest": "Highest"
+      }
+    },
+    "map_type": {
+      "options": {
+        "site": "Active installation",
+        "generated": "Generated map",
+        "zones": "Zone map"
       }
     }
   },

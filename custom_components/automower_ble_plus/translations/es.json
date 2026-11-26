@@ -1122,6 +1122,38 @@
           "description": "ID devuelto por Leer áreas de trabajo."
         }
       }
+    },
+    "get_map_features": {
+      "name": "Leer elementos del mapa",
+      "description": "Consulta las áreas, rutas y la base del mapa por Bluetooth.",
+      "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Mapa que quieres consultar."
+        }
+      }
+    },
+    "edit_map_geometry": {
+      "name": "Editar geometría del mapa",
+      "description": "Cambia los vértices de un elemento del mapa de la instalación activa.",
+      "fields": {
+        "feature_id": {
+          "name": "ID del elemento",
+          "description": "ID devuelto por Leer elementos del mapa."
+        },
+        "expected_checksum": {
+          "name": "Suma de comprobación",
+          "description": "Valor checksum devuelto por Leer elementos del mapa."
+        },
+        "points": {
+          "name": "Puntos",
+          "description": "Lista ordenada de puntos con coordenadas enteras x_mm e y_mm."
+        },
+        "expected_installation_id": {
+          "name": "ID de la instalación",
+          "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
+        }
+      }
     }
   },
   "selector": {
@@ -1151,6 +1183,13 @@
         "medium": "Media",
         "high": "Alta",
         "highest": "Máxima"
+      }
+    },
+    "map_type": {
+      "options": {
+        "site": "Instalación activa",
+        "generated": "Mapa generado",
+        "zones": "Mapa de zonas"
       }
     }
   },

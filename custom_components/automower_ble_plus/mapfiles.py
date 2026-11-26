@@ -98,7 +98,7 @@ def _decode_svg(data: bytes) -> str:
 
 
 def parse_map_svg(
-    svg: str, *, require_unique_ids: bool = True
+    svg: str, *, require_unique_ids: bool = True, allow_empty: bool = False
 ) -> tuple[bytes, ElementTree.Element]:
     """Validate the polygons and polylines produced by Automower Connect."""
     raw = svg.encode("utf-8")
@@ -108,7 +108,9 @@ def parse_map_svg(
         root = ElementTree.fromstring(raw)
     except ElementTree.ParseError as err:
         raise ValueError("The map SVG is invalid") from err
-    if root.tag.removeprefix(SVG_NAMESPACE) != "svg" or not len(root):
+    if root.tag.removeprefix(SVG_NAMESPACE) != "svg" or (
+        not allow_empty and not len(root)
+    ):
         raise ValueError("The map must contain SVG polygons or polylines")
     if root.attrib.keys() - {"version", "viewBox", "width", "height"}:
         raise ValueError("The map has unsupported SVG root attributes")
@@ -231,7 +233,7 @@ async def async_read_map_kind(
             and "checksum" in result
             and (await _async_checksum(client)).hex() != result["checksum"]
         ):
-            raise ValueError("The map changed during the image download")
+            raise ValueError("The map changed during the download")
         result["svg"] = await asyncio.to_thread(_decode_svg, raw)
     return result
 

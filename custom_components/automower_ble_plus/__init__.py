@@ -13,6 +13,8 @@ from homeassistant.helpers.service import async_register_platform_entity_service
 from .config_flow import core_controls_address
 from .const import DOMAIN
 from .coordinator import MowerCoordinator, MowerEntry
+from .map_features import MAX_COORDINATE, MIN_COORDINATE
+from .mapfiles import MapKind
 from .schedule import WEEKDAYS
 from .work_areas import (
     AREA_ASSISTANCE_BOOLEAN_SETTINGS,
@@ -62,6 +64,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     }
     angle = vol.All(vol.Coerce(float), vol.Range(min=-360, max=360))
     mission = _bounded_integer(0, 0xFFFFFFFF)
+    coordinate = vol.All(int, vol.Range(min=MIN_COORDINATE, max=MAX_COORDINATE))
+    point = vol.Schema(
+        {vol.Required("x_mm"): coordinate, vol.Required("y_mm"): coordinate}
+    )
     schemas = {
         "mow_for": {
             vol.Required("minutes"): duration,
@@ -103,6 +109,17 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "get_loop_signals": {},
         "get_map": {vol.Optional("generated", default=False): cv.boolean},
         "get_zone_map": {},
+        "get_map_features": {
+            vol.Optional("map_type", default=MapKind.SITE.value): vol.In(
+                tuple(MapKind)
+            ),
+        },
+        "edit_map_geometry": {
+            vol.Required("feature_id"): cv.string,
+            vol.Required("expected_checksum"): cv.string,
+            vol.Required("points"): vol.All([point], vol.Length(min=2)),
+            vol.Optional("expected_installation_id"): mission,
+        },
         "replace_map": {
             vol.Required("svg"): cv.string,
             vol.Required("expected_checksum"): cv.string,
@@ -149,7 +166,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             supports_response=SupportsResponse.ONLY
             if action.startswith("get_")
             else SupportsResponse.OPTIONAL
-            if action in ("create_installation", "create_work_area", "replace_map")
+            if action
+            in (
+                "create_installation",
+                "create_work_area",
+                "replace_map",
+                "edit_map_geometry",
+            )
             else SupportsResponse.NONE,
         )
     return True
