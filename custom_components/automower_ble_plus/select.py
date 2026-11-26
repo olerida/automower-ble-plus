@@ -13,6 +13,7 @@ from .entity import (
     MowerValueEntity,
     async_add_detected,
 )
+from .epos import EPOS_DOCK_METHOD_OPTIONS
 from .features import Setting
 from .sites import InstallationSelection
 
@@ -42,6 +43,12 @@ async def async_setup_entry(
         add_entities,
         {"epos_reference_station_id": None},
         lambda key, _: ReferenceStationSelect(entry.runtime_data, key),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
+        {"epos_dock_by_wire": None},
+        lambda key, _: EposDockingMethodSelect(entry.runtime_data, key),
     )
 
 
@@ -139,3 +146,26 @@ class ReferenceStationSelect(MowerValueEntity, SelectEntity):
         if option not in self.options:
             raise ServiceValidationError("This EPOS reference station is not available")
         await self.coordinator.async_select_reference_station(int(option))
+
+
+class EposDockingMethodSelect(MowerValueEntity, SelectEntity):
+    """Select virtual docking or guide-wire docking for a compatible EPOS station."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: MowerCoordinator, key: str) -> None:
+        super().__init__(coordinator, key)
+        self._attr_translation_key = "epos_docking_method"
+        self._attr_options = list(EPOS_DOCK_METHOD_OPTIONS)
+
+    @property
+    def current_option(self) -> str | None:
+        value = self.value
+        return self.options[value] if value in (0, 1) else None
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self.options:
+            raise ServiceValidationError(
+                "The selected EPOS docking method is unavailable"
+            )
+        await self.coordinator.async_set_epos_docking_method(option == "guide_wire")

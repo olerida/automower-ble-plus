@@ -249,6 +249,12 @@
       },
       "automower_connect_enabled": {
         "name": "Automower Connect module"
+      },
+      "epos_cloud_has_origin": {
+        "name": "EPOS origin recorded"
+      },
+      "epos_cloud_origin_valid": {
+        "name": "EPOS origin valid"
       }
     },
     "switch": {
@@ -496,6 +502,13 @@
         "state": {
           "standard": "Standard",
           "people_and_wildlife": "People and wildlife"
+        }
+      },
+      "epos_docking_method": {
+        "name": "EPOS docking method",
+        "state": {
+          "virtual": "Virtual",
+          "guide_wire": "Guide wire"
         }
       }
     },
@@ -749,6 +762,60 @@
           "stop_requested": "Stop requested",
           "failed": "Failed",
           "unconfirmed": "Unconfirmed"
+        }
+      },
+      "epos_boundary_mode": {
+        "name": "EPOS boundary mode",
+        "state": {
+          "boundary_wire": "Boundary wire",
+          "virtual": "Virtual",
+          "virtual_assisted_by_wire": "Virtual with wire assistance"
+        }
+      },
+      "epos_correction_source": {
+        "name": "EPOS correction source",
+        "state": {
+          "local_reference_station": "Local reference station",
+          "husqvarna_cloud": "Husqvarna Cloud"
+        }
+      },
+      "epos_cloud_connection_state": {
+        "name": "EPOS cloud connection",
+        "state": {
+          "not_connected": "Not connected",
+          "no_communication_channel": "No communication channel",
+          "connecting": "Connecting",
+          "connected": "Connected"
+        }
+      },
+      "epos_cloud_service_state": {
+        "name": "EPOS cloud service status",
+        "state": {
+          "unknown": "Unknown",
+          "ok": "OK",
+          "invalid_ipr": "Invalid IPR",
+          "no_subscription": "No subscription",
+          "no_position": "No position",
+          "data_provider_unreachable": "Data provider unreachable",
+          "tile_unavailable": "Correction tile unavailable",
+          "reference_station_not_connected": "Reference station disconnected"
+        }
+      },
+      "epos_cloud_correction_format": {
+        "name": "EPOS correction format",
+        "state": {
+          "spartn": "SPARTN",
+          "rtcm": "RTCM"
+        }
+      },
+      "site_map_installation_type": {
+        "name": "Site map installation type",
+        "state": {
+          "undefined": "Undefined",
+          "site_map_only": "Site map only",
+          "residential": "Residential",
+          "professional": "Professional",
+          "gardena": "Gardena"
         }
       }
     },

@@ -249,6 +249,12 @@
       },
       "automower_connect_enabled": {
         "name": "Módulo Automower Connect"
+      },
+      "epos_cloud_has_origin": {
+        "name": "Origen EPOS registrado"
+      },
+      "epos_cloud_origin_valid": {
+        "name": "Origen EPOS válido"
       }
     },
     "switch": {
@@ -496,6 +502,13 @@
         "state": {
           "standard": "Estándar",
           "people_and_wildlife": "Personas y fauna"
+        }
+      },
+      "epos_docking_method": {
+        "name": "Método de acoplamiento EPOS",
+        "state": {
+          "virtual": "Virtual",
+          "guide_wire": "Cable guía"
         }
       }
     },
@@ -749,6 +762,60 @@
           "stop_requested": "Parada solicitada",
           "failed": "Fallida",
           "unconfirmed": "Sin confirmar"
+        }
+      },
+      "epos_boundary_mode": {
+        "name": "Tipo de perímetro EPOS",
+        "state": {
+          "boundary_wire": "Cable delimitador",
+          "virtual": "Virtual",
+          "virtual_assisted_by_wire": "Virtual con asistencia por cable"
+        }
+      },
+      "epos_correction_source": {
+        "name": "Fuente de correcciones EPOS",
+        "state": {
+          "local_reference_station": "Estación de referencia local",
+          "husqvarna_cloud": "Husqvarna Cloud"
+        }
+      },
+      "epos_cloud_connection_state": {
+        "name": "Conexión del servicio EPOS",
+        "state": {
+          "not_connected": "Sin conexión",
+          "no_communication_channel": "Sin canal de comunicación",
+          "connecting": "Conectando",
+          "connected": "Conectado"
+        }
+      },
+      "epos_cloud_service_state": {
+        "name": "Estado del servicio EPOS",
+        "state": {
+          "unknown": "Desconocido",
+          "ok": "Correcto",
+          "invalid_ipr": "IPR no válido",
+          "no_subscription": "Sin suscripción",
+          "no_position": "Sin posición",
+          "data_provider_unreachable": "Proveedor de datos inaccesible",
+          "tile_unavailable": "Correcciones de zona no disponibles",
+          "reference_station_not_connected": "Estación de referencia desconectada"
+        }
+      },
+      "epos_cloud_correction_format": {
+        "name": "Formato de corrección EPOS",
+        "state": {
+          "spartn": "SPARTN",
+          "rtcm": "RTCM"
+        }
+      },
+      "site_map_installation_type": {
+        "name": "Tipo de instalación del mapa",
+        "state": {
+          "undefined": "Sin definir",
+          "site_map_only": "Solo mapa",
+          "residential": "Residencial",
+          "professional": "Profesional",
+          "gardena": "Gardena"
         }
       }
     },

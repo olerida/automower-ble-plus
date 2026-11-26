@@ -930,6 +930,9 @@ async def test_epos_controls_follow_reported_hardware_and_correction_source(
     enabled = Command(6170, 2)
     wire_assistance = Command(6170, 8)
     cloud = Command(6778, 4)
+    in_station = Command(4692, 27)
+    dock_by_wire = Command(6170, 11)
+    set_dock_by_wire = Command(6170, 12)
     client.values.update(
         {
             (Command(6170, 1), b""): b"\x01",
@@ -937,21 +940,31 @@ async def test_epos_controls_follow_reported_hardware_and_correction_source(
             (Command(6170, 7), b""): b"\x01",
             (wire_assistance, b""): b"\0",
             (Command(6170, 10), b""): b"\0",
-            (Command(6170, 11), b""): b"\x01",
+            (dock_by_wire, b""): b"\0",
+            (in_station, b""): b"\0",
             (Command(4692, 23), b""): U32.pack(0),
             (Command(4692, 24), b""): U32.pack(1),
             (Command(5336, 3), b""): b"\x02",
             (Command(5650, 4), b""): b"\x50",
             (Command(5650, 17), b""): b"\x01",
             (Command(5242, 0), b""): pack("<iii", 3000, -4000, 40),
+            (Command(5578, 52), b""): b"\x02",
+            (Command(6778, 1), b""): b"",
+            (Command(6778, 2), b""): b"",
+            (Command(6170, 0), b""): b"",
         }
     )
     send = client.command
+    docking_writes = []
 
     async def command(operation, payload=b""):
         if operation == Command(6170, 9):
             assert payload == b"\x01"
             client.values[wire_assistance, b""] = payload
+            return b""
+        if operation == set_dock_by_wire:
+            client.values[dock_by_wire, b""] = payload
+            docking_writes.append(payload)
             return b""
         return await send(operation, payload)
 
@@ -965,23 +978,36 @@ async def test_epos_controls_follow_reported_hardware_and_correction_source(
 
     for platform in (binary_sensor, sensor, switch):
         await platform.async_setup_entry(coordinator.hass, entry, add_entities)
+    selectors = []
+    await select.async_setup_entry(coordinator.hass, entry, selectors.extend)
     await coordinator.async_refresh_optional()
     assert entities["epos_enabled"].is_on
     assert "epos_dock_by_wire" not in entities
+    assert not selectors
     assert (Command(6170, 11), b"") not in client.calls
     assert entities["epos_rtk_solution"].native_value == "fixed"
     assert entities["epos_installation_state"].native_value == "idle"
     assert entities["epos_installation_result"].native_value == "success"
     assert entities["epos_reference_station_channel"].native_value == "wifi"
+    assert entities["epos_correction_source"].native_value == "local_reference_station"
+    assert entities["epos_boundary_mode"].native_value == "virtual"
+    assert entities["site_map_installation_type"].native_value == "residential"
     assert entities["epos_reference_station_signal"].native_value == 80
     assert entities["epos_reference_station_distance"].native_value == 5000
     assert "epos_cloud_signal" not in entities
     assert not entities["epos_wire_assistance"].is_on
     await entities["epos_wire_assistance"].async_turn_on()
     assert entities["epos_wire_assistance"].is_on
+    await coordinator._event_refresh_task
 
     client.values[cloud, b""] = b"\x01"
     client.values[Command(6778, 11), b""] = b"\x42"
+    client.values[Command(6778, 15), b""] = b"\x01"
+    client.values[Command(6778, 16), b""] = b"\0"
+    client.values[Command(6778, 19), b""] = b"\x03"
+    client.values[Command(6778, 7), b""] = b"\x04"
+    client.values[Command(6778, 29), b""] = b"\x01"
+    client.values[Command(6170, 10), b""] = b"\x01"
     client.values[Command(4692, 23), b""] = b"\x00"
     client.calls.clear()
     await coordinator.async_refresh_optional()
@@ -989,12 +1015,37 @@ async def test_epos_controls_follow_reported_hardware_and_correction_source(
     assert not entities["epos_reference_station_signal"].available
     assert not entities["epos_installation_state"].available
     assert entities["epos_cloud_signal"].native_value == 66
+    assert entities["epos_correction_source"].native_value == "husqvarna_cloud"
+    assert entities["epos_boundary_mode"].native_value == "virtual_assisted_by_wire"
+    assert entities["epos_cloud_connection_state"].native_value == "connected"
+    assert entities["epos_cloud_service_state"].native_value == "no_position"
+    assert entities["epos_cloud_correction_format"].native_value == "rtcm"
+    assert entities["epos_cloud_has_origin"].is_on
+    assert not entities["epos_cloud_origin_valid"].is_on
+    (method,) = selectors
+    assert method.current_option == "virtual"
+    with pytest.raises(HomeAssistantError, match="charging station first"):
+        await method.async_select_option("guide_wire")
+    assert not docking_writes
+    client.values[in_station, b""] = b"\x01"
+    await method.async_select_option("guide_wire")
+    assert docking_writes == [b"\x01"]
+    assert method.current_option == "guide_wire"
+    assert entities["epos_dock_by_wire"].is_on
+    coordinator._debounced_refresh.async_cancel()
+    client.values[Command(6778, 19), b""] = b"\x02"
+    coordinator._async_on_event(Event(6778, 7, b"\x02"))
+    await coordinator._event_refresh_task
+    assert (Command(6778, 2), b"") in client.calls
+    assert entities["epos_cloud_connection_state"].native_value == "connecting"
 
     client.values[enabled, b""] = b"\0"
     await coordinator.async_refresh_optional()
     assert not entities["epos_enabled"].is_on
     assert not entities["epos_cloud_signal"].available
     assert not entities["epos_rtk_solution"].available
+    assert not method.available
+    assert entities["epos_boundary_mode"].native_value == "boundary_wire"
     await coordinator.async_shutdown()
 
 

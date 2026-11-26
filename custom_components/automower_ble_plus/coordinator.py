@@ -52,12 +52,16 @@ from .connect_module import (
 )
 from .const import DOMAIN, LOGGER
 from .epos import (
+    EPOS_CLOUD_EVENTS,
+    EPOS_EVENTS,
     EPOS_STATUS_KEYS,
     RUN_DOCKING_PATTERN,
     STOP_DOCKING_PATTERN,
     async_epos_enabled,
     async_read_docking_status,
     async_read_epos_status,
+    async_set_dock_by_wire,
+    is_epos_update,
 )
 from .faults import CONFIRM_ERROR, FAULT_READINGS
 from .features import (
@@ -277,6 +281,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._event_refresh_task: asyncio.Task | None = None
         self._calendar_update_pending = False
         self._connect_refresh_pending = False
+        self._epos_refresh_pending = False
         self._calendar_time: int | None = None
         self.wire_test: WireTest | None = None
         self._reference_scan: ReferenceScan | None = None
@@ -415,6 +420,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         elif event.family == CONNECT_FAMILY and is_connect_update(event):
             self._connect_refresh_pending = True
             self._async_schedule_event_refresh()
+        elif is_epos_update(event):
+            self._epos_refresh_pending = True
+            self._async_schedule_event_refresh()
         elif (
             self._gps_tracking
             and event.family == GPS_POSITION_EVENTS.family
@@ -492,6 +500,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self._calendar_update_pending
             or self._map_refresh_pending
             or self._connect_refresh_pending
+            or self._epos_refresh_pending
         ) and self.client.is_connected():
             # An event received during the read still needs a later snapshot.
             await self.async_request_refresh()
@@ -522,6 +531,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._connect_refresh_pending = bool(
             CONNECT_STATUS_KEYS & (self.data or {}).keys()
         )
+        self._epos_refresh_pending = "epos_enabled" in (self.data or {})
         if self.data and "weekly_schedule" in self.data:
             self._calendar_update_pending = True
 
@@ -544,6 +554,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             commands += (MAP_EVENTS,)
         if self.data and CONNECT_STATUS_KEYS & self.data.keys():
             commands += CONNECT_EVENTS
+        if self.data and "epos_enabled" in self.data:
+            commands += (EPOS_EVENTS,)
+        if self.data and "epos_cloud_enabled" in self.data:
+            commands += EPOS_CLOUD_EVENTS
         for command in commands:
             if (
                 command in self._unavailable_subscriptions
@@ -682,6 +696,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     self._connect_refresh_pending = False
                     with suppress(CommandRejected, MowerConnectionError):
                         await self._async_refresh_connect_module(data)
+                if self._epos_refresh_pending and self.client.is_connected():
+                    self._epos_refresh_pending = False
+                    with suppress(CommandRejected, MowerConnectionError, ValueError):
+                        await self._async_refresh_epos(data)
                 if self._gps_resync_pending and self.client.is_connected():
                     self._gps_resync_pending = False
                     with suppress(CommandRejected, MowerConnectionError, ValueError):
@@ -891,13 +909,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                             values.pop(status, None)
                         values.update(vision)
                     elif key == "epos":
-                        epos = await async_read_epos_status(
-                            self.client,
-                            docking_pattern=bool(profile and profile.docking_pattern),
-                        )
-                        for status in EPOS_STATUS_KEYS.difference(epos):
-                            values.pop(status, None)
-                        values.update(epos)
+                        await self._async_refresh_epos(values)
                     elif key == "wifi":
                         wifi = {}
                         if values.get("wifi_enabled") == 1:
@@ -975,6 +987,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 self.async_set_updated_data(data)
         if self.wire_test_active or self.docking_installation_active:
             await self.async_request_refresh()
+
+    async def _async_refresh_epos(self, data: MowerData) -> None:
+        profile = self.firmware_profile
+        status = await async_read_epos_status(
+            self.client, docking_pattern=bool(profile and profile.docking_pattern)
+        )
+        for key in EPOS_STATUS_KEYS.difference(status):
+            data.pop(key, None)
+        data.update(status)
 
     async def _async_refresh_epos_docking(self, data: MowerData) -> None:
         try:
@@ -1268,6 +1289,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         "The mower did not confirm the Automower Connect setting"
                     )
                 self._connect_refresh_pending = True
+                self._async_schedule_event_refresh()
+            elif setting.key == "epos_wire_assistance":
+                self._epos_refresh_pending = True
                 self._async_schedule_event_refresh()
 
     async def _async_write_setting(self, setting: Setting, value: int) -> int:
@@ -2446,6 +2470,41 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     }
                 )
         await self.async_request_refresh()
+
+    async def async_set_epos_docking_method(self, by_wire: bool) -> None:
+        """Set the docking guidance method while the mower is in the station."""
+        async with self._operation_lock:
+            if (
+                self.appdrive_active
+                or self.wire_test_active
+                or self.docking_installation_active
+            ):
+                raise HomeAssistantError(
+                    "Finish the current manoeuvre before changing the docking method"
+                )
+            try:
+                await self._async_connect()
+                try:
+                    docked = await self._read(READINGS["in_charging_station"]) == 1
+                except CommandRejected as err:
+                    if not err.unsupported:
+                        raise
+                    docked = (
+                        await self._read(Reading(GET_ACTIVITY, U8))
+                        == MowerActivity.CHARGING
+                    )
+                if not docked:
+                    raise ValueError("Place the mower in the charging station first")
+                if (await async_read_docking_status(self.client)).get(
+                    "epos_installation_state"
+                ) == 1:
+                    raise ValueError("Finish the EPOS docking-point setup first")
+                actual = await async_set_dock_by_wire(self.client, by_wire)
+            except (CommandRejected, MowerConnectionError, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not set the EPOS docking method: {err}"
+                ) from err
+            self.async_set_updated_data({**self.data, "epos_dock_by_wire": actual})
 
     async def async_start_epos_docking_installation(self) -> None:
         """Ask the docked, paused mower to establish its EPOS docking point."""
