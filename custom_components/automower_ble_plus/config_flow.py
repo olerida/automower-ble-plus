@@ -173,6 +173,7 @@ class AutomowerMaintenanceFlow(OptionsFlow):
         self._epos_origin_site: int | None = None
         self._epos_origin_task: asyncio.Task[bool] | None = None
         self._epos_origin_result = "epos_origin_set"
+        self._epos_boundary_context: tuple[int, int | None] | None = None
 
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         """Offer maintenance for the capabilities this mower reports."""
@@ -191,6 +192,7 @@ class AutomowerMaintenanceFlow(OptionsFlow):
                     "setup_epos_origin",
                     coordinator.epos_origin_installation_id is not None,
                 ),
+                ("change_epos_boundary", coordinator.can_change_epos_boundary),
             )
             if supported
         ]
@@ -198,6 +200,66 @@ class AutomowerMaintenanceFlow(OptionsFlow):
             return self.async_show_menu(step_id="init", menu_options=options)
         step = options[0] if options else "reset"
         return await getattr(self, f"async_step_{step}")()
+
+    async def async_step_change_epos_boundary(
+        self, user_input=None
+    ) -> ConfigFlowResult:
+        """Confirm the target perimeter and the reset it can trigger."""
+        entry = self.config_entry
+        if entry.state is not ConfigEntryState.LOADED:
+            return self.async_abort(reason="mower_unavailable")
+        coordinator = entry.runtime_data
+        if not coordinator.can_change_epos_boundary:
+            return self.async_abort(reason="epos_boundary_unavailable")
+        if self._epos_boundary_context is None:
+            try:
+                self._epos_boundary_context = (
+                    await coordinator.async_epos_boundary_context()
+                )
+            except HomeAssistantError:
+                return self.async_abort(reason="epos_boundary_unavailable")
+
+        current = self._epos_boundary_context[0]
+        errors = {}
+        if user_input is not None:
+            enabled = user_input["epos_boundary"] == "epos"
+            if enabled == current:
+                errors["epos_boundary"] = "epos_boundary_already_selected"
+            elif not user_input["confirm_epos_boundary"]:
+                errors["confirm_epos_boundary"] = "epos_boundary_confirmation_required"
+            else:
+                try:
+                    confirmed = await coordinator.async_set_epos_boundary(
+                        enabled, self._epos_boundary_context
+                    )
+                except HomeAssistantError:
+                    return self.async_abort(reason="epos_boundary_failed")
+                return self.async_abort(
+                    reason="epos_boundary_changed"
+                    if confirmed
+                    else "epos_boundary_unconfirmed"
+                )
+
+        return self.async_show_form(
+            step_id="change_epos_boundary",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        "epos_boundary", default="boundary_wire" if current else "epos"
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=["boundary_wire", "epos"],
+                            translation_key="epos_boundary_target",
+                        )
+                    ),
+                    vol.Required(
+                        "confirm_epos_boundary", default=False
+                    ): selector.BooleanSelector(),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"name": entry.title},
+        )
 
     async def async_step_setup_epos_origin(self, user_input=None) -> ConfigFlowResult:
         """Ask to set up Husqvarna Cloud corrections for the selected empty profile."""

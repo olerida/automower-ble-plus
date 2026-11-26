@@ -205,6 +205,7 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
     assert not coordinator.can_configure_wifi
     assert not coordinator.can_regenerate_aim_map
     assert coordinator.epos_origin_installation_id is None
+    assert not coordinator.can_change_epos_boundary
     assert not any(key.startswith("aim_") for key in coordinator.data)
     assert all(
         command.operation == 2 for command, _ in client.calls if command.family == 5758
@@ -1328,6 +1329,121 @@ async def test_appdrive_panel_permissions_and_websocket_disconnect(tmp_path):
     )
     coordinator.async_set_updated_data({})
     assert not frontend.async_panel_exists(hass, "automower-appdrive")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("initial", "outcome"),
+    [
+        (0, "confirmed"),
+        (1, "confirmed"),
+        (0, "changed_site"),
+        (0, "lost_ack"),
+        (0, "rejected"),
+    ],
+)
+async def test_epos_boundary_switch_from_home_assistant(
+    tmp_path, monkeypatch, initial, outcome
+):
+    integrations = Path(__file__).resolve().parents[1] / "custom_components"
+    (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
+    hass = HomeAssistant(str(tmp_path))
+    loader.async_setup(hass)
+    hass.config.skip_pip = True
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
+    hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    entry = _entry()
+    client = FakeAutomower420()
+    monkeypatch.setattr(coordinator_module, "AutomowerClient", lambda *args: client)
+    monkeypatch.setattr(
+        client, "main_node_version", AsyncMock(return_value="40.16_Main-App-P21NA_79.3")
+    )
+    reload_entry = Mock(wraps=hass.config_entries.async_schedule_reload)
+    monkeypatch.setattr(hass.config_entries, "async_schedule_reload", reload_entry)
+    mode = Command(6170, 2)
+    change = Command(6170, 3)
+    site = Command(5900, 12)
+    target = bytes((1 - initial,))
+    client.values.update(
+        {
+            (Command(4698, 9), b""): bytes((31, 1)),
+            (Command(6170, 1), b""): b"\1",
+            (mode, b""): bytes((initial,)),
+            (change, target): b"",
+            (Command(5900, 17), b""): b"\1",
+            (site, b""): U32.pack(17),
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        reply = await send(operation, payload)
+        if operation == change:
+            if outcome == "rejected":
+                raise CommandRejected(operation, ResponseResult.INVALID_ID)
+            client.values[mode, b""] = payload
+            if outcome == "lost_ack":
+                raise MowerConnectionError("Disconnected before acknowledgement")
+        return reply
+
+    monkeypatch.setattr(client, "command", command)
+    try:
+        async with asyncio.timeout(15):
+            assert await setup.async_setup_component(hass, DOMAIN, {})
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+            coordinator = entry.runtime_data
+            await coordinator.async_refresh_optional()
+            options = hass.config_entries.options
+            flow = await options.async_init(entry.entry_id)
+            assert "change_epos_boundary" in flow["menu_options"]
+            flow_id = flow["flow_id"]
+            await options.async_configure(
+                flow_id, {"next_step_id": "change_epos_boundary"}
+            )
+            selection = "epos" if target == b"\1" else "boundary_wire"
+            flow = await options.async_configure(
+                flow_id, {"epos_boundary": selection, "confirm_epos_boundary": False}
+            )
+            assert flow["errors"] == {
+                "confirm_epos_boundary": "epos_boundary_confirmation_required"
+            }
+            assert not any(operation == change for operation, _ in client.calls)
+            if outcome == "changed_site":
+                client.values[site, b""] = U32.pack(18)
+            flow = await options.async_configure(
+                flow_id, {"epos_boundary": selection, "confirm_epos_boundary": True}
+            )
+            assert flow["type"] == FlowResultType.ABORT
+            assert client.calls.count((change, target)) == (outcome != "changed_site")
+            if outcome == "confirmed":
+                assert flow["reason"] == "epos_boundary_changed"
+                reload_entry.assert_called_once_with(entry.entry_id)
+                assert not coordinator.can_change_epos_boundary
+                await hass.async_block_till_done()
+                assert entry.runtime_data is not coordinator
+                assert entry.runtime_data.data["epos_enabled"] == target[0]
+            elif outcome == "lost_ack":
+                assert flow["reason"] == "epos_boundary_unconfirmed"
+                reload_entry.assert_called_once_with(entry.entry_id)
+                assert not coordinator.can_change_epos_boundary
+            else:
+                assert flow["reason"] == "epos_boundary_failed"
+                reload_entry.assert_not_called()
+                assert coordinator.can_change_epos_boundary == (
+                    outcome == "changed_site"
+                )
+    finally:
+        await hass.async_stop(force=True)
 
 
 @pytest.mark.asyncio

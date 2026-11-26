@@ -60,11 +60,14 @@ from .connect_module import (
 )
 from .const import DOMAIN, LOGGER
 from .epos import (
+    EPOS_AVAILABLE,
     EPOS_CLOUD_EVENTS,
+    EPOS_ENABLED,
     EPOS_EVENTS,
     EPOS_STATUS_KEYS,
     RUN_DOCKING_PATTERN,
     SET_CLOUD_ORIGIN,
+    SET_EPOS_ENABLED,
     STOP_DOCKING_PATTERN,
     async_enable_epos_cloud,
     async_epos_cloud_accepts_origin_setup,
@@ -301,6 +304,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._calendar_update_pending = False
         self._connect_refresh_pending = False
         self._epos_refresh_pending = False
+        self._epos_boundary_change_pending = False
         self._epos_origin_lock = asyncio.Lock()
         self._aim_refresh_pending = False
         self._aim_map_requested_until = 0.0
@@ -403,6 +407,18 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         if not self._epos_origin_lock.locked() and isinstance(site_id, int):
             return site_id
         return None
+
+    @property
+    def can_change_epos_boundary(self) -> bool:
+        """Offer perimeter changes only where the app and firmware allow them."""
+        profile = self.firmware_profile
+        return (
+            profile is not None
+            and profile.epos_boundary_switch == 1
+            and not self._epos_boundary_change_pending
+            and "epos_boundary_switch" not in self._unsupported
+            and (self.data or {}).get("epos_enabled") in (0, 1)
+        )
 
     @property
     def can_reset_user_settings(self) -> bool:
@@ -1086,6 +1102,84 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             or await async_empty_installation_id(self.client) != site_id
         ):
             raise ValueError("EPOS setup requires the selected empty installation")
+
+    async def _async_epos_boundary_context(self) -> tuple[int, int | None]:
+        await self._async_connect()
+        if await self._read(EPOS_AVAILABLE) != 1:
+            raise ValueError("The mower does not report EPOS hardware")
+        enabled = await self._read(EPOS_ENABLED)
+        if enabled not in (0, 1):
+            raise ValueError("The mower did not report its perimeter mode")
+        return enabled, await async_active_installation_id(self.client)
+
+    async def async_epos_boundary_context(self) -> tuple[int, int | None]:
+        """Read the perimeter mode and installation the user will confirm."""
+        async with self._operation_lock:
+            if not self.can_change_epos_boundary:
+                raise HomeAssistantError("This mower does not offer perimeter changes")
+            try:
+                return await self._async_epos_boundary_context()
+            except (
+                CommandRejected,
+                MowerConnectionError,
+                StructError,
+                ValueError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not read the perimeter mode: {err}"
+                ) from err
+
+    async def async_set_epos_boundary(
+        self, enabled: bool, expected: tuple[int, int | None]
+    ) -> bool:
+        """Send one perimeter change and reload the settings affected by it."""
+        async with self._operation_lock:
+            if (
+                not self.can_change_epos_boundary
+                or self._epos_origin_lock.locked()
+                or self.appdrive_active
+                or self.wire_test_active
+                or self.docking_installation_active
+                or self.reference_scan_active
+            ):
+                raise HomeAssistantError("The mower cannot change perimeter mode now")
+            try:
+                if await self._async_epos_boundary_context() != expected:
+                    raise ValueError("The perimeter or active installation changed")
+                if enabled == expected[0]:
+                    return True
+            except (
+                CommandRejected,
+                MowerConnectionError,
+                StructError,
+                ValueError,
+            ) as err:
+                raise HomeAssistantError(
+                    f"Could not verify the active installation: {err}"
+                ) from err
+
+            self._epos_boundary_change_pending = True
+            try:
+                try:
+                    await self.client.command(SET_EPOS_ENABLED, U8.pack(enabled))
+                except CommandRejected as err:
+                    self._epos_boundary_change_pending = False
+                    if err.unsupported:
+                        self._unsupported.add("epos_boundary_switch")
+                    raise HomeAssistantError(
+                        f"The mower rejected the perimeter change: {err}"
+                    ) from err
+                return (
+                    await self._read(EPOS_ENABLED) == enabled
+                    and await async_active_installation_id(self.client) == expected[1]
+                )
+            except CommandRejected, MowerConnectionError, StructError, ValueError:
+                return False
+            finally:
+                if self._epos_boundary_change_pending:
+                    self.hass.config_entries.async_schedule_reload(
+                        self.config_entry.entry_id
+                    )
 
     async def async_setup_epos_origin(self, site_id: int) -> bool:
         """Enable direct corrections and establish the origin in an empty installation."""

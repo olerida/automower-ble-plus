@@ -26,6 +26,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     message_events = 0
     aim_map_regeneration = 0
     epos_service_operations = {}
+    epos_operations = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -48,6 +49,8 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             mower_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "EposService" and protocol.get("msgType") == "6778":
             epos_service_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "Epos" and protocol.get("msgType") == "6170":
+            epos_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "AutomowerConnect"
             and method["command"] == "SetEnabledNoPin"
@@ -291,6 +294,16 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             or epos_service_operations.get("GetAvailable") == "3"
         )
     )
+    epos_boundary_switch = int(
+        all(
+            epos_operations.get(name) == operation
+            for name, operation in (
+                ("GetAvailable", "1"),
+                ("GetEnabled", "2"),
+                ("SetEnabled", "3"),
+            )
+        )
+    )
     result = (
         *reverse,
         *angles,
@@ -315,10 +328,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         connect_enabled_no_pin,
         aim_map_regeneration,
         epos_cloud_origin_setup,
+        epos_boundary_switch,
     )
     return (
         result
-        if any(result[:-10])
+        if any(result[:-11])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -328,6 +342,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or connect_enabled_no_pin
         or aim_map_regeneration
         or epos_cloud_origin_setup
+        or epos_boundary_switch
         else None
     )
 

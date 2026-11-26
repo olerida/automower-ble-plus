@@ -47,7 +47,16 @@
           "reset": "Reset user settings",
           "change_pin": "Change PIN",
           "regenerate_aim_map": "Regenerate AIM map",
-          "setup_epos_origin": "Set up Husqvarna Cloud EPOS origin"
+          "setup_epos_origin": "Set up Husqvarna Cloud EPOS origin",
+          "change_epos_boundary": "Change perimeter type"
+        }
+      },
+      "change_epos_boundary": {
+        "title": "Change {name}'s perimeter type",
+        "description": "Switching modes can erase virtual boundaries, work areas, stay-out zones and schedules. The mower needs an installed boundary wire to operate in wired mode.",
+        "data": {
+          "epos_boundary": "Perimeter type",
+          "confirm_epos_boundary": "Confirm the change and possible loss of settings"
         }
       },
       "setup_epos_origin": {
@@ -121,12 +130,18 @@
       "pin_change_failed": "The PIN could not be changed. Check the mower and its Bluetooth connection.",
       "aim_confirmation_required": "Confirm that you want to regenerate the map.",
       "epos_origin_confirmation_required": "Confirm that you want to register this point as the EPOS origin.",
+      "epos_boundary_already_selected": "The mower already uses this perimeter type.",
+      "epos_boundary_confirmation_required": "Confirm the change and possible loss of settings.",
       "aim_map_failed": "A new map could not be requested. Check the Bluetooth connection and the AIM map status.",
       "reset_failed": "The reset request could not be completed. Check the mower and its Bluetooth connection.",
       "wifi_invalid_password": "Enter a Wi-Fi password of up to 64 UTF-8 bytes."
     },
     "abort": {
       "mower_unavailable": "This mower's Home Assistant entry is unavailable.",
+      "epos_boundary_unavailable": "Changing the perimeter is unavailable on this mower.",
+      "epos_boundary_failed": "The perimeter type could not be changed. Check the active installation and the mower status.",
+      "epos_boundary_changed": "The mower confirmed the change. Home Assistant will read its settings again.",
+      "epos_boundary_unconfirmed": "Home Assistant could not confirm the change. It will read the perimeter type when it reconnects.",
       "epos_origin_unavailable": "The active installation profile does not allow this origin setup.",
       "epos_origin_set": "The mower registered and validated the EPOS origin.",
       "epos_origin_timeout": "The mower was not ready in time. Check its view of the sky and the Husqvarna Cloud status.",
@@ -1404,6 +1419,12 @@
     }
   },
   "selector": {
+    "epos_boundary_target": {
+      "options": {
+        "boundary_wire": "Boundary wire",
+        "epos": "EPOS virtual perimeter"
+      }
+    },
     "wifi_operation": {
       "options": {
         "connect": "Connect",

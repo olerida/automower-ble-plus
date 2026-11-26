@@ -13,7 +13,8 @@ from .wire import Command, Event
 EPOS_EVENTS = Command(6170, 0)
 EPOS_CLOUD_EVENTS = (Command(6778, 1), Command(6778, 2))
 EPOS_AVAILABLE = Reading(Command(6170, 1), U8)
-_EPOS_ENABLED = Reading(Command(6170, 2), U8)
+EPOS_ENABLED = Reading(Command(6170, 2), U8)
+SET_EPOS_ENABLED = Command(6170, 3)
 _CLOUD_AVAILABLE = Reading(Command(6778, 23), U8)
 _CLOUD_AVAILABLE_LEGACY = Reading(Command(6778, 3), U8)
 _CLOUD_ENABLED = Reading(Command(6778, 4), U8)
@@ -131,7 +132,7 @@ async def _read(client: AutomowerClient, reading: Reading) -> int | None:
 
 async def async_epos_enabled(client: AutomowerClient) -> bool:
     """Check whether the robot is operating with EPOS positioning enabled."""
-    return await _read(client, _EPOS_ENABLED) == 1
+    return await _read(client, EPOS_ENABLED) == 1
 
 
 async def async_epos_cloud_accepts_origin_setup(client: AutomowerClient) -> bool:
@@ -141,7 +142,7 @@ async def async_epos_cloud_accepts_origin_setup(client: AutomowerClient) -> bool
         available = await _read(client, _CLOUD_AVAILABLE_LEGACY)
     return (
         available == 1
-        and await _read(client, _EPOS_ENABLED) in (None, 1)
+        and await _read(client, EPOS_ENABLED) in (None, 1)
         and await _read(client, _CLOUD_HAS_ORIGIN) == 0
     )
 
@@ -197,7 +198,7 @@ async def async_read_docking_status(
     if check_epos:
         available = await _read(client, EPOS_AVAILABLE)
         if available == 0 or (
-            available == 1 and await _read(client, _EPOS_ENABLED) != 1
+            available == 1 and await _read(client, EPOS_ENABLED) != 1
         ):
             return {}
     data = {}
@@ -230,7 +231,7 @@ async def async_read_epos_status(
                     **await _async_read_cloud_status(client),
                 )
         return data
-    enabled = await _read(client, _EPOS_ENABLED)
+    enabled = await _read(client, EPOS_ENABLED)
     if enabled not in (0, 1):
         return {}
     data = {"epos_enabled": enabled}

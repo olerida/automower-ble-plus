@@ -88,3 +88,18 @@ def test_aim_map_regeneration_requires_a_firmware_with_the_start_command():
     assert not get_firmware_profile(
         (28, 2), "40.3_Main-App-P16_unknown"
     ).aim_map_regeneration
+
+
+def test_epos_boundary_switch_obeys_the_app_model_and_firmware_rules():
+    version = "40.16_Main-App-P21NA_79.3"
+    assert get_firmware_profile((31, 1), version).epos_boundary_switch
+    assert not get_firmware_profile(
+        (5, 0), "App-G3_devicetype-5.0"
+    ).epos_boundary_switch
+    assert not get_firmware_profile((26, 1), version).epos_boundary_switch
+    assert not get_firmware_profile(
+        (31, 4), "40.26_Main-App-P21V_95.1"
+    ).epos_boundary_switch
+    assert not get_firmware_profile(
+        (39, 7), "40.27_Main-App-P17V_unknown"
+    ).epos_boundary_switch

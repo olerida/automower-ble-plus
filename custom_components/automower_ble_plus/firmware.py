@@ -8,6 +8,8 @@ from pathlib import Path
 
 _LEGACY = re.compile(r"App-G3_devicetype-([0-9]+)\.([0-9]+)(?![0-9])")
 _FAMILY = re.compile(r"^([0-9]+\.[0-9]+)_Main-App-")
+_EPOS_FIXED_DEVICE_TYPES = frozenset({24, 26, 27, 40})
+_EPOS_FIXED_VISION_MODELS = frozenset({(31, 4), (31, 5), (39, 7), (39, 8)})
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +43,7 @@ class FirmwareProfile:
     connect_enabled_no_pin: int = 0
     aim_map_regeneration: int = 0
     epos_cloud_origin_setup: int = 0
+    epos_boundary_switch: int = 0
 
 
 @cache
@@ -76,6 +79,10 @@ def get_firmware_profile(
     if profile is None:
         return None
     result = FirmwareProfile(*catalog["profiles"][profile])
+    if result.epos_boundary_switch and (
+        model_id[0] in _EPOS_FIXED_DEVICE_TYPES or model_id in _EPOS_FIXED_VISION_MODELS
+    ):
+        result = replace(result, epos_boundary_switch=0)
     if exact:
         return result
     # Infer protocol support by family only when every known release agrees.
@@ -111,5 +118,9 @@ def get_firmware_profile(
         epos_cloud_origin_setup=int(
             result.epos_cloud_origin_setup
             and all(profile and profile.epos_cloud_origin_setup for profile in releases)
+        ),
+        epos_boundary_switch=int(
+            result.epos_boundary_switch
+            and all(profile and profile.epos_boundary_switch for profile in releases)
         ),
     )

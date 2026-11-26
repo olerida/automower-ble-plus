@@ -47,7 +47,16 @@
           "reset": "Restablecer ajustes",
           "change_pin": "Cambiar el PIN",
           "regenerate_aim_map": "Volver a generar el mapa AIM",
-          "setup_epos_origin": "Configurar origen EPOS de Husqvarna Cloud"
+          "setup_epos_origin": "Configurar origen EPOS de Husqvarna Cloud",
+          "change_epos_boundary": "Cambiar tipo de perímetro"
+        }
+      },
+      "change_epos_boundary": {
+        "title": "Cambiar el tipo de perímetro de {name}",
+        "description": "El cambio puede borrar perímetros virtuales, áreas de trabajo, zonas de exclusión y horarios. Para usar el modo con cable, el cortacésped necesita un cable delimitador instalado.",
+        "data": {
+          "epos_boundary": "Tipo de perímetro",
+          "confirm_epos_boundary": "Confirmo el cambio y el posible borrado de los ajustes"
         }
       },
       "setup_epos_origin": {
@@ -121,12 +130,18 @@
       "pin_change_failed": "No se ha podido cambiar el PIN. Comprueba el estado del cortacésped y su conexión Bluetooth.",
       "aim_confirmation_required": "Confirma que quieres volver a generar el mapa.",
       "epos_origin_confirmation_required": "Confirma que quieres registrar este punto como origen EPOS.",
+      "epos_boundary_already_selected": "El cortacésped ya usa ese tipo de perímetro.",
+      "epos_boundary_confirmation_required": "Confirma el cambio y el posible borrado de los ajustes.",
       "aim_map_failed": "No se ha podido solicitar un nuevo mapa. Comprueba la conexión Bluetooth y el estado del mapa AIM.",
       "reset_failed": "No se ha podido completar la solicitud de restablecimiento. Comprueba el cortacésped y su conexión Bluetooth.",
       "wifi_invalid_password": "Introduce una contraseña Wi-Fi de hasta 64 bytes en UTF-8."
     },
     "abort": {
       "mower_unavailable": "La entrada de este cortacésped no está disponible en Home Assistant.",
+      "epos_boundary_unavailable": "El cambio de perímetro no está disponible en este cortacésped.",
+      "epos_boundary_failed": "No se ha podido cambiar el tipo de perímetro. Comprueba el perfil activo y el estado del cortacésped.",
+      "epos_boundary_changed": "El cortacésped ha confirmado el cambio. Home Assistant volverá a leer la configuración.",
+      "epos_boundary_unconfirmed": "Home Assistant no ha podido confirmar el cambio. El tipo de perímetro se volverá a leer al conectar.",
       "epos_origin_unavailable": "El perfil de instalación activo no permite configurar este origen.",
       "epos_origin_set": "El cortacésped ha registrado y validado el origen EPOS.",
       "epos_origin_timeout": "El cortacésped no estuvo listo a tiempo. Comprueba la visibilidad del cielo y el estado de Husqvarna Cloud.",
@@ -1404,6 +1419,12 @@
     }
   },
   "selector": {
+    "epos_boundary_target": {
+      "options": {
+        "boundary_wire": "Cable delimitador",
+        "epos": "Perímetro virtual EPOS"
+      }
+    },
     "wifi_operation": {
       "options": {
         "connect": "Conectar",
