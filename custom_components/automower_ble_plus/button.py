@@ -1,12 +1,13 @@
 """One-shot schedule and parking commands."""
 
-from automower_ble.protocol import MowerActivity, MowerState
+from automower_ble.protocol import MowerActivity
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .appdrive import APPDRIVE_MANOEUVRES, AppDriveManoeuvre, AppDriveState
 from .coordinator import MowerCoordinator, MowerEntry
 from .entity import MowerEntity, MowerValueEntity, async_add_detected
 from .fota import FIRMWARE_TARGETS, UpdatePhase
@@ -118,8 +119,8 @@ async def async_setup_entry(
     async_add_detected(
         entry,
         add_entities,
-        {"appdrive_undock_possible": None},
-        lambda _key, _: AppDriveUndockButton(entry.runtime_data, "appdrive_undock"),
+        {manoeuvre.availability_key: manoeuvre for manoeuvre in APPDRIVE_MANOEUVRES},
+        lambda _key, manoeuvre: AppDriveManoeuvreButton(entry.runtime_data, manoeuvre),
     )
     async_add_detected(
         entry,
@@ -403,24 +404,35 @@ class ConfirmFaultButton(MowerEntity, ButtonEntity):
         await self.coordinator.async_confirm_error(code)
 
 
-class AppDriveUndockButton(MowerEntity, ButtonEntity):
-    """Ask the mower to leave the charger in appDrive mode."""
+class AppDriveManoeuvreButton(MowerEntity, ButtonEntity):
+    """Request a built-in appDrive manoeuvre."""
+
+    def __init__(
+        self, coordinator: MowerCoordinator, manoeuvre: AppDriveManoeuvre
+    ) -> None:
+        super().__init__(coordinator, f"appdrive_{manoeuvre.name}")
+        self.manoeuvre = manoeuvre
 
     @property
     def available(self) -> bool:
         data = self.coordinator.data
+        docked = data.get("in_charging_station")
+        if self.manoeuvre.ends_in_station and docked is None:
+            docked = int(data.get("activity") == MowerActivity.CHARGING)
+        state = data.get("appdrive_state")
         return (
             super().available
-            and data.get("appdrive_undock_possible") == 1
+            and data.get(self.manoeuvre.availability_key) == 1
             and data.get("appdrive_remote_control") in (None, 1)
-            and data.get("state") == MowerState.PAUSED
-            and data.get("in_charging_station") == 1
-            and data.get("epos_installation_state") in (None, 0)
-            and not self.coordinator.appdrive_undocking
+            and self.manoeuvre.allows_start(data.get("state"), state)
+            and state in (AppDriveState.IDLE, AppDriveState.IN_OPERATION)
+            and docked == int(not self.manoeuvre.ends_in_station)
+            and not self.coordinator.docking_installation_active
+            and self.coordinator.appdrive_manoeuvre is None
         )
 
     async def async_press(self) -> None:
-        await self.coordinator.async_undock_appdrive()
+        await self.coordinator.async_start_appdrive_manoeuvre(self.manoeuvre)
 
 
 class StopAppDriveButton(MowerEntity, ButtonEntity):

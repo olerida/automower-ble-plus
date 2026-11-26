@@ -188,6 +188,7 @@ async def test_hidden_controls_and_model_specific_write(tmp_path):
         "start_epos_docking_installation",
         "stop_epos_docking_installation",
         "appdrive_undock",
+        "appdrive_dock",
         "appdrive_stop",
     }
     assert not any(command.family == 5650 for command, _ in client.calls)
@@ -996,10 +997,16 @@ async def test_epos_controls_follow_reported_hardware_and_correction_source(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "outcome", ["complete", "stop_requested", "failed", "unconfirmed"]
+    ("manoeuvre", "outcome"),
+    [
+        (manoeuvre, outcome)
+        for manoeuvre in ("dock", "undock")
+        for outcome in ("complete", "stop_requested", "failed", "unconfirmed")
+    ]
+    + [("dock", "charging_only")],
 )
-async def test_appdrive_undock_checks_firmware_and_tracks_its_outcome(
-    tmp_path, monkeypatch, outcome
+async def test_appdrive_manoeuvre_checks_firmware_and_tracks_its_outcome(
+    tmp_path, monkeypatch, manoeuvre, outcome
 ):
     entry = _entry()
     coordinator = MowerCoordinator(HomeAssistant(str(tmp_path)), entry)
@@ -1010,35 +1017,42 @@ async def test_appdrive_undock_checks_firmware_and_tracks_its_outcome(
     mower_state = Command(4586, 2)
     docked = Command(4692, 27)
     appdrive_state = Command(5358, 0)
-    undock = Command(5358, 3)
-    undock_possible = Command(5358, 5)
+    request = Command(5358, 2 if manoeuvre == "dock" else 3)
+    possible = Command(5358, 4 if manoeuvre == "dock" else 5)
     stop = Command(5358, 7)
+    starts_in_station = manoeuvre == "undock"
+    completion = outcome in ("complete", "charging_only")
     client.values.update(
         {
             (mower_state, b""): b"\x05",
             (remote_control, b""): b"\0",
-            (docked, b""): b"\x01",
+            (docked, b""): bytes([starts_in_station]),
             (appdrive_state, b""): b"\0",
-            (undock, b""): b"",
-            (undock_possible, b""): b"\x01",
+            (request, b""): b"",
+            (possible, b""): b"\x01",
             (Command(5358, 8), b""): b"\x01",
             (Command(5358, 10), b""): b"\0",
             (stop, b""): b"",
         }
     )
+    if outcome == "charging_only":
+        del client.values[(docked, b"")]
     send = client.command
 
     async def command(operation, payload=b""):
         result = await send(operation, payload)
-        if operation == undock:
+        if operation == request:
             client.values[appdrive_state, b""] = {
                 "complete": b"\x01",
+                "charging_only": b"\x00",
                 "stop_requested": b"\x02",
                 "failed": b"\x03",
                 "unconfirmed": b"\x02",
             }[outcome]
-            if outcome == "complete":
-                client.values[docked, b""] = b"\0"
+            if outcome == "charging_only":
+                client.values[Command(4586, 3), b""] = b"\x01"
+            elif completion:
+                client.values[docked, b""] = bytes([not starts_in_station])
         elif operation == stop:
             client.values[appdrive_state, b""] = b"\0"
         return result
@@ -1055,47 +1069,57 @@ async def test_appdrive_undock_checks_firmware_and_tracks_its_outcome(
     for platform in (binary_sensor, button, sensor):
         await platform.async_setup_entry(coordinator.hass, entry, add_entities)
     await coordinator.async_refresh_optional()
-    undock_button = entities["appdrive_undock"]
+    command_button = entities[f"appdrive_{manoeuvre}"]
     stop_button = entities["appdrive_stop"]
     assert entities["appdrive_activity"].native_value == "none"
     assert not entities["appdrive_remote_control"].is_on
-    assert not undock_button.available
+    assert not command_button.available
     assert not stop_button.available
     with pytest.raises(HomeAssistantError, match="Enable remote control"):
-        await undock_button.async_press()
+        await command_button.async_press()
     client.values[remote_control, b""] = b"\x01"
     await coordinator.async_refresh_optional()
-    assert undock_button.available
+    assert command_button.available
     client.values[mower_state, b""] = b"\x07"
     with pytest.raises(HomeAssistantError, match="Pause the mower"):
-        await undock_button.async_press()
+        await command_button.async_press()
     client.values[mower_state, b""] = b"\x05"
-    client.values[undock_possible, b""] = b"\0"
+    client.values[possible, b""] = b"\0"
     with pytest.raises(HomeAssistantError, match="does not currently permit"):
-        await undock_button.async_press()
-    assert (undock, b"") not in client.calls
-    client.values[undock_possible, b""] = b"\x01"
+        await command_button.async_press()
+    assert (request, b"") not in client.calls
+    client.values[possible, b""] = b"\x01"
     if outcome == "unconfirmed":
-        monkeypatch.setattr(coordinator_module, "APPDRIVE_UNDOCK_TIMEOUT", 0)
-    await undock_button.async_press()
-    result = entities["appdrive_undock_status"]
+        monkeypatch.setattr(coordinator_module, "APPDRIVE_MANOEUVRE_TIMEOUT", 0)
+    if outcome == "charging_only":
+        client.values[(mower_state, b"")] = b"\x06"
+        client.values[(appdrive_state, b"")] = b"\x01"
+    await command_button.async_press()
+    result = entities[f"appdrive_{manoeuvre}_status"]
     assert result.native_value == "in_progress"
-    assert not undock_button.available
+    assert not command_button.available
     assert stop_button.available
-    assert client.calls.count((undock, b"")) == 1
+    assert client.calls.count((request, b"")) == 1
     if outcome == "stop_requested":
         with pytest.raises(HomeAssistantError, match="already in progress"):
-            await undock_button.async_press()
+            await command_button.async_press()
+        opposite = next(
+            candidate
+            for candidate in coordinator_module.APPDRIVE_MANOEUVRES
+            if candidate.name != manoeuvre
+        )
+        with pytest.raises(HomeAssistantError, match="already in progress"):
+            await coordinator.async_start_appdrive_manoeuvre(opposite)
         await stop_button.async_press()
         assert client.calls.count((stop, b"")) == 1
     else:
-        await coordinator._appdrive_undock_task
+        await coordinator._appdrive_manoeuvre_task
         assert (stop, b"") not in client.calls
-    assert result.native_value == outcome
-    assert not coordinator.appdrive_undocking
+    assert result.native_value == ("complete" if completion else outcome)
+    assert coordinator.appdrive_manoeuvre is None
     if outcome == "complete":
         assert entities["appdrive_state"].native_value == "in_operation"
-        assert not entities["in_charging_station"].is_on
+        assert entities["in_charging_station"].is_on == (not starts_in_station)
     await coordinator.async_shutdown()
 
 

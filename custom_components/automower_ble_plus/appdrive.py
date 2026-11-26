@@ -1,6 +1,9 @@
-"""Read appDrive state and eligibility for the mower's undock manoeuvre."""
+"""Read appDrive state and eligibility for its built-in manoeuvres."""
 
+from dataclasses import dataclass
 from enum import IntEnum
+
+from automower_ble.protocol import MowerState
 
 from .features import U8, Reading
 from .transport import AutomowerClient, CommandRejected
@@ -9,14 +12,11 @@ from .wire import Command
 _FAMILY = 5358
 APPDRIVE_EVENTS = Command(_FAMILY, 6)
 APPDRIVE_ABORT = Command(_FAMILY, 7)
-APPDRIVE_UNDOCK = Command(_FAMILY, 3)
 APPDRIVE_STATE = Reading(Command(_FAMILY, 0), U8)
 APPDRIVE_SUPPORTED = Reading(Command(_FAMILY, 8), U8)
-APPDRIVE_UNDOCK_POSSIBLE = Reading(Command(_FAMILY, 5), U8)
-_APPDRIVE_DOCK_POSSIBLE = Reading(Command(_FAMILY, 4), U8)
 _APPDRIVE_ACTIVITY = Reading(Command(_FAMILY, 10), U8)
 APPDRIVE_REMOTE_CONTROL = Reading(Command(5100, 12), U8)
-APPDRIVE_UNDOCK_TIMEOUT = 90
+APPDRIVE_MANOEUVRE_TIMEOUT = 90
 
 
 class AppDriveState(IntEnum):
@@ -29,8 +29,8 @@ class AppDriveState(IntEnum):
     PENDING_START = 4
 
 
-class UndockStatus(IntEnum):
-    """Outcome of an undock requested from Home Assistant."""
+class AppDriveManoeuvreStatus(IntEnum):
+    """Outcome of a manoeuvre requested from Home Assistant."""
 
     IN_PROGRESS = 0
     COMPLETE = 1
@@ -38,6 +38,40 @@ class UndockStatus(IntEnum):
     FAILED = 3
     UNCONFIRMED = 4
 
+
+@dataclass(frozen=True)
+class AppDriveManoeuvre:
+    """A firmware-controlled trip into or out of the charging station."""
+
+    name: str
+    command: Command
+    possible: Reading
+    ends_in_station: bool
+
+    @property
+    def status_key(self) -> str:
+        return f"appdrive_{self.name}_status"
+
+    @property
+    def availability_key(self) -> str:
+        return f"appdrive_{self.name}_possible"
+
+    def allows_start(self, mower_state: int | None, driver_state: int | None) -> bool:
+        """Allow a paused mower or an active appDrive session returning to dock."""
+        return mower_state == MowerState.PAUSED or (
+            self.ends_in_station
+            and mower_state == MowerState.IN_OPERATION
+            and driver_state == AppDriveState.IN_OPERATION
+        )
+
+
+APPDRIVE_DOCK = AppDriveManoeuvre(
+    "dock", Command(_FAMILY, 2), Reading(Command(_FAMILY, 4), U8), True
+)
+APPDRIVE_UNDOCK = AppDriveManoeuvre(
+    "undock", Command(_FAMILY, 3), Reading(Command(_FAMILY, 5), U8), False
+)
+APPDRIVE_MANOEUVRES = (APPDRIVE_DOCK, APPDRIVE_UNDOCK)
 
 APPDRIVE_ENUM_OPTIONS = {
     "appdrive_state": tuple(state.name.lower() for state in AppDriveState),
@@ -49,10 +83,18 @@ APPDRIVE_ENUM_OPTIONS = {
         "searching_for_satellites",
         "driving_to_point",
     ),
-    "appdrive_undock_status": tuple(status.name.lower() for status in UndockStatus),
+    **{
+        manoeuvre.status_key: tuple(
+            status.name.lower() for status in AppDriveManoeuvreStatus
+        )
+        for manoeuvre in APPDRIVE_MANOEUVRES
+    },
 }
 APPDRIVE_BINARY_KEYS = frozenset(
-    {"appdrive_remote_control", "appdrive_dock_possible", "appdrive_undock_possible"}
+    (
+        "appdrive_remote_control",
+        *(manoeuvre.availability_key for manoeuvre in APPDRIVE_MANOEUVRES),
+    )
 )
 APPDRIVE_STATUS_KEYS = APPDRIVE_BINARY_KEYS | {"appdrive_state", "appdrive_activity"}
 
@@ -65,8 +107,10 @@ async def async_read_appdrive_status(client: AutomowerClient) -> dict[str, int]:
         "appdrive_state": APPDRIVE_STATE,
         "appdrive_activity": _APPDRIVE_ACTIVITY,
         "appdrive_remote_control": APPDRIVE_REMOTE_CONTROL,
-        "appdrive_dock_possible": _APPDRIVE_DOCK_POSSIBLE,
-        "appdrive_undock_possible": APPDRIVE_UNDOCK_POSSIBLE,
+        **{
+            manoeuvre.availability_key: manoeuvre.possible
+            for manoeuvre in APPDRIVE_MANOEUVRES
+        },
     }
     data = {}
     for key, reading in readings.items():

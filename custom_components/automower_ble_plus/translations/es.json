@@ -179,6 +179,9 @@
       },
       "save_wire_test_distance": {
         "name": "Guardar distancia medida del punto de partida"
+      },
+      "appdrive_dock": {
+        "name": "Entrar en la base con appDrive"
       }
     },
     "binary_sensor": {
@@ -737,6 +740,16 @@
       },
       "automower_connect_signal_strength": {
         "name": "Intensidad de señal de Automower Connect"
+      },
+      "appdrive_dock_status": {
+        "name": "Resultado de entrada en la base con appDrive",
+        "state": {
+          "in_progress": "En curso",
+          "complete": "Completada",
+          "stop_requested": "Parada solicitada",
+          "failed": "Fallida",
+          "unconfirmed": "Sin confirmar"
+        }
       }
     },
     "device_tracker": {

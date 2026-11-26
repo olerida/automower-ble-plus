@@ -179,6 +179,9 @@
       },
       "save_wire_test_distance": {
         "name": "Save measured starting-point distance"
+      },
+      "appdrive_dock": {
+        "name": "Enter charging station with appDrive"
       }
     },
     "binary_sensor": {
@@ -737,6 +740,16 @@
       },
       "automower_connect_signal_strength": {
         "name": "Automower Connect signal strength"
+      },
+      "appdrive_dock_status": {
+        "name": "appDrive docking result",
+        "state": {
+          "in_progress": "In progress",
+          "complete": "Complete",
+          "stop_requested": "Stop requested",
+          "failed": "Failed",
+          "unconfirmed": "Unconfirmed"
+        }
       }
     },
     "device_tracker": {
