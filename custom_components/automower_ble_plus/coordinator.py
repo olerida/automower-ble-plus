@@ -96,6 +96,7 @@ from .identity import (
 from .map_features import (
     add_map_feature,
     describe_map_features,
+    has_parking_destination,
     remove_map_feature,
     update_map_feature_settings,
     update_map_geometry,
@@ -250,6 +251,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self.client.event_callback = self._async_on_event
         self.device_info: DeviceInfo
         self.firmware_profile: FirmwareProfile | None = None
+        self._site_map_snapshot: tuple[str, str, bool] | None = None
         self._map_path_min_width = DEFAULT_MAP_PATH_WIDTH_MINIMUM
         self.settings: tuple[Setting, ...] = ()
         self.setting_variants: dict[str, SettingVariant] = {}
@@ -954,10 +956,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         data.update(gps)
 
     async def _async_refresh_map_previews(self, data: MowerData) -> None:
+        data.pop("poi_parking_available", None)
         for key in MAP_PREVIEW_KEYS:
             data.pop(key, None)
         refresh_interval = int(monotonic() // _MAP_PREVIEW_RECHECK_SECONDS)
-        for kind, checksum in (await async_read_map_status(self.client)).items():
+        maps = await async_read_map_status(self.client)
+        for kind, checksum in maps.items():
             events = tuple(
                 self._map_event_payloads.get(event_id, b"").hex()
                 for event_id, event_kind in MAP_EVENT_KINDS.items()
@@ -966,6 +970,30 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             data[kind.preview_key] = ":".join(
                 (str(self._map_generation), checksum or str(refresh_interval), *events)
             )
+        revision = data.get(MapKind.SITE.preview_key)
+        if not isinstance(revision, str) or not (
+            self.firmware_profile and self.firmware_profile.park_at_poi
+        ):
+            self._site_map_snapshot = None
+        elif self._site_map_snapshot is None or self._site_map_snapshot[0] != revision:
+            self._site_map_snapshot = None
+            try:
+                site_map = await async_read_map_kind(
+                    self.client, MapKind.SITE, check_revision=True
+                )
+                if (
+                    site_map["available"]
+                    and site_map.get("checksum", "") == maps[MapKind.SITE]
+                ):
+                    svg = site_map["svg"]
+                    available = await self.hass.async_add_executor_job(
+                        has_parking_destination, svg
+                    )
+                    self._site_map_snapshot = (revision, svg, available)
+            except CommandRejected, MowerConnectionError, ValueError, StructError:
+                LOGGER.debug("Could not check parking destination in the mower map")
+        if self._site_map_snapshot is not None:
+            data["poi_parking_available"] = int(self._site_map_snapshot[2])
 
     async def _async_refresh_wire_test(
         self, data: MowerData, state: int, activity: int
@@ -1279,6 +1307,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     await self.client.command(_SET_MODE, b"\0")
                 elif action == "park_indefinitely":
                     await self.client.command(_SET_MODE, b"\x02")
+                elif action == "park_at_point_of_interest":
+                    await self._async_park_at_point_of_interest()
                 elif action == "reset_blade_usage":
                     await self._async_reset_blade_usage()
                 elif action == "recenter_geofence":
@@ -1329,6 +1359,31 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     f"Could not execute mower action {action}: {err}"
                 ) from err
         await self.async_request_refresh()
+
+    async def _async_park_at_point_of_interest(self) -> None:
+        if not (self.firmware_profile and self.firmware_profile.park_at_poi):
+            raise ValueError(
+                "The mower firmware does not support parking at a point of interest"
+            )
+        installation_id = await async_active_installation_id(self.client)
+        site_map = await async_read_map_kind(
+            self.client, MapKind.SITE, check_revision=True
+        )
+        if not site_map["available"] or not await self.hass.async_add_executor_job(
+            has_parking_destination, site_map["svg"]
+        ):
+            raise ValueError("The active map needs an enabled point-of-interest path")
+        if installation_id != await async_active_installation_id(self.client):
+            raise ValueError(
+                "The active installation changed while reading the parking destination"
+            )
+        await self.client.command(_SET_MODE, U8.pack(ModeOfOperation.POI))
+        if await self._read(READINGS["operation_mode"]) != ModeOfOperation.POI:
+            raise ValueError("The mower did not confirm point-of-interest mode")
+        await self.client.command(_START)
+        self.async_set_updated_data(
+            {**self.data, "operation_mode": int(ModeOfOperation.POI)}
+        )
 
     async def _async_reset_blade_usage(self) -> None:
         profile = self.firmware_profile
@@ -1730,6 +1785,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
 
     async def async_map_preview(self, kind: MapKind) -> bytes | None:
         """Download the mower's map and render it off the event loop."""
+        if (
+            kind is MapKind.SITE
+            and (snapshot := self._site_map_snapshot) is not None
+            and snapshot[0] == self.data.get(kind.preview_key)
+        ):
+            return await self.hass.async_add_executor_job(render_map_png, snapshot[1])
         result = await self._async_fetch_map(kind, check_revision=True)
         if not result["available"]:
             return None

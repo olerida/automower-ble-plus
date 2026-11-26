@@ -37,6 +37,7 @@ class FirmwareProfile:
     docking_pattern: int = 0
     docking_pattern_stop: int = 0
     reset_user_settings: int = 0
+    park_at_poi: int = 0
 
 
 @cache
@@ -72,20 +73,25 @@ def get_firmware_profile(
     if profile is None:
         return None
     result = FirmwareProfile(*catalog["profiles"][profile])
-    # These operations depend on the exact firmware profile.
-    return (
-        result
-        if exact
-        else replace(
-            result,
-            work_area_height_max=0,
-            spot_cut_trigger=0,
-            loop_sensor_positions="",
-            station_pairing_subscription=0,
-            installation_create_empty=0,
-            vision_obstacle_profile=0,
-            wire_test_states="",
-            docking_pattern_stop=0,
-            reset_user_settings=8 if result.reset_user_settings else 0,
-        )
+    if exact:
+        return result
+    # Treat POI mode as a family capability only if all known releases agree.
+    family = match[1]
+    poi_supported = result.park_at_poi and all(
+        index is not None and FirmwareProfile(*catalog["profiles"][index]).park_at_poi
+        for version, index in catalog["release"].items()
+        if version.startswith(f"{family}_Main-App-")
+    )
+    return replace(
+        result,
+        work_area_height_max=0,
+        spot_cut_trigger=0,
+        loop_sensor_positions="",
+        station_pairing_subscription=0,
+        installation_create_empty=0,
+        vision_obstacle_profile=0,
+        wire_test_states="",
+        docking_pattern_stop=0,
+        reset_user_settings=8 if result.reset_user_settings else 0,
+        park_at_poi=int(poi_supported),
     )

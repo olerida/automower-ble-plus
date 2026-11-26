@@ -30,6 +30,14 @@ async def async_setup_entry(
             lambda key, _: SpotCutButton(entry.runtime_data, key),
             require_true=True,
         )
+    if profile and profile.park_at_poi:
+        async_add_detected(
+            entry,
+            add_entities,
+            {"poi_parking_available": None},
+            lambda key, _: ParkAtPointOfInterestButton(entry.runtime_data, key),
+            require_true=True,
+        )
     async_add_detected(
         entry,
         add_entities,
@@ -191,6 +199,17 @@ class SpotCutButton(MowerValueEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_mower_action("spot_cut")
+
+
+class ParkAtPointOfInterestButton(MowerValueEntity, ButtonEntity):
+    """Send the mower to the point of interest configured in its active map."""
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.value == 1
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_mower_action("park_at_point_of_interest")
 
 
 class RecenterGeoFenceButton(MowerValueEntity, ButtonEntity):

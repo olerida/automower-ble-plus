@@ -135,6 +135,9 @@
       "park_indefinitely": {
         "name": "Aparcar indefinidamente"
       },
+      "poi_parking_available": {
+        "name": "Aparcar en el punto de interés"
+      },
       "spot_cut_available": {
         "name": "Corte localizado"
       },

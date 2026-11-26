@@ -44,6 +44,15 @@ def _points(shape: Element) -> list[dict[str, int]]:
     ]
 
 
+def has_parking_destination(svg: str) -> bool:
+    """Check that the active map has one enabled point-of-interest path."""
+    _, root = parse_map_svg(svg, allow_empty=True)
+    paths = [
+        shape for shape in root if _feature_type(shape, MapKind.SITE) == "poi_path"
+    ]
+    return len(paths) == 1 and paths[0].get("display", "").lower() != "none"
+
+
 def describe_map_features(
     svg: str,
     kind: MapKind,

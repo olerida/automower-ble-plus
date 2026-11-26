@@ -20,6 +20,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     site_operations = {}
     vision_operations = {}
     follow_wire_operations = {}
+    mower_operations = {}
     reset_operations = set()
     message_events = 0
     for method in profile.get("methods", ()):
@@ -40,6 +41,8 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             site_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "FollowWire" and protocol.get("msgType") == "4706":
             follow_wire_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "MowerApp" and protocol.get("msgType") == "4586":
+            mower_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "System"
             and protocol.get("msgType") == "4698"
@@ -233,6 +236,22 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
                 )
         elif "TestAbort" not in follow_wire_operations:
             wire_test_states = "legacy"
+    poi_mode = types.get("tIMowerApp_MowerMode", {})
+    park_at_poi = int(
+        poi_mode.get("type") == "uint8"
+        and any(
+            enum["key"] == "IMOWERAPP_MODE_POI" and enum["value"] == "4"
+            for enum in poi_mode.get("enums", ())
+        )
+        and all(
+            mower_operations.get(name) == operation
+            for name, operation in (
+                ("SetMode", "0"),
+                ("GetMode", "1"),
+                ("StartTrigger", "4"),
+            )
+        )
+    )
     result = (
         *reverse,
         *angles,
@@ -253,15 +272,17 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         int(docking_pattern),
         int(docking_pattern_stop),
         reset_user_settings,
+        park_at_poi,
     )
     return (
         result
-        if any(result[:-6])
+        if any(result[:-7])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
         or docking_pattern
         or reset_user_settings
+        or park_at_poi
         else None
     )
 

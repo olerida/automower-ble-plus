@@ -1681,7 +1681,7 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
     client = FakeAutomower420()
     area = U32.pack(12)
     monkeypatch.setattr(
-        client, "main_node_version", AsyncMock(return_value="40.1_Main-App-P25_26.19")
+        client, "main_node_version", AsyncMock(return_value="40.1_Main-App-P25_32.22")
     )
     client.values.update(
         {
@@ -1833,9 +1833,19 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             uploads = []
             missions = {}
             refuse_mission = False
+            confirm_poi_mode = True
+            poi_commands = []
             send = client.command
 
             async def command(operation, payload=b""):
+                if operation == Command(4586, 0) and payload == b"\x04":
+                    poi_commands.append((operation, payload))
+                    if confirm_poi_mode:
+                        client.values[(Command(4586, 1), b"")] = payload
+                    return b""
+                if operation == Command(4586, 4):
+                    poi_commands.append((operation, payload))
+                    return b""
                 if operation == Command(5578, 23):
                     return md5(maps[100], usedforsecurity=False).digest()
                 if operation == Command(5786, 7):
@@ -2046,6 +2056,50 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             await map_action("delete_map_feature", **request_drop)
             assert not missions
             assert maps[100] == before_create
+            poi_button_id = "button.automower_420_park_at_point_of_interest"
+            assert hass.states.get(poi_button_id) is None
+            parking = await map_action(
+                "create_map_feature",
+                expected_checksum=settings["checksum"],
+                expected_installation_id=7,
+                feature_type="poi_path",
+                name="Mantenimiento",
+                points=edit["points"][:2],
+                width_mm=3000,
+            )
+            await hass.async_block_till_done()
+            assert hass.states.get(poi_button_id).state != "unavailable"
+            confirm_poi_mode = False
+            with pytest.raises(
+                HomeAssistantError, match="did not confirm point-of-interest mode"
+            ):
+                await hass.services.async_call(
+                    "button", "press", {"entity_id": poi_button_id}, blocking=True
+                )
+            assert poi_commands == [(Command(4586, 0), b"\x04")]
+            confirm_poi_mode = True
+            await hass.services.async_call(
+                "button", "press", {"entity_id": poi_button_id}, blocking=True
+            )
+            assert poi_commands[-2:] == [
+                (Command(4586, 0), b"\x04"),
+                (Command(4586, 4), b""),
+            ]
+            assert coordinator.data["operation_mode"] == 4
+            await map_action(
+                "set_map_feature_settings",
+                feature_id=parking["feature_id"],
+                expected_checksum=parking["checksum"],
+                expected_installation_id=7,
+                enabled=False,
+            )
+            assert hass.states.get(poi_button_id).state == "unavailable"
+            with pytest.raises(
+                HomeAssistantError, match="needs an enabled point-of-interest path"
+            ):
+                await coordinator.async_mower_action("park_at_point_of_interest")
+            assert len(poi_commands) == 3
+            before_empty = maps[100]
             client.values[(Command(5578, 40), b"")] = b"\0"
             client.values[(Command(6170, 2), b"")] = b"\0"
             empty = await map_action("get_map_features")
@@ -2058,7 +2112,7 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             }
             with pytest.raises(HomeAssistantError, match="enabled EPOS installation"):
                 await map_action("create_map_feature", **first_zone)
-            assert maps[100] == before_create
+            assert maps[100] == before_empty
             client.values[(Command(6170, 2), b"")] = b"\x01"
             assert (await map_action("get_map_features"))["can_create"]
             first = await map_action("create_map_feature", **first_zone)

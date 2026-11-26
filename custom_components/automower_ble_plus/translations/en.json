@@ -135,6 +135,9 @@
       "park_indefinitely": {
         "name": "Park indefinitely"
       },
+      "poi_parking_available": {
+        "name": "Park at point of interest"
+      },
       "spot_cut_available": {
         "name": "Spot cut"
       },
