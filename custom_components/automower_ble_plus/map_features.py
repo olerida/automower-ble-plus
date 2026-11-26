@@ -5,6 +5,7 @@ from xml.dom import minidom
 from xml.etree.ElementTree import Element
 
 from .mapfiles import SVG_NAMESPACE, MapKind, parse_map_svg
+from .models import DEFAULT_MAP_PATH_WIDTH_MINIMUM
 
 _AREA_TYPES = {"green": "work_area", "red": "stay_out_zone", "blue": "transport_area"}
 _PATH_TYPES = {
@@ -13,6 +14,9 @@ _PATH_TYPES = {
     "yellow": "charging_station",
 }
 _READ_ONLY = {"charging_station", "unknown"}
+_PATH_WIDTH_TYPES = {"transport_path", "poi_path"}
+_MAIN_AREA_ID = "main_area_0"
+MAX_PATH_WIDTH = 5000
 MIN_COORDINATE = -(1 << 31)
 MAX_COORDINATE = (1 << 31) - 1
 type Point = tuple[int, int]
@@ -37,7 +41,12 @@ def _points(shape: Element) -> list[dict[str, int]]:
     ]
 
 
-def describe_map_features(svg: str, kind: MapKind, writable: bool) -> list[dict]:
+def describe_map_features(
+    svg: str,
+    kind: MapKind,
+    writable: bool,
+    path_width_min: int = DEFAULT_MAP_PATH_WIDTH_MINIMUM,
+) -> list[dict]:
     """Describe the SVG features without exposing raw XML in the response."""
     _, root = parse_map_svg(
         svg, require_unique_ids=kind is MapKind.SITE, allow_empty=True
@@ -45,12 +54,18 @@ def describe_map_features(svg: str, kind: MapKind, writable: bool) -> list[dict]
     features = []
     for shape in root:
         feature_type = _feature_type(shape, kind)
+        editable = (
+            writable
+            and kind is MapKind.SITE
+            and feature_type not in _READ_ONLY
+            and shape.get("id") != _MAIN_AREA_ID
+        )
         feature = {
             "id": shape.get("id"),
             "type": feature_type,
             "name": shape.get("title", ""),
             "enabled": shape.get("display", "").lower() != "none",
-            "editable": writable and feature_type not in _READ_ONLY,
+            "editable": editable,
             "points": _points(shape),
         }
         if (width := shape.get("stroke-width")) is not None:
@@ -58,6 +73,14 @@ def describe_map_features(svg: str, kind: MapKind, writable: bool) -> list[dict]
                 feature["width_mm"] = int(width)
             except ValueError:
                 pass
+        if editable and feature_type != "work_area":
+            feature["editable_settings"] = ["name", "enabled"]
+            if feature_type in _PATH_WIDTH_TYPES:
+                feature["editable_settings"].append("width_mm")
+                feature["width_limits_mm"] = {
+                    "min": path_width_min,
+                    "max": MAX_PATH_WIDTH,
+                }
         features.append(feature)
     return features
 
@@ -101,14 +124,38 @@ def _validate_geometry(vertices: list[Point], polygon: bool) -> None:
         active.append((right, bottom, top, a, b))
 
 
-def update_map_geometry(svg: str, feature_id: str, points: list[dict[str, int]]) -> str:
-    """Update only the coordinates of an existing area or path."""
+def _find_editable_feature(svg: str, feature_id: str) -> tuple[bytes, Element]:
     raw, root = parse_map_svg(svg)
     shape = next((shape for shape in root if shape.get("id") == feature_id), None)
     if shape is None:
         raise ValueError("The active map does not contain the selected feature")
-    if _feature_type(shape, MapKind.SITE) in _READ_ONLY:
-        raise ValueError("The selected map feature does not support geometry editing")
+    if feature_id == _MAIN_AREA_ID or _feature_type(shape, MapKind.SITE) in _READ_ONLY:
+        raise ValueError("The selected map feature does not support editing")
+    return raw, shape
+
+
+def _set_feature_attributes(
+    raw: bytes, feature_id: str, attributes: dict[str, str | None]
+) -> str:
+    # Preserve the original SVG namespace and other attributes.
+    with minidom.parseString(raw) as document:
+        for node in document.documentElement.childNodes:
+            if (
+                node.nodeType == node.ELEMENT_NODE
+                and node.getAttribute("id") == feature_id
+            ):
+                for key, value in attributes.items():
+                    if value is not None:
+                        node.setAttribute(key, value)
+                    elif node.hasAttribute(key):
+                        node.removeAttribute(key)
+                break
+        return document.documentElement.toxml()
+
+
+def update_map_geometry(svg: str, feature_id: str, points: list[dict[str, int]]) -> str:
+    """Update only the coordinates of an existing area or path."""
+    raw, shape = _find_editable_feature(svg, feature_id)
     vertices = [(point["x_mm"], point["y_mm"]) for point in points]
     if any(
         type(value) is not int or not MIN_COORDINATE <= value <= MAX_COORDINATE
@@ -119,13 +166,45 @@ def update_map_geometry(svg: str, feature_id: str, points: list[dict[str, int]])
     _validate_geometry(vertices, shape.tag.removeprefix(SVG_NAMESPACE) == "polygon")
     if points == _points(shape):
         return svg
-    # The mower's XML reader expects the map's original namespace and element names.
-    with minidom.parseString(raw) as document:
-        for node in document.documentElement.childNodes:
-            if (
-                node.nodeType == node.ELEMENT_NODE
-                and node.getAttribute("id") == feature_id
-            ):
-                node.setAttribute("points", " ".join(f"{x},{y}" for x, y in vertices))
-                break
-        return document.documentElement.toxml()
+    return _set_feature_attributes(
+        raw, feature_id, {"points": " ".join(f"{x},{y}" for x, y in vertices)}
+    )
+
+
+def update_map_feature_settings(
+    svg: str,
+    feature_id: str,
+    name: str | None,
+    enabled: bool | None,
+    width_mm: int | None,
+    path_width_min: int,
+) -> str:
+    """Change a map object's metadata without altering geometry or mission IDs."""
+    if name is None and enabled is None and width_mm is None:
+        raise ValueError("Select at least one map feature setting")
+    raw, shape = _find_editable_feature(svg, feature_id)
+    feature_type = _feature_type(shape, MapKind.SITE)
+    if feature_type == "work_area":
+        raise ValueError(
+            "Use the work area action to change the associated mission settings"
+        )
+    attributes: dict[str, str | None] = {}
+    if name is not None:
+        if not name.strip() or any(ord(character) < 32 for character in name):
+            raise ValueError(
+                "Enter a nonempty map feature name without control characters"
+            )
+        if name != shape.get("title"):
+            attributes["title"] = name
+    if enabled is not None and enabled != (shape.get("display", "").lower() != "none"):
+        attributes["display"] = None if enabled else "none"
+    if width_mm is not None:
+        if feature_type not in _PATH_WIDTH_TYPES:
+            raise ValueError("Only map paths have an editable width")
+        if not path_width_min <= width_mm <= MAX_PATH_WIDTH:
+            raise ValueError(
+                f"Path width must be {path_width_min} to {MAX_PATH_WIDTH} mm"
+            )
+        if str(width_mm) != shape.get("stroke-width"):
+            attributes["stroke-width"] = str(width_mm)
+    return _set_feature_attributes(raw, feature_id, attributes) if attributes else svg

@@ -91,7 +91,11 @@ from .identity import (
     decode_mower_name,
     encode_mower_name,
 )
-from .map_features import describe_map_features, update_map_geometry
+from .map_features import (
+    describe_map_features,
+    update_map_feature_settings,
+    update_map_geometry,
+)
 from .map_preview import render_map_png
 from .mapfiles import (
     MAP_EVENT_KINDS,
@@ -102,6 +106,7 @@ from .mapfiles import (
     async_read_map_status,
     async_replace_map,
 )
+from .models import DEFAULT_MAP_PATH_WIDTH_MINIMUM, MAP_PATH_WIDTH_MINIMUMS
 from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
 from .planner import PlannerOverride, async_read_planner_override
 from .position import (
@@ -237,6 +242,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self.client.event_callback = self._async_on_event
         self.device_info: DeviceInfo
         self.firmware_profile: FirmwareProfile | None = None
+        self._map_path_min_width = DEFAULT_MAP_PATH_WIDTH_MINIMUM
         self.settings: tuple[Setting, ...] = ()
         self.setting_variants: dict[str, SettingVariant] = {}
         self._operation_lock = asyncio.Lock()
@@ -551,6 +557,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         ) as err:
             raise UpdateFailed("Could not identify the mower") from err
         identity = MowerModels.get(model_id)
+        self._map_path_min_width = MAP_PATH_WIDTH_MINIMUMS.get(
+            model_id, DEFAULT_MAP_PATH_WIDTH_MINIMUM
+        )
         self.firmware_profile = await self.hass.async_add_executor_job(
             get_firmware_profile, model_id, node_version
         )
@@ -1683,6 +1692,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     result["svg"],
                     kind,
                     checksum is not None,
+                    self._map_path_min_width,
                 )
             except (
                 MowerConnectionError,
@@ -2313,6 +2323,43 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         expected_installation_id: int | None,
     ) -> dict:
         """Replace one feature using the map revision and profile returned by the read."""
+        return await self._async_change_map_feature(
+            feature_id,
+            expected_checksum,
+            expected_installation_id,
+            update_map_geometry,
+            points,
+        )
+
+    async def async_edit_map_feature_settings(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None,
+        name: str | None,
+        enabled: bool | None,
+        width_mm: int | None,
+    ) -> dict:
+        """Save settings for an existing area or path in the active map."""
+        return await self._async_change_map_feature(
+            feature_id,
+            expected_checksum,
+            expected_installation_id,
+            update_map_feature_settings,
+            name,
+            enabled,
+            width_mm,
+            self._map_path_min_width,
+        )
+
+    async def _async_change_map_feature(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None,
+        change: Callable[..., str],
+        *args,
+    ) -> dict:
         async with self._operation_lock:
             try:
                 await self._async_connect()
@@ -2334,7 +2381,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         "The active map changed. Read it again before updating"
                     )
                 svg = await self.hass.async_add_executor_job(
-                    update_map_geometry, current["svg"], feature_id, points
+                    change, current["svg"], feature_id, *args
                 )
                 if expected_installation_id != await async_active_installation_id(
                     self.client

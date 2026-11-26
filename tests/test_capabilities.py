@@ -1822,7 +1822,10 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert (Command(5582, 4), area + I16.pack(450)) not in client.calls
             coordinator = entry.runtime_data
             maps = {
-                100: b'<svg><polygon id="lawn" fill="green" points="0,0 1000,0 0,1000"/></svg>',
+                100: (
+                    b'<svg><polygon id="lawn" fill="green" points="0,0 1000,0 0,1000"/>'
+                    b'<polyline id="pass" stroke="blue" stroke-width="3000" points="0,0 1000,0"/></svg>'
+                ),
                 101: b'<svg><polygon fill="green" points="0,0 1000,0 1000,1000 0,1000"/></svg>',
                 103: b'<svg><polygon fill="red" points="0,0 1000,0 0,1000"/></svg>',
             }
@@ -1957,6 +1960,25 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             assert (await map_action("get_map_features"))["features"][0][
                 "points"
             ] == edit["points"]
+            change = {
+                "feature_id": "pass",
+                "expected_checksum": updated["checksum"],
+                "expected_installation_id": 7,
+                "name": "Camino a la base",
+                "enabled": False,
+            }
+            with pytest.raises(HomeAssistantError, match="3000 to 5000 mm"):
+                await map_action("set_map_feature_settings", **change, width_mm=2000)
+            assert len(uploads) == 1
+            settings = await map_action(
+                "set_map_feature_settings", **change, width_mm=3500
+            )
+            assert settings["checksum"] != updated["checksum"]
+            path = (await map_action("get_map_features"))["features"][1]
+            assert not path["enabled"]
+            assert path["name"] == change["name"]
+            assert path["width_mm"] == 3500
+            assert path["width_limits_mm"] == {"min": 3000, "max": 5000}
             reset = (Command(4698, 8), b"")
             client.values[reset] = b""
             flow = await hass.config_entries.options.async_init(entry.entry_id)

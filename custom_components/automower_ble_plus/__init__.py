@@ -13,7 +13,7 @@ from homeassistant.helpers.service import async_register_platform_entity_service
 from .config_flow import core_controls_address
 from .const import DOMAIN
 from .coordinator import MowerCoordinator, MowerEntry
-from .map_features import MAX_COORDINATE, MIN_COORDINATE
+from .map_features import MAX_COORDINATE, MAX_PATH_WIDTH, MIN_COORDINATE
 from .mapfiles import MapKind
 from .schedule import WEEKDAYS
 from .work_areas import (
@@ -68,6 +68,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     point = vol.Schema(
         {vol.Required("x_mm"): coordinate, vol.Required("y_mm"): coordinate}
     )
+    map_revision = {
+        vol.Required("feature_id"): cv.string,
+        vol.Required("expected_checksum"): cv.string,
+        vol.Optional("expected_installation_id"): mission,
+    }
     schemas = {
         "mow_for": {
             vol.Required("minutes"): duration,
@@ -115,10 +120,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             ),
         },
         "edit_map_geometry": {
-            vol.Required("feature_id"): cv.string,
-            vol.Required("expected_checksum"): cv.string,
+            **map_revision,
             vol.Required("points"): vol.All([point], vol.Length(min=2)),
-            vol.Optional("expected_installation_id"): mission,
+        },
+        "set_map_feature_settings": {
+            **map_revision,
+            vol.Optional("name"): cv.string,
+            vol.Optional("enabled"): cv.boolean,
+            vol.Optional("width_mm"): _bounded_integer(1, MAX_PATH_WIDTH),
         },
         "replace_map": {
             vol.Required("svg"): cv.string,
@@ -172,6 +181,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 "create_work_area",
                 "replace_map",
                 "edit_map_geometry",
+                "set_map_feature_settings",
             )
             else SupportsResponse.NONE,
         )

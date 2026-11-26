@@ -456,6 +456,39 @@ edit_map_geometry:
           min: 0
           max: 4294967295
           mode: box
+set_map_feature_settings:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    feature_id:
+      required: true
+      selector:
+        text:
+    expected_checksum:
+      required: true
+      selector:
+        text:
+    expected_installation_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          mode: box
+    name:
+      selector:
+        text:
+    enabled:
+      selector:
+        boolean:
+    width_mm:
+      selector:
+        number:
+          min: 1200
+          max: 5000
+          mode: box
+          unit_of_measurement: mm
 get_geofence:
   target:
     entity:

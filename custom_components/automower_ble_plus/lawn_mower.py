@@ -190,6 +190,25 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
             feature_id, expected_checksum, points, expected_installation_id
         )
 
+    async def async_set_map_feature_settings(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None = None,
+        name: str | None = None,
+        enabled: bool | None = None,
+        width_mm: int | None = None,
+    ) -> dict:
+        """Save name, activation or width for a compatible map feature."""
+        return await self.coordinator.async_edit_map_feature_settings(
+            feature_id,
+            expected_checksum,
+            expected_installation_id,
+            name,
+            enabled,
+            width_mm,
+        )
+
     async def async_get_position(self) -> dict:
         """Read the mower's geographic and local positions over BLE."""
         return await self.coordinator.async_read_position()

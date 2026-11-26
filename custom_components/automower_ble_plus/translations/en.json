@@ -1154,6 +1154,36 @@
           "description": "Installation ID returned by Read map features when available."
         }
       }
+    },
+    "set_map_feature_settings": {
+      "name": "Set map feature settings",
+      "description": "Rename, activate or change the width of a feature in the active installation map.",
+      "fields": {
+        "feature_id": {
+          "name": "Feature ID",
+          "description": "ID returned by Read map features."
+        },
+        "expected_checksum": {
+          "name": "Expected checksum",
+          "description": "Checksum returned by Read map features."
+        },
+        "expected_installation_id": {
+          "name": "Expected installation ID",
+          "description": "Installation ID returned by Read map features when available."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New name of the feature."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the feature is active."
+        },
+        "width_mm": {
+          "name": "Path width",
+          "description": "Width in millimetres within the model limits returned by Read map features."
+        }
+      }
     }
   },
   "selector": {

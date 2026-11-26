@@ -1154,6 +1154,36 @@
           "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
         }
       }
+    },
+    "set_map_feature_settings": {
+      "name": "Cambiar ajustes de un elemento del mapa",
+      "description": "Renombra, activa o cambia la anchura de un elemento del mapa de la instalación activa.",
+      "fields": {
+        "feature_id": {
+          "name": "ID del elemento",
+          "description": "ID devuelto por Leer elementos del mapa."
+        },
+        "expected_checksum": {
+          "name": "Suma de comprobación",
+          "description": "Valor checksum devuelto por Leer elementos del mapa."
+        },
+        "expected_installation_id": {
+          "name": "ID de la instalación",
+          "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
+        },
+        "name": {
+          "name": "Nombre",
+          "description": "Nuevo nombre del elemento."
+        },
+        "enabled": {
+          "name": "Activado",
+          "description": "Indica si el elemento está activo."
+        },
+        "width_mm": {
+          "name": "Anchura de la ruta",
+          "description": "Anchura en milímetros dentro del intervalo que devuelve Leer elementos del mapa."
+        }
+      }
     }
   },
   "selector": {

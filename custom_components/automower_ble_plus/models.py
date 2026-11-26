@@ -164,3 +164,32 @@ _STARTING_POINT_MODELS = {
 STARTING_POINT_COUNTS = {
     model: count for count, models in _STARTING_POINT_MODELS.items() for model in models
 }
+
+# The app's minimum transport path width for each model that it classifies.
+# Other models use the EPOS editor's 3000 mm fallback if they expose a path.
+MAP_PATH_WIDTH_MINIMUMS = {
+    **dict.fromkeys(((31, i) for i in range(1, 6)), 1200),
+    **dict.fromkeys(((39, i) for i in (1, 2, 4, 5, 7, 8)), 1200),
+    **dict.fromkeys(((42, i) for i in range(1, 4)), 1200),
+    **dict.fromkeys(((48, i) for i in range(1, 7)), 1200),
+    **dict.fromkeys(
+        (
+            (20, 1),
+            (20, 2),
+            (21, 1),
+            (26, 1),
+            (26, 2),
+            (26, 3),
+            (26, 4),
+            (33, 1),
+            (40, 1),
+            (40, 2),
+            (41, 1),
+            (41, 2),
+            (41, 3),
+            (41, 4),
+        ),
+        2000,
+    ),
+}
+DEFAULT_MAP_PATH_WIDTH_MINIMUM = 3000

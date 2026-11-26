@@ -12,6 +12,7 @@ from PIL import Image
 
 from custom_components.automower_ble_plus.map_features import (
     describe_map_features,
+    update_map_feature_settings,
     update_map_geometry,
 )
 from custom_components.automower_ble_plus.map_preview import render_map_png
@@ -52,8 +53,53 @@ def test_map_geometry_update_preserves_namespace_and_other_features():
         {**initial[0], "points": points},
         *initial[1:],
     ]
-    with pytest.raises(ValueError, match="does not support geometry editing"):
+    with pytest.raises(ValueError, match="does not support editing"):
         update_map_geometry(svg, "dock", points[:2])
+
+
+def test_map_settings_preserve_geometry_and_enforce_model_path_width():
+    svg = SVG.replace(
+        "</svg>",
+        '<polyline id="pass" title="Original" stroke="blue" '
+        'stroke-width="3000" points="0,0 1000,0"/></svg>',
+    )
+    changed = update_map_feature_settings(
+        svg, "pass", "Árbol & valla", False, 1200, 1200
+    )
+    work, path = describe_map_features(changed, MapKind.SITE, True, 1200)
+    assert work["id"] == "lawn"
+    assert "editable_settings" not in work
+    assert path == {
+        "id": "pass",
+        "type": "transport_path",
+        "name": "Árbol & valla",
+        "enabled": False,
+        "editable": True,
+        "points": [{"x_mm": 0, "y_mm": 0}, {"x_mm": 1000, "y_mm": 0}],
+        "width_mm": 1200,
+        "width_limits_mm": {"min": 1200, "max": 5000},
+        "editable_settings": ["name", "enabled", "width_mm"],
+    }
+    assert (
+        update_map_feature_settings(changed, "pass", None, False, 1200, 1200) == changed
+    )
+    restored = update_map_feature_settings(
+        changed, "pass", "Original", True, 3000, 2000
+    )
+    assert restored == svg
+    with pytest.raises(ValueError, match="3000 to 5000 mm"):
+        update_map_feature_settings(svg, "pass", None, None, 2000, 3000)
+    with pytest.raises(ValueError, match="associated mission"):
+        update_map_feature_settings(svg, "lawn", "Nueva", True, None, 1200)
+    with pytest.raises(ValueError, match="does not support editing"):
+        update_map_feature_settings(
+            svg.replace('id="pass"', 'id="main_area_0"'),
+            "main_area_0",
+            "Nueva",
+            None,
+            None,
+            1200,
+        )
 
 
 @pytest.mark.parametrize(
