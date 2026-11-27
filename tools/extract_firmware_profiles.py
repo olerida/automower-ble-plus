@@ -126,6 +126,22 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         ):
             area_height_methods[method["command"]] = (protocol.get("subCmd"), method)
     types = {item["name"]: item for item in profile.get("types", ())}
+    planner_reason_9 = {
+        "IPLANNER_RESTRICTION_REASON_MISSION_ABANDONDED": 1,
+        "IPLANNER_RESTRICTION_REASON_NO_DAYLIGHT": 2,
+    }.get(
+        next(
+            (
+                item["key"]
+                for item in types.get("tIPlanner_RestrictionReason", {}).get(
+                    "enums", ()
+                )
+                if item["value"] == "9"
+            ),
+            "",
+        ),
+        0,
+    )
 
     def value_range(name: str) -> tuple[int, int]:
         bounds = types.get(name, {}).get("range", {})
@@ -422,10 +438,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         legacy_aim_maps,
         mission_schedule,
         target_height_status,
+        planner_reason_9,
     )
     return (
         result
-        if any(result[:-16])
+        if any(result[:-17])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -440,6 +457,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or legacy_aim_maps
         or mission_schedule
         or target_height_status
+        or planner_reason_9
         else None
     )
 

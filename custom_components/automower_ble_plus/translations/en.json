@@ -661,6 +661,28 @@
       "error_code": {
         "name": "Error code"
       },
+      "mowing_restriction": {
+        "name": "Mowing restriction",
+        "state": {
+          "none": "No restriction",
+          "week_schedule": "Outside the weekly schedule",
+          "park_override": "Parking override",
+          "sensor": "Sensor restriction",
+          "daily_limit": "Daily operating limit",
+          "firmware_update": "Firmware update",
+          "frost_guard": "Frost Guard",
+          "all_missions_completed": "All work areas completed",
+          "external": "External restriction",
+          "unknown": "Unknown restriction",
+          "mission_abandoned": "Mowing mission abandoned",
+          "no_daylight": "Waiting for daylight"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Protocol code"
+          }
+        }
+      },
       "restriction_reason": {
         "name": "Restriction reason code"
       },

@@ -49,6 +49,7 @@ class FirmwareProfile:
     legacy_aim_maps: int = 0
     mission_schedule: int = 0
     target_height_status: int = 0
+    planner_reason_9: int = 0
 
 
 @cache
@@ -148,4 +149,10 @@ def get_firmware_profile(
             result.target_height_status
             and all(profile and profile.target_height_status for profile in releases)
         ),
+        planner_reason_9=result.planner_reason_9
+        if all(
+            profile and profile.planner_reason_9 == result.planner_reason_9
+            for profile in releases
+        )
+        else 0,
     )

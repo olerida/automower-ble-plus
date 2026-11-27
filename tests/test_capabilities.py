@@ -147,6 +147,55 @@ def _entry(pin=None):
 
 
 @pytest.mark.asyncio
+async def test_planner_event_updates_named_restriction_and_keeps_raw_code(tmp_path):
+    hass = HomeAssistant(str(tmp_path))
+    entry = _entry()
+    entry.runtime_data = coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    reason = Command(4658, 0)
+    next_start = Command(4658, 1)
+    client.values[reason, b""] = b"\1"
+    client.values[next_start, b""] = U32.pack(1800000000)
+    client.values[Command(4658, 8), b""] = b""
+    try:
+        await coordinator._async_setup()
+        coordinator.async_set_updated_data(await coordinator._async_update_data())
+        entities = []
+        await sensor.async_setup_entry(hass, entry, entities.extend)
+        await coordinator.async_refresh_optional()
+        detected = {entity.key: entity for entity in entities}
+        named = detected["mowing_restriction"]
+        raw = detected["restriction_reason"]
+        assert named.native_value == "week_schedule"
+        assert raw.native_value == 1
+        assert (Command(4658, 8), b"") in client.calls
+        coordinator._async_on_event(Event(4658, 2, b"\x00\x00"))
+        assert coordinator._event_refresh_task is None
+        client.values[reason, b""] = b"\x06"
+        client.values[next_start, b""] = U32.pack(1800003600)
+        coordinator._async_on_event(Event(4658, 2, b"\x06"))
+        await coordinator._event_refresh_task
+        assert named.native_value == "frost_guard"
+        assert named.extra_state_attributes == {"code": 6}
+        assert raw.native_value == 6
+        assert coordinator.data["next_start"] == 1800003600
+        client.values[reason, b""] = b"\x09"
+        await coordinator.async_refresh_optional()
+        assert named.native_value == "unknown"
+        coordinator.firmware_profile = get_firmware_profile(
+            (31, 1), "40.14_Main-App-P22_102.14"
+        )
+        assert named.native_value == "mission_abandoned"
+        coordinator.firmware_profile = get_firmware_profile(
+            (31, 1), "40.14_Main-App-P22_24.77"
+        )
+        assert named.native_value == "no_daylight"
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("model_id", "firmware", "actual_height"),
     [

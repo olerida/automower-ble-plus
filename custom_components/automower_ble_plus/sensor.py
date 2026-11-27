@@ -32,7 +32,12 @@ from .entity import MowerEntity, MowerValueEntity, async_add_detected
 from .epos import EPOS_ENUM_OPTIONS
 from .faults import FAULT_STATES, message_description
 from .firmware import get_message_key
-from .planner import OVERRIDE_OPTIONS, PlannerOverride
+from .planner import (
+    OVERRIDE_OPTIONS,
+    RESTRICTION_OPTIONS,
+    PlannerOverride,
+    restriction_state,
+)
 from .position import GPS_NAVIGATION_STATES
 from .reference_station import SCAN_OPTIONS
 from .schedule import WeeklySchedule
@@ -185,6 +190,12 @@ async def async_setup_entry(
     async_add_detected(
         entry,
         add_entities,
+        {"restriction_reason": None},
+        lambda key, _: MowerRestrictionSensor(entry.runtime_data, "mowing_restriction"),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
         {"error_code": None},
         lambda key, _: MowerFaultSensor(entry.runtime_data, "active_fault"),
     )
@@ -237,6 +248,36 @@ class AutomowerSensor(MowerValueEntity, SensorEntity):
         )
         # The protocol reports local wall-clock time in an epoch-shaped field.
         return datetime.fromtimestamp(value, UTC).replace(tzinfo=zone)
+
+
+class MowerRestrictionSensor(MowerEntity, SensorEntity):
+    """Translate the planner restriction while preserving its raw code."""
+
+    entity_description = _description(
+        "mowing_restriction", SensorDeviceClass.ENUM, options=RESTRICTION_OPTIONS
+    )
+
+    @property
+    def _code(self) -> int | None:
+        value = self.coordinator.data.get("restriction_reason")
+        return value if isinstance(value, int) else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._code is not None
+
+    @property
+    def native_value(self) -> str | None:
+        code = self._code
+        if code is None:
+            return None
+        profile = self.coordinator.firmware_profile
+        return restriction_state(code, profile.planner_reason_9 if profile else 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, int] | None:
+        code = self._code
+        return {"code": code} if code is not None else None
 
 
 class PlannerOverrideSensor(MowerEntity, SensorEntity):

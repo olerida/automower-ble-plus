@@ -10,7 +10,7 @@ The APK contains 166 TIF files for firmware variants. An operation name in a TIF
 | --- | --- | --- |
 | Battery and charging | 4106 | Readings available |
 | Activity, status, pause and start | 4586 | Includes manual start in the secondary area |
-| Next start, restrictions and schedule overrides | 4658 | Readings and one-off actions. Override status, duration and area when reported |
+| Next start, restrictions and schedule overrides | 4658 | Named restrictions, one-off actions, override status, duration and area when reported, and BLE event updates |
 | Weekly schedule | 4690 | Read and edit in Home Assistant Calendar and through actions. Writes use a transaction with readback |
 | Schedule clock | 4690, 6746 | Local time, synchronization button and automatic correction according to device capabilities |
 | Identification and firmware version | 4698 | Model, serial number and firmware version. Read and write the name stored on the mower |
@@ -139,6 +139,8 @@ The app represents calendar time as Unix seconds plus the local time zone offset
 The app writes the name through `System.UserMowerName` over Bluetooth (`ev_e4c99838bbd1878d65a103f78938bbf99194f47d3292567b7210740d73e308c3`, `ev_82bf8daa76c7ae5c8502918cbccfe8a24ad42da5fc944745ac6dd2663cddf190`). TIF files declare either 21 UCS-2 characters or the equivalent 42 bytes. The APK normalizer treats both definitions as the same field (`ev_ae9506ff742d4dd98f90cf8c87839c029cb93cc0976e0da6f04e712c8c7ab708`). The integration writes UTF-16 little endian and reads the value back.
 
 The app dashboard reads `Planner.Override` and distinguishes idle, forced parking and forced mowing (`ev_3d16e35a3dfb00f1b52903cd7c2a22d53227cdcff92e49e6788753cb9e90d066`, `ev_3f05db139f47c3f7e0ec7b763e6418244726d754f199270cce1284a3ae3d27ef`). Its decoder reads the duration and optional mission ID (`ev_b87399fe3eb9c2ef4d3e8572457febdc66d337dc00317d8cf7fc426c903b3a4c`). The 420 profile declares the 9-byte layout. Firmware with missions can return 13 bytes.
+
+REA identified the app's Planner restriction enum and its repository read (`ev_9bcb47488360fa13f53337a4d79de65567421e06bb473e3fed03fda9149f581c`, `ev_8c42fa453984dcceb80414bc22c2427976bfb9a6d36d00e223f88870c6066a89`). The TIF files agree on reasons 0 through 8 where declared. Code 9 can mean an abandoned mission or insufficient daylight. Home Assistant interprets that code using the identified firmware and preserves unknown numeric codes. `Planner.SubscribeAllEvents` (4658:8) reports override, next start and restriction updates as events 0, 1 and 2. The integration accepts the 9- and 13-byte override layouts, checks event lengths and reads a fresh Planner snapshot.
 
 All 166 TIF files in the APK declare `System.ResetToUserDefault` (4698:8), including the 420 G3 profile. Of those, 93 also declare `ResetToUserDefaultAndPowerCycle` (4698:42), the variant the app tries first (`ev_3315e34a67e888cc121fc53a2a3aadd14f78aedc499b01ae806cb8b11f1c6962`, `ev_ca4445d4a28a287df0278018dcd780f307dca925fdf955917a0a0aadc1a0ea0e`, `ev_5d3465520c1d1a5631e05219eb24c5832679dc24b2a7a813971ab2f59742e0dc`). Home Assistant selects the variant by firmware and reports an unconfirmed outcome if the connection drops before a valid response. Reloading reads the configuration again. [Husqvarna reset guide](https://www.husqvarna.com/us/support/articles/how-to-restart-or-reset-your-automower-robotic-lawn-mower-ka-01096/)
 

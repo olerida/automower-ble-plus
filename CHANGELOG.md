@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.35.0
+
+- **Mowing restriction** explains why the mower is waiting, including a parking override, Frost Guard, the weekly schedule or the daily operating limit.
+- When the mower sends Planner notifications, Home Assistant refreshes the restriction, next start time and active override.
+
 ## v0.34.0
 
 - View whether TargetHeight is actively lowering the cutting height on a supported mower. The diagnostic includes timing when the firmware reports it.

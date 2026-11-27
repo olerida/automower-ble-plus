@@ -4,12 +4,42 @@ from dataclasses import dataclass
 from struct import Struct
 
 from .transport import AutomowerClient
-from .wire import Command
+from .wire import Command, Event
 
 _GET_OVERRIDE = Command(4658, 2)
 _OVERRIDE = Struct("<BII")
 _OVERRIDE_WITH_MISSION = Struct("<BIII")
 OVERRIDE_OPTIONS = ("inactive", "forced_park", "forced_mow")
+PLANNER_EVENTS = Command(4658, 8)
+_COMMON_RESTRICTIONS = (
+    "none",
+    "week_schedule",
+    "park_override",
+    "sensor",
+    "daily_limit",
+    "firmware_update",
+    "frost_guard",
+    "all_missions_completed",
+    "external",
+)
+_REASON_9_OPTIONS = ("unknown", "mission_abandoned", "no_daylight")
+RESTRICTION_OPTIONS = (*_COMMON_RESTRICTIONS, *_REASON_9_OPTIONS)
+
+
+def restriction_state(code: int, reason_9: int) -> str:
+    """Interpret the code shared by the mower app and the TIF enum."""
+    if 0 <= code < len(_COMMON_RESTRICTIONS):
+        return _COMMON_RESTRICTIONS[code]
+    return _REASON_9_OPTIONS[reason_9] if code == 9 else "unknown"
+
+
+def is_planner_update(event: Event) -> bool:
+    """Recognize both override layouts and the two scalar Planner events."""
+    return event.family == PLANNER_EVENTS.family and len(event.payload) in {
+        0: (_OVERRIDE.size, _OVERRIDE_WITH_MISSION.size),
+        1: (4,),
+        2: (1,),
+    }.get(event.event_id, ())
 
 
 @dataclass(frozen=True, slots=True)

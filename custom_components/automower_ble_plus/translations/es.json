@@ -661,6 +661,28 @@
       "error_code": {
         "name": "Código de error"
       },
+      "mowing_restriction": {
+        "name": "Motivo de restricción del corte",
+        "state": {
+          "none": "Sin restricción",
+          "week_schedule": "Fuera del horario semanal",
+          "park_override": "Aparcamiento forzado",
+          "sensor": "Restricción de un sensor",
+          "daily_limit": "Límite diario de funcionamiento",
+          "firmware_update": "Actualización de firmware",
+          "frost_guard": "Protección contra heladas",
+          "all_missions_completed": "Todas las áreas de trabajo completadas",
+          "external": "Restricción externa",
+          "unknown": "Restricción desconocida",
+          "mission_abandoned": "Misión de corte abandonada",
+          "no_daylight": "En espera de luz diurna"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Código del protocolo"
+          }
+        }
+      },
       "restriction_reason": {
         "name": "Código de motivo de restricción"
       },

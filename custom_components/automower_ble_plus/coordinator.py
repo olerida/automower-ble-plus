@@ -153,7 +153,12 @@ from .mapfiles import (
 )
 from .models import DEFAULT_MAP_PATH_WIDTH_MINIMUM, MAP_PATH_WIDTH_MINIMUMS
 from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
-from .planner import PlannerOverride, async_read_planner_override
+from .planner import (
+    PLANNER_EVENTS,
+    PlannerOverride,
+    async_read_planner_override,
+    is_planner_update,
+)
 from .position import (
     GPS_COORDINATE_KEYS,
     GPS_POSITION_EVENTS,
@@ -319,6 +324,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._aim_refresh_pending = False
         self._aim_map_requested_until = 0.0
         self._calendar_time: int | None = None
+        self._planner_refresh_pending = False
         self.wire_test: WireTest | None = None
         self._reference_scan: ReferenceScan | None = None
         self._reference_scan_task: asyncio.Task[None] | None = None
@@ -522,6 +528,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 self._calendar_time = U32.unpack(event.payload)[0]
             self._calendar_update_pending = True
             self._async_schedule_event_refresh()
+        elif is_planner_update(event):
+            self._planner_refresh_pending = True
+            self._async_schedule_event_refresh()
         elif self.wire_test is not None and self.wire_test.handle_event(event):
             self._async_schedule_event_refresh()
         elif event.family == _MOWER_EVENTS.family and event.event_id in (1, 2, 3):
@@ -577,6 +586,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         await self.async_request_refresh()
         if (
             self._calendar_update_pending
+            or self._planner_refresh_pending
             or self._map_refresh_pending
             or self._connect_refresh_pending
             or self._epos_refresh_pending
@@ -617,13 +627,16 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._aim_refresh_pending = bool(AIM_KEYS & (self.data or {}).keys())
         if self.data and "weekly_schedule" in self.data:
             self._calendar_update_pending = True
+        self._planner_refresh_pending = bool(
+            self.data and {"restriction_reason", "next_start"} & self.data.keys()
+        )
 
     async def _async_subscribe_events(self) -> None:
         profile = self.firmware_profile
         commands = (
-            (_MOWER_EVENTS, _CALENDAR_EVENTS)
+            (_MOWER_EVENTS, _CALENDAR_EVENTS, PLANNER_EVENTS)
             if profile is not None and not profile.message_events
-            else (_MOWER_EVENTS, _CALENDAR_EVENTS, _MESSAGE_EVENTS)
+            else (_MOWER_EVENTS, _CALENDAR_EVENTS, PLANNER_EVENTS, _MESSAGE_EVENTS)
         )
         if self.data and "appdrive_state" in self.data:
             commands += (APPDRIVE_EVENTS,)
@@ -785,6 +798,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 )
                 if self._calendar_update_pending and self.client.is_connected():
                     await self._async_refresh_calendar(data)
+                if self._planner_refresh_pending and self.client.is_connected():
+                    await self._async_refresh_planner(data)
                 if self._connect_refresh_pending and self.client.is_connected():
                     self._connect_refresh_pending = False
                     with suppress(CommandRejected, MowerConnectionError):
@@ -826,6 +841,23 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         return reading.decode(
             await self.client.command(reading.command, reading.arguments)
         )
+
+    async def _async_refresh_planner(self, data: MowerData) -> None:
+        self._planner_refresh_pending = False
+        for key in ("restriction_reason", "next_start"):
+            if key in self._unsupported:
+                continue
+            try:
+                data[key] = await self._read(READINGS[key])
+            except CommandRejected as err:
+                if err.unsupported:
+                    self._unsupported.add(key)
+                data.pop(key, None)
+            except ValueError:
+                data.pop(key, None)
+            except MowerConnectionError:
+                self._planner_refresh_pending = True
+                return
 
     async def _async_refresh_calendar(self, data: MowerData) -> None:
         self._calendar_update_pending = False

@@ -4,6 +4,7 @@ A Home Assistant integration for Husqvarna Automower robotic lawn mowers that su
 
 ## Highlights
 
+- **v0.35** · See why the mower is waiting and receive updates when its next start time changes.
 - **v0.34** · See TargetHeight progress, the current cutting height and GPS-assisted navigation status where reported by the mower.
 - **v0.33** · Edit weekly work area schedules from **Automower Maps** on compatible models.
 - **v0.32** · Add an all-day schedule when you create a compatible work area in **Automower Maps**.
@@ -40,6 +41,7 @@ Compatible mowers also expose spiral cutting and its intensity, along with any t
 - On models that report Wi-Fi support, open **Configure → Wi-Fi networks** to scan from the mower, join a network or manage saved networks. The mower saves the credentials and confirms the connection over Bluetooth. Its device page also shows a Wi-Fi switch, connection status and signal strength.
 - When the mower reports an **Automower Connect** module, Home Assistant shows its status, SIM errors and signal strength as a percentage. On a 420, configure the mower PIN to enable or disable the module from the device page. Firmware that accepts the change without an extra PIN exposes the switch when the module is detected.
 - **Schedule override** shows whether a mowing or parking override is active. Its attributes include the requested duration and the work area ID when the firmware reports it.
+- **Mowing restriction** shows why the mower is waiting, such as the weekly schedule, a parking override, the daily operating limit or Frost Guard. It updates when the mower sends Planner notifications. The **Restriction reason** sensor retains its numeric code for existing automations. [Husqvarna schedule troubleshooting](https://www.husqvarna.com/uk/support/automower-robotic-lawn-mower-not-following-scheduled-cutting-times-ka-01506/)
 - On models with GPS, enable **Mower position** on the device page to show the mower on the Home Assistant map, with BLE updates every 30 seconds. The `get_position` action reads GPS and, on compatible firmware, installation coordinates, geographic origin, heading and accuracy.
 - When a mower provides maps over BLE, its device page shows the available **Installation map**, **Generated lawn map** or **Zone map**. You can add these images to a Home Assistant dashboard. Green marks work areas, red marks stay-out zones, blue marks transport paths and yellow marks the charging station. `get_zone_map` returns zone map geometry. [Home Assistant image entities](https://contributors.home-assistant.io/core/entities/image/)
 - **Automower Maps** appears in the sidebar when a mower has compatible maps. Select a map and an item to edit it. Add points on the map, drag them or enter coordinates. If the mower reports its local position, you can capture a point directly from the mower. The panel shows the actions supported by each map and checks the map revision before saving.
