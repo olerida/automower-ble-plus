@@ -129,6 +129,8 @@ from .identity import (
     encode_mower_name,
 )
 from .map_features import (
+    CREATABLE_MAP_TYPES,
+    MAX_PATH_WIDTH,
     add_map_feature,
     describe_map_features,
     has_parking_destination,
@@ -2164,6 +2166,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         )
                     )
                 )
+                site_work_areas = False
+                if kind is MapKind.SITE and can_create:
+                    with suppress(CommandRejected, StructError):
+                        site_work_areas = await async_work_areas_available(
+                            self.client, allow_legacy=False
+                        )
             except (
                 MowerConnectionError,
                 CommandRejected,
@@ -2189,6 +2197,20 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     if zone_work_areas
                     else ["stay_out_zone"]
                 )
+            elif kind is MapKind.SITE and can_create:
+                profile = self.firmware_profile
+                creatable = list(CREATABLE_MAP_TYPES)
+                if not site_work_areas:
+                    creatable.remove("work_area")
+                if not (profile and profile.park_at_poi) or any(
+                    feature["type"] == "poi_path" for feature in features
+                ):
+                    creatable.remove("poi_path")
+                response["creatable_types"] = creatable
+                response["path_width_limits_mm"] = {
+                    "min": self._map_path_min_width,
+                    "max": MAX_PATH_WIDTH,
+                }
         return response
 
     async def async_map_preview(self, kind: MapKind) -> bytes | None:

@@ -21,6 +21,7 @@ from .map_features import (
     MIN_COORDINATE,
 )
 from .mapfiles import MapKind
+from .maps_panel import async_attach_maps_panel, async_setup_maps_panel
 from .schedule import WEEKDAYS
 from .work_areas import (
     AREA_ASSISTANCE_BOOLEAN_SETTINGS,
@@ -207,6 +208,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             else SupportsResponse.NONE,
         )
     await async_setup_appdrive_panel(hass)
+    await async_setup_maps_panel(hass)
     return True
 
 
@@ -226,6 +228,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MowerEntry) -> None:
         raise
 
     async_attach_appdrive_panel(hass, entry)
+    async_attach_maps_panel(hass, entry)
 
     entry.async_on_unload(
         async_track_time_interval(

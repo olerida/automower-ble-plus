@@ -91,6 +91,8 @@ def describe_map_features(
             "editable": editable,
             "points": _points(shape),
         }
+        if feature_type == "unknown":
+            feature["geometry_type"] = shape.tag.removeprefix(SVG_NAMESPACE)
         if (width := shape.get("stroke-width")) is not None:
             try:
                 feature["width_mm"] = int(width)

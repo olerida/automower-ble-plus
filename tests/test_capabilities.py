@@ -45,6 +45,7 @@ from custom_components.automower_ble_plus import (
     calendar,
     device_tracker,
     diagnostics,
+    maps_panel,
     mower_clock,
     number,
     select,
@@ -1329,6 +1330,72 @@ async def test_appdrive_panel_permissions_and_websocket_disconnect(tmp_path):
     )
     coordinator.async_set_updated_data({})
     assert not frontend.async_panel_exists(hass, "automower-appdrive")
+
+
+@pytest.mark.asyncio
+async def test_maps_panel_tracks_map_capabilities_and_permissions(tmp_path):
+    hass = HomeAssistant(str(tmp_path))
+    hass.config.components.add("frontend")
+    hass.http = Mock(async_register_static_paths=AsyncMock())
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    await maps_panel.async_setup_maps_panel(hass)
+    assert Path(
+        hass.http.async_register_static_paths.await_args.args[0][0].path
+    ).is_file()
+    entry = _entry()
+    entry.runtime_data = coordinator = MowerCoordinator(hass, entry)
+    coordinator.firmware_profile = get_firmware_profile((5, 0), "App-G3_devicetype-5.0")
+    coordinator.async_set_updated_data({})
+    registry = entity_registry.async_get(hass)
+    entity = registry.async_get_or_create(
+        "lawn_mower", DOMAIN, f"{coordinator.address}_mower"
+    )
+    maps_panel.async_attach_maps_panel(hass, entry)
+    await hass.async_block_till_done()
+    assert not frontend.async_panel_exists(hass, "automower-maps")
+
+    coordinator.firmware_profile = get_firmware_profile(
+        (28, 2), "40.3_Main-App-P16_81.4"
+    )
+    coordinator.async_set_updated_data(
+        {"map_generated_preview": "generation-1", "aim_enabled": 1, "aim_map_state": 2}
+    )
+    await hass.async_block_till_done()
+    assert frontend.async_panel_exists(hass, "automower-maps")
+    messages = []
+
+    def record(message):
+        messages.append(
+            json.loads(message) if isinstance(message, (str, bytes)) else message
+        )
+
+    user = Mock()
+    user.permissions.check_entity.return_value = False
+    connection = websocket_api.ActiveConnection(Mock(), hass, record, user, None, None)
+    connection.async_handle({"id": 1, "type": f"{DOMAIN}/maps_list"})
+    assert messages[-1]["result"] == []
+    user.permissions.check_entity.return_value = True
+    connection.async_handle({"id": 2, "type": f"{DOMAIN}/maps_list"})
+    assert messages[-1]["result"] == [
+        {
+            "entity_id": entity.entity_id,
+            "name": entry.title,
+            "maps": ["generated", "zones"],
+        }
+    ]
+    coordinator.async_set_updated_data({})
+    connection.async_handle({"id": 3, "type": f"{DOMAIN}/maps_list"})
+    assert messages[-1]["result"] == []
+    assert not frontend.async_panel_exists(hass, "automower-maps")
+    await hass.async_stop(force=True)
 
 
 @pytest.mark.asyncio
