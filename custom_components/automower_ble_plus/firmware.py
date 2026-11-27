@@ -47,6 +47,7 @@ class FirmwareProfile:
     zone_map_writable: int = 0
     aim_work_areas: int = 0
     legacy_aim_maps: int = 0
+    mission_schedule: int = 0
 
 
 @cache
@@ -137,5 +138,9 @@ def get_firmware_profile(
         legacy_aim_maps=int(
             result.legacy_aim_maps
             and all(profile and profile.legacy_aim_maps for profile in releases)
+        ),
+        mission_schedule=int(
+            result.mission_schedule
+            and all(profile and profile.mission_schedule for profile in releases)
         ),
     )

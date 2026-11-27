@@ -537,6 +537,10 @@ create_map_feature:
       required: true
       selector:
         object:
+    schedule_full_day:
+      default: false
+      selector:
+        boolean:
     width_mm:
       selector:
         number:

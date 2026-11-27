@@ -21,6 +21,9 @@ const COPY = {
     unavailable: "The mower has no map of this type yet.", failed: "The mower did not confirm the request.",
     add: "Add feature", type: "Feature type", name: "Name", width: "Width (mm)",
     enabled: "Enabled", geometry: "Edit outline", settings: "Edit settings", remove: "Delete",
+    fullDay: "Allow mowing all day, every day",
+    scheduleSaved: "Area created and its all-day schedule saved.",
+    scheduleUnconfirmed: "Area created. Check its schedule in Calendar before trying again.",
     save: "Save", cancel: "Cancel", fit: "Fit map", zoomIn: "Zoom in", zoomOut: "Zoom out",
     point: "Point", addPoint: "Add point", removePoint: "Remove point",
     usePosition: "Use mower position", points: "Points (mm)", metre: "m",
@@ -41,6 +44,9 @@ const COPY = {
     failed: "El cortacésped no ha confirmado la solicitud.", add: "Añadir elemento",
     type: "Tipo de elemento", name: "Nombre", width: "Anchura (mm)", enabled: "Activado",
     geometry: "Editar contorno", settings: "Editar ajustes", remove: "Eliminar",
+    fullDay: "Permitir el corte a cualquier hora, todos los días",
+    scheduleSaved: "Área creada y horario de día completo guardado.",
+    scheduleUnconfirmed: "Área creada. Comprueba su horario en Calendario antes de volver a intentarlo.",
     save: "Guardar", cancel: "Cancelar", fit: "Ajustar mapa", zoomIn: "Acercar", zoomOut: "Alejar",
     point: "Punto", addPoint: "Añadir punto", removePoint: "Quitar punto",
     usePosition: "Usar posición del robot", points: "Puntos (mm)", metre: "m",
@@ -153,8 +159,8 @@ class AutomowerMaps extends HTMLElement {
         .point { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.24rem; align-items: center; }
         .point input { width: 100%; height: 2rem; padding: 0.25rem; font-variant-numeric: tabular-nums; }
         .point button { padding-inline: 0.45rem; }
-        #enabled-field { display: flex; flex-direction: row; align-items: center; }
-        #enabled-field input { min-height: auto; accent-color: var(--accent); }
+        .checkbox { display: flex; flex-direction: row; align-items: center; }
+        .checkbox input { min-height: auto; accent-color: var(--accent); }
         dialog { max-width: min(28rem, 90vw); border: 1px solid var(--line); border-radius: 8px;
           background: var(--surface); color: inherit; padding: 1.25rem; }
         dialog::backdrop { background: #14221c80; }
@@ -206,7 +212,8 @@ class AutomowerMaps extends HTMLElement {
               <label id="type-field"><span data-text="type"></span><select id="type"></select></label>
               <label id="name-field"><span data-text="name"></span><input id="name" type="text"></label>
               <label id="width-field"><span data-text="width"></span><input id="width" type="number" step="1"></label>
-              <label id="enabled-field"><input id="enabled" type="checkbox"><span data-text="enabled"></span></label>
+              <label id="enabled-field" class="checkbox"><input id="enabled" type="checkbox"><span data-text="enabled"></span></label>
+              <label id="full-day-field" class="checkbox"><input id="full-day" type="checkbox"><span data-text="fullDay"></span></label>
               <div id="geometry-fields">
                 <p id="editor-note" data-text="draw"></p>
                 <div class="actions">
@@ -396,7 +403,7 @@ class AutomowerMaps extends HTMLElement {
     return result.response[entityId];
   }
 
-  async _loadMap(selectedId = null, note = "") {
+  async _loadMap(selectedId = null, note = "", noteIsWarning = false) {
     const kind = this.ui.maps.value;
     if (!this.mower || !kind || this.busy) return;
     const sequence = ++this.sequence;
@@ -436,7 +443,7 @@ class AutomowerMaps extends HTMLElement {
       }
       if (!this.isConnected || sequence !== this.sequence) return;
       this._fit();
-      this._status(note || (map.available || map.can_create ? "" : this.copy.unavailable));
+      this._status(note || (map.available || map.can_create ? "" : this.copy.unavailable), noteIsWarning);
     } catch (error) {
       if (this.isConnected && sequence === this.sequence) {
         this._status([note, error.message || this.copy.failed].filter(Boolean).join(" "), true);
@@ -532,6 +539,7 @@ class AutomowerMaps extends HTMLElement {
     ui.width.max = limits.max;
     ui.width.value = mode === "add" ? limits.min : this.selected.width_mm ?? limits.min;
     ui.enabled.checked = mode === "add" || this.selected.enabled;
+    ui["full-day"].checked = false;
     this._status("");
     this._toggleEditorFields();
     this._renderPoints();
@@ -547,6 +555,9 @@ class AutomowerMaps extends HTMLElement {
     this.ui["width-field"].hidden = mode === "add"
       ? !LINE_TYPES.has(this.draft.type) : mode !== "settings" || !fields.includes("width_mm");
     this.ui["enabled-field"].hidden = mode !== "settings" || !fields.includes("enabled");
+    const canSchedule = mode === "add" && this.draft.type === "work_area" && this.map.can_schedule_full_day;
+    this.ui["full-day-field"].hidden = !canSchedule;
+    if (!canSchedule) this.ui["full-day"].checked = false;
     this.ui["geometry-fields"].hidden = mode === "settings";
     this._renderActions();
     this._draw();
@@ -637,6 +648,7 @@ class AutomowerMaps extends HTMLElement {
     } else {
       const fields = { feature_type: draft.type, name: ui.name.value.trim(), points: draft.points };
       if (!ui["width-field"].hidden) fields.width_mm = ui.width.valueAsNumber;
+      if (!ui["full-day-field"].hidden && ui["full-day"].checked) fields.schedule_full_day = true;
       await this._write("create_map_feature", fields);
     }
   }
@@ -653,7 +665,10 @@ class AutomowerMaps extends HTMLElement {
       const result = await this._action(service, { ...fields, ...revision });
       if (!this.isConnected || sequence !== this.sequence) return;
       this.busy = false;
-      await this._loadMap(result.feature_id, this.copy.saved);
+      const scheduleUnconfirmed = result.schedule_confirmed === false;
+      const note = scheduleUnconfirmed ? this.copy.scheduleUnconfirmed
+        : result.schedule_confirmed === true ? this.copy.scheduleSaved : this.copy.saved;
+      await this._loadMap(result.feature_id, note, scheduleUnconfirmed);
     } catch (error) {
       if (this.isConnected && sequence === this.sequence) {
         this.busy = false;

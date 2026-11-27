@@ -46,6 +46,7 @@ def test_exact_release_precedes_family_and_unknown_versions_stay_unknown():
         boundary_corridor_read=24,
         wire_test_states="idle in_operation done error aborted",
         reset_user_settings=8,
+        mission_schedule=1,
     )
     assert get_firmware_profile((26, 1), "40.1_Main-App-P25_other") == FirmwareProfile(
         600,
@@ -62,6 +63,7 @@ def test_exact_release_precedes_family_and_unknown_versions_stay_unknown():
         boundary_corridor_read=24,
         passage_cutting_read=26,
         reset_user_settings=8,
+        mission_schedule=1,
     )
     assert get_firmware_profile((5, 0), "999.1_Main-App-Unrecognized") is None
 

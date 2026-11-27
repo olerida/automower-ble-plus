@@ -1,7 +1,7 @@
 """Read the Calendar schedules carried by the mower's BLE API."""
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import time
 from struct import Struct
@@ -61,6 +61,13 @@ class ScheduleTask:
             tuple(int(day in weekdays) for day in WEEKDAYS),
             mission_id,
         )
+
+    @classmethod
+    def full_week(cls, mission_id: int) -> "ScheduleTask":
+        """Allow mowing this mission at any time of the week."""
+        if mission_id <= 0:
+            raise ValueError("An all-day work area needs a dedicated mission ID")
+        return cls(0, _SECONDS_PER_DAY, (1,) * len(WEEKDAYS), mission_id)
 
     def as_response(self) -> dict:
         hour, remainder = divmod(self.start, 3600)
@@ -142,7 +149,10 @@ async def async_get_schedule_limits(client: AutomowerClient) -> tuple[int, int]:
 
 
 async def async_replace_schedule(
-    client: AutomowerClient, tasks: Sequence[ScheduleTask]
+    client: AutomowerClient,
+    tasks: Sequence[ScheduleTask],
+    *,
+    confirm_context: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     """Write a complete schedule in the mower's Calendar transaction."""
     maximum, per_day = await async_get_schedule_limits(client)
@@ -165,6 +175,8 @@ async def async_replace_schedule(
         )
     # Serialize the complete batch before opening the transaction.
     commands = [task.encode() for task in tasks]
+    if confirm_context is not None:
+        await confirm_context()
     await client.command(_BEGIN)
     committed = False
     try:
@@ -179,3 +191,5 @@ async def async_replace_schedule(
     actual = await async_get_schedule(client, maximum=maximum)
     if Counter(actual) != Counter(tasks):
         raise ValueError("The readback differs from the schedule sent to the mower")
+    if confirm_context is not None:
+        await confirm_context()

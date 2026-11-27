@@ -1,5 +1,10 @@
 # Novedades de Automower BLE Plus
 
+## v0.32.0
+
+- Al crear un área en **Automower Maps**, puedes permitir el corte a cualquier hora, todos los días. La opción aparece en modelos que admiten horarios por área y se activa de forma explícita.
+- El calendario conserva las franjas existentes. Si el robot confirma el área pero se pierde la confirmación del horario, el panel muestra el área creada y avisa de que revises el calendario.
+
 ## v0.31.0
 
 - Consulta el mapa generado y las zonas AIM en seis versiones antiguas de firmware, incluidas versiones de los Automower 405X y 415X. Los mapas se muestran en las entidades de imagen y en **Automower Maps** con acceso de solo lectura.

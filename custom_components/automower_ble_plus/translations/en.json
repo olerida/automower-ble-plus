@@ -1393,6 +1393,10 @@
           "name": "Name",
           "description": "New feature name."
         },
+        "schedule_full_day": {
+          "name": "Allow mowing all day, every day",
+          "description": "Add a 24-hour interval for the new work area on every day of the week. Existing intervals are preserved."
+        },
         "points": {
           "name": "Points",
           "description": "Ordered list of points with signed integer x_mm and y_mm coordinates."

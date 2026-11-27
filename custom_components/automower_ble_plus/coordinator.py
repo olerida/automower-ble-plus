@@ -2218,6 +2218,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     "min": self._map_path_min_width,
                     "max": MAX_PATH_WIDTH,
                 }
+        if "work_area" in response.get("creatable_types", ()):
+            response["can_schedule_full_day"] = bool(
+                self.firmware_profile and self.firmware_profile.mission_schedule
+            )
         return response
 
     async def async_map_preview(self, kind: MapKind) -> bytes | None:
@@ -3222,6 +3226,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         width_mm: int | None,
         *,
         kind: MapKind = MapKind.SITE,
+        schedule_full_day: bool = False,
     ) -> dict:
         """Add geometry and link a mowing mission when adding a work area."""
         async with self._async_map_revision(
@@ -3230,6 +3235,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             kind=kind,
             allow_unavailable=True,
         ) as old_svg:
+            if schedule_full_day and (
+                feature_type != "work_area"
+                or not (
+                    self.firmware_profile and self.firmware_profile.mission_schedule
+                )
+            ):
+                raise ValueError(
+                    "This feature does not support a full-day mowing schedule"
+                )
             feature_id = str(uuid4())
             zone_work_areas = await self._async_zone_work_areas(kind)
             svg = await self.hass.async_add_executor_job(
@@ -3310,7 +3324,44 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     raise ValueError(
                         f"Check polygon {feature_id} and its mission after the interrupted creation: {err}"
                     ) from err
+                if schedule_full_day:
+                    try:
+                        await self._async_schedule_new_work_area(
+                            result["mission_id"], expected_installation_id
+                        )
+                    except (
+                        CommandRejected,
+                        MowerConnectionError,
+                        ValueError,
+                        StructError,
+                    ) as err:
+                        # The area was already confirmed. The schedule commit may have succeeded.
+                        self._calendar_update_pending = True
+                        self._async_schedule_event_refresh()
+                        result.update(schedule_confirmed=False, schedule_error=str(err))
+                    else:
+                        result["schedule_confirmed"] = True
             return result
+
+    async def _async_schedule_new_work_area(
+        self, mission_id: int, installation_id: int | None
+    ) -> None:
+        """Append an all-day interval to a fresh schedule under the map lock."""
+        confirm = partial(self._async_confirm_map_installation, installation_id)
+        await confirm()
+        current = await async_get_weekly_schedule(
+            self.client, self.hass.config.time_zone
+        )
+        interval = ScheduleTask.full_week(mission_id)
+        tasks = current.tasks
+        if interval not in tasks:
+            tasks = (*tasks, interval)
+            await async_replace_schedule(self.client, tasks, confirm_context=confirm)
+        else:
+            await confirm()
+        self.async_set_updated_data(
+            {**(self.data or {}), "weekly_schedule": replace(current, tasks=tasks)}
+        )
 
     async def async_delete_map_feature(
         self,

@@ -1393,6 +1393,10 @@
           "name": "Nombre",
           "description": "Nombre del nuevo elemento."
         },
+        "schedule_full_day": {
+          "name": "Permitir el corte a cualquier hora, todos los días",
+          "description": "Añade una franja de 24 horas para la nueva área de trabajo cada día de la semana. Conserva las franjas existentes."
+        },
         "points": {
           "name": "Puntos",
           "description": "Lista ordenada de puntos con coordenadas enteras x_mm e y_mm."

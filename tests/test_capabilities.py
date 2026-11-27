@@ -3026,8 +3026,11 @@ async def test_read_legacy_aim_maps_through_home_assistant(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "schedule_result", ["default", "confirmed", "capacity", "lost_ack"]
+)
 async def test_edit_aim_zones_and_work_areas_through_home_assistant(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, schedule_result
 ):
     integrations = Path(__file__).resolve().parents[1] / "custom_components"
     (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
@@ -3073,7 +3076,10 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
     total, checksum, transaction = 0, 0, 0
     work_area = {}
     refuse_mission = False
-    scheduled = False
+    lawn_interval = pack("<II7B", 3600, 1800, 1, 0, 0, 0, 0, 0, 0)
+    area_interval = pack("<II7BI", 0, 86400, *([1] * 7), 12)
+    schedule = [lawn_interval]
+    pending_schedule = []
     send = client.command
 
     async def command(operation, payload=b""):
@@ -3135,11 +3141,23 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
                     return b""
                 case 38:
                     return U32.pack(5)
-        if operation == Command(4690, 4):
-            return U32.pack(scheduled)
-        if operation == Command(4690, 5):
-            assert payload == U32.pack(0)
-            return pack("<II7BI", 3600, 1800, 1, 0, 0, 0, 0, 0, 0, 12)
+        if operation.family == 4690:
+            match operation.operation:
+                case 4:
+                    return U32.pack(len(schedule))
+                case 5:
+                    return schedule[U32.unpack(payload)[0]]
+                case 9 | 10:
+                    pending_schedule.clear()
+                    return b""
+                case 7 | 16:
+                    pending_schedule.append(payload)
+                    return b""
+                case 11:
+                    schedule[:] = pending_schedule
+                    if schedule_result == "lost_ack":
+                        raise MowerConnectionError("Schedule saved but reply was lost")
+                    return b""
         return await send(operation, payload)
 
     monkeypatch.setattr(client, "command", command)
@@ -3163,6 +3181,7 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
             baseline = await map_action("get_map_features")
             assert baseline["features"] == []
             assert baseline["creatable_types"] == ["stay_out_zone"]
+            assert "can_schedule_full_day" not in baseline
             points = [
                 {"x_mm": 0, "y_mm": 0},
                 {"x_mm": 1000, "y_mm": 0},
@@ -3172,6 +3191,15 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
                 "expected_checksum": baseline["checksum"],
                 "expected_installation_id": baseline["installation_id"],
             }
+            with pytest.raises(HomeAssistantError, match="does not support a full-day"):
+                await map_action(
+                    "create_map_feature",
+                    **revision,
+                    feature_type="stay_out_zone",
+                    name="Flores",
+                    points=points,
+                    schedule_full_day=True,
+                )
             created = await map_action(
                 "create_map_feature",
                 **revision,
@@ -3211,10 +3239,13 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
             assert (await map_action("get_map_features"))["features"] == []
             assert len(uploads) == 4
             client.values[Command(5604, 20), b""] = b"\1"
-            client.values[Command(4690, 14), b""] = U32.pack(8)
+            client.values[Command(4690, 14), b""] = U32.pack(
+                1 if schedule_result == "capacity" else 8
+            )
             client.values[Command(4690, 15), b""] = U32.pack(4)
             empty = await map_action("get_map_features")
             assert empty["creatable_types"] == ["work_area", "stay_out_zone"]
+            assert empty["can_schedule_full_day"]
             new_area = {
                 "expected_checksum": empty["checksum"],
                 "expected_installation_id": empty["installation_id"],
@@ -3230,9 +3261,25 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
                 "checksum"
             ]
             refuse_mission = False
+            if schedule_result != "default":
+                new_area["schedule_full_day"] = True
             area = await map_action("create_map_feature", **new_area)
             assert area["mission_id"] == 12
             assert area["mowing_area_id"] == area["feature_id"]
+            if schedule_result == "default":
+                assert "schedule_confirmed" not in area
+                assert schedule == [lawn_interval]
+            elif schedule_result == "capacity":
+                assert area["schedule_confirmed"] is False
+                assert "at most" in area["schedule_error"]
+                assert schedule == [lawn_interval]
+            else:
+                assert area["schedule_confirmed"] is (schedule_result == "confirmed")
+                assert schedule == [lawn_interval, area_interval]
+                if schedule_result == "confirmed":
+                    calendar = entry.runtime_data.data["weekly_schedule"]
+                    assert calendar.tasks[-1].mission_id == 12
+                    assert calendar.tasks[-1].duration == 86400
             areas = await entry.runtime_data.async_read_work_areas(0, 20)
             assert areas["work_areas"][0]["mowing_area_id"] == area["feature_id"]
             area_edit = {
@@ -3246,11 +3293,11 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
             )
             area_edit["expected_checksum"] = edited_area["checksum"]
             assert work_area["polygon"].rstrip(b"\0").decode() == area["feature_id"]
-            scheduled = True
+            schedule[:] = [area_interval]
             with pytest.raises(HomeAssistantError, match="Remove the schedule"):
                 await map_action("delete_map_feature", **area_edit)
             assert work_area
-            scheduled = False
+            schedule[:] = [lawn_interval]
             await map_action("delete_map_feature", **area_edit)
             assert not work_area
             assert (await map_action("get_map_features"))["features"] == []

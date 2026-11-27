@@ -225,6 +225,7 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         expected_installation_id: int | None = None,
         width_mm: int | None = None,
         map_type: str = MapKind.SITE.value,
+        schedule_full_day: bool = False,
     ) -> dict:
         """Add a polygon or route to the active map."""
         return await self.coordinator.async_create_map_feature(
@@ -235,6 +236,7 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
             expected_installation_id,
             width_mm,
             kind=MapKind(map_type),
+            schedule_full_day=schedule_full_day,
         )
 
     async def async_delete_map_feature(

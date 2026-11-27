@@ -147,6 +147,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Required("name"): cv.string,
             vol.Required("points"): map_points,
             vol.Optional("width_mm"): map_width,
+            vol.Optional("schedule_full_day", default=False): cv.boolean,
         },
         "delete_map_feature": selected_feature,
         "replace_map": {

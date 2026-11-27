@@ -28,6 +28,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     epos_service_operations = {}
     epos_operations = {}
     mission_operations = {}
+    mission_schedule = 0
     map_operations = {}
     raw_operations = {}
     for method in profile.get("methods", ()):
@@ -60,6 +61,13 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             epos_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "Missions" and protocol.get("msgType") == "5604":
             mission_operations[method["command"]] = protocol.get("subCmd")
+        if (
+            method["family"] == "Calendar"
+            and method["command"] == "AddTaskWithMission"
+            and protocol.get("msgType") == "4690"
+            and protocol.get("subCmd") == "16"
+        ):
+            mission_schedule = 1
         if (
             method["family"] == "AutomowerConnect"
             and method["command"] == "SetEnabledNoPin"
@@ -397,10 +405,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         zone_map_writable,
         aim_work_areas,
         legacy_aim_maps,
+        mission_schedule,
     )
     return (
         result
-        if any(result[:-14])
+        if any(result[:-15])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -413,6 +422,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or epos_boundary_switch
         or zone_map_writable
         or legacy_aim_maps
+        or mission_schedule
         else None
     )
 
