@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
-from datetime import timedelta
+from datetime import date, time, timedelta
 from functools import partial
 from struct import error as StructError
 from time import monotonic
@@ -165,7 +165,11 @@ from .models import (
     MAP_PATH_WIDTH_MINIMUMS,
     TRAVEL_SPEED_CM_PER_SECOND,
 )
-from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
+from .mower_clock import (
+    MOWER_CLOCK,
+    async_set_mower_clock_component,
+    async_sync_mower_clock,
+)
 from .planner import (
     PLANNER_EVENTS,
     PlannerOverride,
@@ -1676,6 +1680,25 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     f"Could not synchronize the mower clock: {err}"
                 ) from err
             self.async_set_updated_data({**self.data, "mower_clock": actual})
+
+    async def async_set_clock_component(self, value: date | time) -> None:
+        """Edit the same local clock the mower uses for its schedules."""
+        async with self._operation_lock:
+            if "mower_clock" not in (self.data or {}):
+                raise HomeAssistantError(
+                    "This mower does not report its calendar clock"
+                )
+            try:
+                await self._async_connect()
+                actual = await async_set_mower_clock_component(self.client, value)
+            except (MowerConnectionError, CommandRejected, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not set the mower clock: {err}"
+                ) from err
+            self._calendar_time = None
+            self.async_set_updated_data({**self.data, "mower_clock": actual})
+            self._planner_refresh_pending = True
+            self._async_schedule_event_refresh()
 
     async def async_set_mower_name(self, name: str) -> None:
         """Store the requested name on the mower and confirm what it saved."""

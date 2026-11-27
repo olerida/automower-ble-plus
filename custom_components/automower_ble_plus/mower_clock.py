@@ -1,6 +1,6 @@
 """Read and synchronize the mower's local calendar clock."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
 from time import monotonic
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -35,6 +35,42 @@ async def async_get_mower_time_zone(client: AutomowerClient, fallback: str) -> s
     """Return the mower's zone when set, or Home Assistant's zone."""
     time_zone = await _read_time_zone(client)
     return (time_zone[0] or fallback) if time_zone else fallback
+
+
+async def _async_write_mower_clock(client: AutomowerClient, sent_time: int) -> int:
+    started = monotonic()
+    await client.command(_SET_TIME, U32.pack(sent_time))
+    actual = MOWER_CLOCK.decode(await client.command(MOWER_CLOCK.command))
+    if abs(actual - sent_time) > monotonic() - started + 2:
+        raise ValueError("The mower did not confirm the new local time")
+    return actual
+
+
+async def async_set_mower_clock_component(
+    client: AutomowerClient, value: date | time
+) -> int:
+    """Replace the requested part of the mower's local wall clock."""
+    try:
+        automatic = await client.command(_GET_AUTOMATIC_SYNC)
+    except CommandRejected as err:
+        if not err.unsupported:
+            raise
+    else:
+        if automatic == b"\x01":
+            raise ValueError("Turn off automatic clock synchronization first")
+        if automatic != b"\x00":
+            raise ValueError("The mower did not report a valid clock mode")
+    current = datetime.fromtimestamp(
+        MOWER_CLOCK.decode(await client.command(MOWER_CLOCK.command)), UTC
+    )
+    if isinstance(value, time):
+        target = datetime.combine(current.date(), value, UTC)
+    else:
+        target = datetime.combine(value, current.time(), UTC)
+    sent_time = int(target.replace(microsecond=0).timestamp())
+    if not 0 <= sent_time < 2**32:
+        raise ValueError("The selected date falls outside the mower's clock range")
+    return await _async_write_mower_clock(client, sent_time)
 
 
 async def async_sync_mower_clock(
@@ -97,9 +133,4 @@ async def async_sync_mower_clock(
         ):
             raise ValueError("The mower did not store the UTC offset")
 
-    started = monotonic()
-    await client.command(_SET_TIME, U32.pack(sent_time))
-    actual = MOWER_CLOCK.decode(await client.command(MOWER_CLOCK.command))
-    if abs(actual - sent_time) > monotonic() - started + 2:
-        raise ValueError("The mower did not confirm the new local time")
-    return actual
+    return await _async_write_mower_clock(client, sent_time)

@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.41.0
+
+- Set the mower's local date and time separately from its device page in Home Assistant. Each control reads the latest clock before applying the edit.
+- The controls are available in manual clock mode. Home Assistant reads the clock back after each change and refreshes the next scheduled start.
+
 ## v0.40.0
 
 - See estimated distance travelled in Home Assistant. The integration uses the mower's reported running time and the same model-specific speed as Automower Connect.

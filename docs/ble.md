@@ -12,7 +12,7 @@ The APK contains 166 TIF files for firmware variants. An operation name in a TIF
 | Activity, status, pause and start | 4586 | Includes manual start in the secondary area |
 | Next start, restrictions and schedule overrides | 4658 | Named restrictions, one-off actions, override status, duration and area when reported, and BLE event updates |
 | Weekly schedule | 4690 | Read and edit in Home Assistant Calendar and through actions. Writes use a transaction with readback |
-| Schedule clock | 4690, 6746 | Local time, synchronization button and automatic correction according to device capabilities |
+| Schedule clock | 4690, 6746 | Manual local date and time, synchronization button and automatic correction according to device capabilities |
 | Identification and firmware version | 4698 | Model, serial number and firmware version. Read and write the name stored on the mower |
 | Reset user settings | 4698 | Per-mower confirmation, reset with or without reboot depending on firmware, and settings readback |
 | Wi-Fi configuration over Bluetooth | 5916 | Enable Wi-Fi, scan from the mower, join open or shared-key networks, manage saved networks and read diagnostics |
@@ -145,6 +145,8 @@ The app pauses before sending `FollowWire.TestStartingPoint` or `FollowWire.Test
 The app's accessories section saves the FlexiFence setting through `MobileLoop.Enabled` (`ev_980da380e3e068697a159431114b342149fcc332f6cfb6236dd77d6d19fee2ad`, `ev_daf03529ad8af72c3eba9cd87d424098569fd48f213f57e399bbdf73f4e8fb65`). The 420 TIF declares family 5926. Other variants use family 6050. The integration requires `MobileLoop.Available` to return true in both cases.
 
 The app represents calendar time as Unix seconds plus the local time zone offset (`ev_04c1b5a7f1b575dfaa8da7398ae38285c56fdba47c3b85652b1d418da28431f0`). All 166 TIF files declare `Calendar.GetTime` and `Calendar.SetTime` (4690:2 and 4690:3). On firmware with a `Clock` family, the integration uses the mower's configured time zone and checks the device's stored offset. On the 420 profile 31.7, it uses the Home Assistant time zone and writes only `Calendar.SetTime`.
+
+The app's manual date and time controls encode the selected wall time as epoch seconds and write `Calendar.Time` (`ev_28a711867ef1bdc3f8bd424cffe8b339d25de44fee82d9977f869e6acb984236`, `ev_e28998b40c0281b634d9f12c290c4c26cb5c9251398f20d083502a9a4e135a89`, `ev_5706ddb9c06bd1dd192fc7a96062e2127f0a1a73c7a72d3b13d5f6b059f9a638`, `ev_58e752c384930a08406f9b43c61328c5fdbe5dac71430f59a79c44949ad9fd1f`). Home Assistant uses native Date and Time entities. It rereads the mower's clock immediately before changing one component, checks automatic synchronization where available, and confirms the result with another read. Date and time values are interpreted as local values on the mower.
 
 The app writes the name through `System.UserMowerName` over Bluetooth (`ev_e4c99838bbd1878d65a103f78938bbf99194f47d3292567b7210740d73e308c3`, `ev_82bf8daa76c7ae5c8502918cbccfe8a24ad42da5fc944745ac6dd2663cddf190`). TIF files declare either 21 UCS-2 characters or the equivalent 42 bytes. The APK normalizer treats both definitions as the same field (`ev_ae9506ff742d4dd98f90cf8c87839c029cb93cc0976e0da6f04e712c8c7ab708`). The integration writes UTF-16 little endian and reads the value back.
 

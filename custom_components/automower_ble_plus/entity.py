@@ -1,7 +1,9 @@
 """Shared entity registration and availability for Automower BLE Plus."""
 
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 
+from homeassistant.const import EntityCategory
 from homeassistant.core import callback
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -88,6 +90,27 @@ class MowerGlobalHeightEntity(MowerEntity):
     @property
     def native_value(self) -> int | None:
         return height.value if (height := self.height) is not None else None
+
+
+class MowerClockEntity(MowerEntity):
+    """Use the mower's wall time for its editable date and time controls."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def wall_clock(self) -> datetime | None:
+        value = self.coordinator.data.get("mower_clock")
+        if isinstance(value, int):
+            return datetime.fromtimestamp(value, UTC)
+        return None
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.wall_clock is not None
+            and self.coordinator.data.get("automatic_clock_sync") != 1
+        )
 
 
 class MowerSettingEntity(MowerValueEntity):

@@ -3,7 +3,7 @@
 import asyncio
 import gzip
 import json
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from hashlib import md5
 from pathlib import Path
 from struct import pack, unpack_from
@@ -116,6 +116,9 @@ class FakeAutomower420:
         if command == Command(4706, 25):
             point, enabled = payload
             self.values[Command(4706, 24), bytes([point])] = bytes([enabled])
+            return b""
+        if command == Command(4690, 3):
+            self.values[Command(4690, 2), b""] = payload
             return b""
         try:
             return self.values[command, payload]
@@ -1284,6 +1287,37 @@ async def test_synchronize_mower_clock_uses_local_calendar_time(
         await coordinator.async_refresh_optional()
         assert len(writes) == 1
     await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_manual_clock_checks_live_mode_range_and_confirmation(monkeypatch):
+    client = FakeAutomower420()
+    read, write = Command(4690, 2), Command(4690, 3)
+    mode = Command(6746, 7)
+    original = datetime(2026, 11, 25, 23, 59, 58, tzinfo=UTC)
+    client.values[read, b""] = U32.pack(int(original.timestamp()))
+    for response, error in (
+        (b"\x01", "Turn off automatic"),
+        (b"\x02", "valid clock mode"),
+    ):
+        client.values[mode, b""] = response
+        with pytest.raises(ValueError, match=error):
+            await mower_clock.async_set_mower_clock_component(client, time(7, 30))
+    client.values[mode, b""] = b"\x00"
+    for invalid in (date(1969, 12, 31), date(2107, 1, 1)):
+        with pytest.raises(ValueError, match="outside the mower's clock range"):
+            await mower_clock.async_set_mower_clock_component(client, invalid)
+    assert not any(command == write for command, _ in client.calls)
+    send = client.command
+
+    async def ignore_write(command, payload=b""):
+        if command == write:
+            return b""
+        return await send(command, payload)
+
+    monkeypatch.setattr(client, "command", ignore_write)
+    with pytest.raises(ValueError, match="did not confirm the new local time"):
+        await mower_clock.async_set_mower_clock_component(client, time(7, 30))
 
 
 @pytest.mark.asyncio
@@ -2831,6 +2865,37 @@ async def test_home_assistant_loads_entry_and_unloads_platforms(tmp_path, monkey
             await entry.runtime_data._event_refresh_task
             assert entry.runtime_data.data["mower_clock"] == 1_800_000_000
             registry = entity_registry.async_get(hass)
+            clock_address = entry.runtime_data.address
+            date_id = registry.async_get_entity_id(
+                "date", DOMAIN, f"{clock_address}_mower_local_date"
+            )
+            time_id = registry.async_get_entity_id(
+                "time", DOMAIN, f"{clock_address}_mower_local_time"
+            )
+            observed = datetime.fromtimestamp(1_800_000_000, UTC)
+            assert hass.states.get(date_id).state == observed.date().isoformat()
+            assert hass.states.get(time_id).state == observed.time().isoformat()
+            # The time on the mower changed since the latest notification.
+            fresh = datetime(2026, 12, 1, 6, 0, 2, tzinfo=UTC)
+            client.values[Command(4690, 2), b""] = U32.pack(int(fresh.timestamp()))
+            await hass.services.async_call(
+                "date",
+                "set_value",
+                {"entity_id": date_id, "date": "2026-12-02"},
+                blocking=True,
+            )
+            assert hass.states.get(time_id).state == "06:00:02"
+            await hass.services.async_call(
+                "time",
+                "set_value",
+                {"entity_id": time_id, "time": "07:30:15"},
+                blocking=True,
+            )
+            assert hass.states.get(date_id).state == "2026-12-02"
+            assert hass.states.get(time_id).state == "07:30:15"
+            assert client.values[Command(4690, 2), b""] == U32.pack(
+                int(datetime(2026, 12, 2, 7, 30, 15, tzinfo=UTC).timestamp())
+            )
             tracker_id = registry.async_get_entity_id(
                 "device_tracker", DOMAIN, f"{entry.runtime_data.address}_latitude"
             )

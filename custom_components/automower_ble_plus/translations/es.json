@@ -1017,6 +1017,16 @@
       "weekly_schedule": {
         "name": "Horario semanal de corte"
       }
+    },
+    "date": {
+      "mower_local_date": {
+        "name": "Fecha local del cortacésped"
+      }
+    },
+    "time": {
+      "mower_local_time": {
+        "name": "Hora local del cortacésped"
+      }
     }
   },
   "services": {

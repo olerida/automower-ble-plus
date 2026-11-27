@@ -1017,6 +1017,16 @@
       "weekly_schedule": {
         "name": "Weekly mowing schedule"
       }
+    },
+    "date": {
+      "mower_local_date": {
+        "name": "Mower local date"
+      }
+    },
+    "time": {
+      "mower_local_time": {
+        "name": "Mower local time of day"
+      }
     }
   },
   "services": {

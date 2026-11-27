@@ -36,6 +36,7 @@ PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.CALENDAR,
+    Platform.DATE,
     Platform.DEVICE_TRACKER,
     Platform.EVENT,
     Platform.IMAGE,
@@ -45,6 +46,7 @@ PLATFORMS = [
     Platform.SENSOR,
     Platform.SWITCH,
     Platform.TEXT,
+    Platform.TIME,
     Platform.UPDATE,
 ]
 
