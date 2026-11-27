@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.39.0
+
+- Choose a headlight theme over Bluetooth on supported mowers. Home Assistant shows the options defined for the firmware, including solid or flashing amber and, where available, white or white and red.
+- The selector appears only when the mower confirms that headlights are available and returns a recognised setting.
+
 ## v0.38.0
 
 - View the global cutting height in millimetres when the mower reports it. Compatible firmware also offers a control bounded by the mower's current minimum and maximum.

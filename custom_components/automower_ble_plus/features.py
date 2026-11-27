@@ -248,6 +248,16 @@ def settings_for_model(
             )
         )
     if limits:
+        if limits.headlight_themes:
+            themes = tuple(limits.headlight_themes.split(","))
+            settings.append(
+                Setting(
+                    "headlight_theme",
+                    (_variant(4722, 11, 10, available=0),),
+                    options=themes,
+                    maximum=len(themes) - 1,
+                )
+            )
         if limits.vision_obstacle_profile:
             settings.append(
                 Setting(

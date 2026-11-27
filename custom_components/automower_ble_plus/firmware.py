@@ -52,6 +52,7 @@ class FirmwareProfile:
     planner_reason_9: int = 0
     pattern_presets: int = 0
     global_height_mm: int = 0
+    headlight_themes: str = ""
 
 
 @cache
@@ -168,4 +169,10 @@ def get_firmware_profile(
                 default=0,
             ),
         ),
+        headlight_themes=result.headlight_themes
+        if all(
+            profile and profile.headlight_themes == result.headlight_themes
+            for profile in releases
+        )
+        else "",
     )

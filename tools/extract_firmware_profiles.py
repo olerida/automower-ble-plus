@@ -15,6 +15,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     geofence_operations = {}
     area_height_methods = {}
     cutting_height_methods = {}
+    headlight_methods = {}
     spot_cut_operations = {}
     loop_operations = {}
     station_operations = {}
@@ -134,7 +135,37 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             area_height_methods[method["command"]] = (protocol.get("subCmd"), method)
         if method["family"] == "CuttingHeight" and protocol.get("msgType") == "4422":
             cutting_height_methods[method["command"]] = (protocol.get("subCmd"), method)
+        if method["family"] == "Headlights" and protocol.get("msgType") == "4722":
+            headlight_methods[method["command"]] = (protocol.get("subCmd"), method)
     types = {item["name"]: item for item in profile.get("types", ())}
+    headlight_theme_type = "tIHeadlights_Theme"
+    headlight_theme_field = [{"name": "theme", "type": headlight_theme_type}]
+    headlight_themes = ""
+    theme_type = types.get(headlight_theme_type, {})
+    if theme_type.get("type") == "uint8" and all(
+        operation == code
+        and method["inParams"] == inputs
+        and method["outParams"] == outputs
+        for name, code, inputs, outputs in (
+            ("GetAvailable", "0", [], [{"name": "available", "type": "bool"}]),
+            ("GetTheme", "11", [], headlight_theme_field),
+            ("SetTheme", "10", headlight_theme_field, []),
+        )
+        for operation, method in [headlight_methods.get(name, (None, {}))]
+    ):
+        themes = sorted(
+            (int(item["value"]), item["key"]) for item in theme_type.get("enums", ())
+        )
+        known = {"white", "white_and_red", "solid_orange", "flashing_orange"}
+        names = tuple(
+            key.removeprefix("IHEADLIGHTS_THEME_").lower() for _, key in themes
+        )
+        if (
+            1 < len(names) == len(set(names))
+            and all(name in known for name in names)
+            and all(index == raw for index, (raw, _) in enumerate(themes))
+        ):
+            headlight_themes = ",".join(names)
     height_mm_type = "tICuttingHeight_HeightMillimeter"
     height_mm_field = [{"name": "height", "type": height_mm_type}]
     global_height_mm = 0
@@ -479,10 +510,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         planner_reason_9,
         pattern_presets,
         global_height_mm,
+        headlight_themes,
     )
     return (
         result
-        if any(result[:-19])
+        if any(result[:-20])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -500,6 +532,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or planner_reason_9
         or pattern_presets
         or global_height_mm
+        or headlight_themes
         else None
     )
 

@@ -911,8 +911,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         has_implemented_variant = False
         for variant in variants:
             try:
-                if variant.availability is not None and not await self._read(
-                    Reading(variant.availability, U8, variant.read.arguments)
+                if (
+                    variant.availability is not None
+                    and await self._read(
+                        Reading(variant.availability, U8, variant.read.arguments)
+                    )
+                    != 1
                 ):
                     has_implemented_variant = True
                     continue
@@ -1658,6 +1662,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             elif setting.key == "epos_wire_assistance":
                 self._epos_refresh_pending = True
                 self._async_schedule_event_refresh()
+            elif setting.key == "headlight_theme" and actual != value:
+                raise HomeAssistantError(
+                    "The mower did not confirm the headlight theme"
+                )
             elif setting.key in (
                 "automatic_height_reduction",
                 "cutting_height",
@@ -1716,6 +1724,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         try:
             await self._async_connect()
             payload = setting.encode(variant, value)
+            if (
+                setting.key == "headlight_theme"
+                and variant.availability is not None
+                and await self._read(Reading(variant.availability, U8)) != 1
+            ):
+                raise ValueError("The mower does not report available headlights")
             if (
                 setting.key == CONNECT_ENABLED_KEY
                 and variant.availability is not None

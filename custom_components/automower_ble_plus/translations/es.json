@@ -529,6 +529,15 @@
           "evening_and_night": "Al atardecer y por la noche"
         }
       },
+      "headlight_theme": {
+        "name": "Modo de iluminación",
+        "state": {
+          "white": "Blanco",
+          "white_and_red": "Blanco y rojo",
+          "solid_orange": "Ámbar fijo",
+          "flashing_orange": "Ámbar intermitente"
+        }
+      },
       "weather_timer_sensitivity": {
         "name": "Sensibilidad del temporizador climático",
         "state": {

@@ -529,6 +529,15 @@
           "evening_and_night": "Evening and night"
         }
       },
+      "headlight_theme": {
+        "name": "Headlight theme",
+        "state": {
+          "white": "White",
+          "white_and_red": "White and red",
+          "solid_orange": "Solid amber",
+          "flashing_orange": "Flashing amber"
+        }
+      },
       "weather_timer_sensitivity": {
         "name": "Weather timer sensitivity",
         "state": {

@@ -197,6 +197,103 @@ async def test_planner_event_updates_named_restriction_and_keeps_raw_code(tmp_pa
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("model_id", "firmware", "themes"),
+    [
+        ((5, 0), "App-G3_devicetype-5.0", ()),
+        ((28, 2), "40.3_Main-App-P16_34.22", ()),
+        ((24, 1), "40.4_Main-App-P1_999.0", ()),
+        (
+            (27, 1),
+            "40.14_Main-App-P22_102.14",
+            ("white", "solid_orange", "flashing_orange"),
+        ),
+        ((48, 1), "40.22_Main-App-P2Z_102.8", ("solid_orange", "flashing_orange")),
+        (
+            (39, 1),
+            "40.2_Main-App-P3_102.8",
+            ("white_and_red", "solid_orange", "flashing_orange"),
+        ),
+    ],
+)
+async def test_headlight_theme_uses_firmware_options_and_live_availability(
+    tmp_path, monkeypatch, model_id, firmware, themes
+):
+    hass = HomeAssistant(str(tmp_path))
+    entry = _entry()
+    entry.runtime_data = coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    monkeypatch.setattr(client, "main_node_version", AsyncMock(return_value=firmware))
+    availability = Command(4722, 0)
+    current = Command(4722, 11)
+    setter = Command(4722, 10)
+    client.values.update(
+        {
+            (Command(4698, 9), b""): bytes(model_id),
+            (availability, b""): b"\x02",
+            (Command(4722, 2), b""): b"\x00",
+            (current, b""): b"\x00",
+        }
+    )
+    send = client.command
+    writes = []
+    save_change = True
+
+    async def command(operation, payload=b""):
+        if operation == setter:
+            writes.append(payload)
+            if save_change:
+                client.values[current, b""] = payload
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    try:
+        await coordinator._async_setup()
+        coordinator.async_set_updated_data(await coordinator._async_update_data())
+        entities = []
+        await select.async_setup_entry(hass, entry, entities.extend)
+        await coordinator.async_refresh_optional()
+        assert not entities
+        assert (current, b"") not in client.calls
+        client.values[availability, b""] = b"\x01"
+        client.values[current, b""] = b"\xff"
+        await coordinator.async_refresh_optional()
+        assert {entity.key for entity in entities} == {"headlight_schedule"}
+        client.values[current, b""] = b"\x00"
+        await coordinator.async_refresh_optional()
+        detected = {entity.key: entity for entity in entities}
+        if not themes:
+            assert "headlight_theme" not in detected
+            assert (current, b"") not in client.calls
+            return
+        editor = detected["headlight_theme"]
+        assert tuple(editor.options) == themes
+        assert editor.current_option == themes[0]
+        await editor.async_select_option("flashing_orange")
+        assert writes == [bytes([len(themes) - 1])]
+        assert editor.current_option == "flashing_orange"
+        save_change = False
+        with pytest.raises(
+            HomeAssistantError, match="did not confirm the headlight theme"
+        ):
+            await editor.async_select_option(themes[0])
+        assert writes[-1] == b"\x00"
+        assert editor.current_option == "flashing_orange"
+        client.values[availability, b""] = b"\x00"
+        with pytest.raises(
+            HomeAssistantError, match="does not report available headlights"
+        ):
+            await editor.async_select_option("solid_orange")
+        assert len(writes) == 2
+        await coordinator.async_refresh_optional()
+        assert not editor.available
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("model_id", "firmware", "access"),
     [
         ((5, 0), "App-G3_devicetype-5.0", "unsupported"),

@@ -4,6 +4,7 @@ A Home Assistant integration for Husqvarna Automower robotic lawn mowers that su
 
 ## Highlights
 
+- **v0.39** · Choose the headlight theme on supported mowers.
 - **v0.38** · View or adjust the global cutting height in millimetres on compatible firmware.
 - **v0.37** · Select random, parallel, checkerboard or triangle mowing for compatible work areas.
 - **v0.36** · Change mowing settings for compatible work areas directly in **Automower Maps**.
@@ -31,6 +32,8 @@ A Home Assistant integration for Husqvarna Automower robotic lawn mowers that su
 View mower status, start, pause, park, resume the schedule and send timed commands. Battery, statistics, ECO mode, Weather Timer, frost protection, cutting height, headlights, installation and other settings appear according to the mower's firmware. Detection begins after the first connection.
 
 Compatible mowers also expose spiral cutting and its intensity, along with any theft alarm sensors the mower reports. Set the operator PIN when adding the integration to edit theft protection settings.
+
+- **Headlight theme** shows the lighting modes defined for the mower's firmware when the mower confirms that headlights are available. [Husqvarna Automower 550 EPOS manual](https://www-static-nw.husqvarna.com/hbd/tdrdownload/v2/pub000091766/doc000227307/OM/vNo9syZrADzn-OFbfZTVWYbWTzk)
 
 - **TargetHeight in progress** shows whether the mower is gradually lowering the cutting height. It includes the reported duration when available. On models with a current-height reading, Home Assistant shows the actual height as a level or percentage. [Husqvarna TargetHeight guide](https://www.husqvarna.com/uk/support/automower-support-guide-by-season-ka-70343/)
 - **Global cutting height** shows the mower-wide target in millimetres when the firmware reports it. If the firmware supports native writes, the control uses the current range reported by the mower. The existing **Cutting height** level remains available on models that provide it, including the known 420 profile. [Husqvarna cutting height guide](https://www.husqvarna.com/uk/support/automower-support-guide-by-season-ka-70343/)
