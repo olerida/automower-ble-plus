@@ -28,7 +28,13 @@ from .aim import AIM_STATES
 from .appdrive import APPDRIVE_ENUM_OPTIONS
 from .connect_module import CONNECT_SIGNAL_KEY, CONNECT_STATE_KEY, CONNECT_STATE_OPTIONS
 from .coordinator import MowerCoordinator, MowerEntry
-from .entity import MowerEntity, MowerValueEntity, async_add_detected
+from .cutting_status import GLOBAL_HEIGHT_MM
+from .entity import (
+    MowerEntity,
+    MowerGlobalHeightEntity,
+    MowerValueEntity,
+    async_add_detected,
+)
 from .epos import EPOS_ENUM_OPTIONS
 from .faults import FAULT_STATES, message_description
 from .firmware import get_message_key
@@ -177,6 +183,13 @@ async def async_setup_entry(
 ) -> None:
     """Expose supported telemetry as typed Home Assistant sensors."""
     writable = {setting.key for setting in entry.runtime_data.settings}
+    if not entry.runtime_data.can_set_global_height_mm:
+        async_add_detected(
+            entry,
+            add_entities,
+            {GLOBAL_HEIGHT_MM: None},
+            lambda key, _: GlobalCuttingHeightSensor(entry.runtime_data),
+        )
     async_add_detected(
         entry,
         add_entities,
@@ -205,6 +218,14 @@ async def async_setup_entry(
         {"planner_override": None},
         lambda key, _: PlannerOverrideSensor(entry.runtime_data, key),
     )
+
+
+class GlobalCuttingHeightSensor(MowerGlobalHeightEntity, SensorEntity):
+    """Report the fixed native global height on read-only firmware."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.DISTANCE
+    _attr_native_unit_of_measurement = UnitOfLength.MILLIMETERS
 
 
 class AutomowerSensor(MowerValueEntity, SensorEntity):

@@ -4,6 +4,7 @@ A Home Assistant integration for Husqvarna Automower robotic lawn mowers that su
 
 ## Highlights
 
+- **v0.38** · View or adjust the global cutting height in millimetres on compatible firmware.
 - **v0.37** · Select random, parallel, checkerboard or triangle mowing for compatible work areas.
 - **v0.36** · Change mowing settings for compatible work areas directly in **Automower Maps**.
 - **v0.35** · See why the mower is waiting and receive updates when its next start time changes.
@@ -32,6 +33,7 @@ View mower status, start, pause, park, resume the schedule and send timed comman
 Compatible mowers also expose spiral cutting and its intensity, along with any theft alarm sensors the mower reports. Set the operator PIN when adding the integration to edit theft protection settings.
 
 - **TargetHeight in progress** shows whether the mower is gradually lowering the cutting height. It includes the reported duration when available. On models with a current-height reading, Home Assistant shows the actual height as a level or percentage. [Husqvarna TargetHeight guide](https://www.husqvarna.com/uk/support/automower-support-guide-by-season-ka-70343/)
+- **Global cutting height** shows the mower-wide target in millimetres when the firmware reports it. If the firmware supports native writes, the control uses the current range reported by the mower. The existing **Cutting height** level remains available on models that provide it, including the known 420 profile. [Husqvarna cutting height guide](https://www.husqvarna.com/uk/support/automower-support-guide-by-season-ka-70343/)
 - **GPS-assisted navigation status** shows whether there is no signal, the mower is initializing, or the GPS map is in use. It appears when the mower confirms support for GPS-assisted navigation and returns a valid state. [Husqvarna navigation guide](https://www.husqvarna.com/uk/support/automower-robotic-lawn-mower-navigation-accuracy-ka-01692/)
 
 - **Weekly mowing schedule** appears in **Calendar**. Create daily or weekly recurring intervals with no end date. To edit or delete an interval, open its next occurrence and choose **This and following events**. New intervals in Calendar apply to the main area. Editing an interval preserves its work area. Home Assistant rereads the schedule when the mower sends a Bluetooth notification. The calendar and next start time use the mower's time zone when configured. [Home Assistant Calendar](https://www.home-assistant.io/integrations/calendar/)

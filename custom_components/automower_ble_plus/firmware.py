@@ -51,6 +51,7 @@ class FirmwareProfile:
     target_height_status: int = 0
     planner_reason_9: int = 0
     pattern_presets: int = 0
+    global_height_mm: int = 0
 
 
 @cache
@@ -159,5 +160,12 @@ def get_firmware_profile(
         pattern_presets=int(
             result.pattern_presets
             and all(profile and profile.pattern_presets for profile in releases)
+        ),
+        global_height_mm=min(
+            result.global_height_mm,
+            min(
+                (profile.global_height_mm if profile else 0 for profile in releases),
+                default=0,
+            ),
         ),
     )

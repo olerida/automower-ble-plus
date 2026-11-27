@@ -14,6 +14,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     blade_operations = {}
     geofence_operations = {}
     area_height_methods = {}
+    cutting_height_methods = {}
     spot_cut_operations = {}
     loop_operations = {}
     station_operations = {}
@@ -131,7 +132,31 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             and method["command"] in ("GetCuttingHeight", "SetCuttingHeight")
         ):
             area_height_methods[method["command"]] = (protocol.get("subCmd"), method)
+        if method["family"] == "CuttingHeight" and protocol.get("msgType") == "4422":
+            cutting_height_methods[method["command"]] = (protocol.get("subCmd"), method)
     types = {item["name"]: item for item in profile.get("types", ())}
+    height_mm_type = "tICuttingHeight_HeightMillimeter"
+    height_mm_field = [{"name": "height", "type": height_mm_type}]
+    global_height_mm = 0
+    if types.get(height_mm_type, {}).get("type") == "uint8" and all(
+        operation == code
+        and not method["inParams"]
+        and method["outParams"] == height_mm_field
+        for name, code in (
+            ("GetMinimumHeight", "15"),
+            ("GetMaximumHeight", "17"),
+            ("GetGlobalHeightMm", "28"),
+        )
+        for operation, method in [cutting_height_methods.get(name, (None, {}))]
+    ):
+        global_height_mm = 1
+        operation, method = cutting_height_methods.get("SetGlobalHeightMm", (None, {}))
+        if (
+            operation == "29"
+            and method["inParams"] == height_mm_field
+            and not method["outParams"]
+        ):
+            global_height_mm = 2
     planner_reason_9 = {
         "IPLANNER_RESTRICTION_REASON_MISSION_ABANDONDED": 1,
         "IPLANNER_RESTRICTION_REASON_NO_DAYLIGHT": 2,
@@ -453,10 +478,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         target_height_status,
         planner_reason_9,
         pattern_presets,
+        global_height_mm,
     )
     return (
         result
-        if any(result[:-18])
+        if any(result[:-19])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -473,6 +499,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or target_height_status
         or planner_reason_9
         or pattern_presets
+        or global_height_mm
         else None
     )
 

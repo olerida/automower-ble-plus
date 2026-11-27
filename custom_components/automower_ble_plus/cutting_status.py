@@ -1,5 +1,6 @@
 """Read the mower's effective cutting height and TargetHeight progress."""
 
+from dataclasses import dataclass
 from struct import Struct
 
 from automower_ble.protocol import ResponseResult
@@ -11,6 +12,13 @@ from .wire import Command
 _ACTIVE = Command(4422, 12)
 _CURRENT_PERCENTAGE = Command(4422, 19)
 _CURRENT_LEVEL = Command(4422, 33)
+_AVAILABLE = Command(4422, 5)
+_MINIMUM_MM = Command(4422, 15)
+_MAXIMUM_MM = Command(4422, 17)
+_GET_GLOBAL_MM = Command(4422, 28)
+_SET_GLOBAL_MM = Command(4422, 29)
+GLOBAL_HEIGHT_MM = "global_cutting_height_mm"
+GLOBAL_HEIGHT_MM_WRITABLE = 2
 _TARGET_STATUS = Struct("<BII")
 _UNSET = (0, 0xFFFFFFFF)
 CUTTING_STATUS_KEYS = frozenset(
@@ -22,6 +30,15 @@ CUTTING_STATUS_KEYS = frozenset(
         "current_cutting_height_level",
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class GlobalCuttingHeight:
+    """The mower-wide target height and range in millimetres."""
+
+    value: int
+    minimum: int
+    maximum: int
 
 
 async def _async_read_optional(
@@ -61,3 +78,41 @@ async def async_read_cutting_status(
                 if duration not in _UNSET:
                     status["target_height_duration_seconds"] = duration
     return status
+
+
+async def async_read_global_height(
+    client: AutomowerClient,
+) -> GlobalCuttingHeight | None:
+    """Read the global height only when the mower confirms electric adjustment."""
+    if await _async_read_optional(client, _AVAILABLE) != b"\x01":
+        return None
+    limits = []
+    for command in (_MINIMUM_MM, _MAXIMUM_MM, _GET_GLOBAL_MM):
+        raw = await _async_read_optional(client, command)
+        if raw is None or len(raw) != U8.size:
+            return None
+        limits.append(raw[0])
+    minimum, maximum, value = limits
+    if 0 < minimum < maximum < 255 and minimum <= value <= maximum:
+        return GlobalCuttingHeight(value, minimum, maximum)
+    return None
+
+
+async def async_write_global_height(
+    client: AutomowerClient, value: int
+) -> GlobalCuttingHeight:
+    """Check the live range, write a target and return the confirmed reading."""
+    current = await async_read_global_height(client)
+    if current is None:
+        raise ValueError("The mower did not report its cutting height range")
+    if not current.minimum <= value <= current.maximum:
+        raise ValueError(
+            f"Cutting height must be between {current.minimum} and {current.maximum} mm"
+        )
+    if current.value == value:
+        return current
+    await client.command(_SET_GLOBAL_MM, U8.pack(value))
+    actual = await async_read_global_height(client)
+    if actual is None:
+        raise ValueError("The mower did not confirm its new cutting height")
+    return actual

@@ -455,6 +455,9 @@
       }
     },
     "number": {
+      "global_cutting_height_mm": {
+        "name": "Altura de corte general"
+      },
       "cutting_height": {
         "name": "Nivel de altura de corte"
       },
@@ -591,6 +594,9 @@
       }
     },
     "sensor": {
+      "global_cutting_height_mm": {
+        "name": "Altura de corte general"
+      },
       "local_heading": {
         "name": "Rumbo en la instalación"
       },

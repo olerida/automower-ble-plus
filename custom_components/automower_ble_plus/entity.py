@@ -8,6 +8,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import MowerCoordinator, MowerEntry
+from .cutting_status import GLOBAL_HEIGHT_MM, GlobalCuttingHeight
 from .features import Setting
 
 
@@ -67,6 +68,26 @@ class MowerValueEntity(MowerEntity):
         """Return the last value reported by the mower."""
         value = self.coordinator.data.get(self.key)
         return value if isinstance(value, int) else None
+
+
+class MowerGlobalHeightEntity(MowerEntity):
+    """Expose the current native global height and range."""
+
+    def __init__(self, coordinator: MowerCoordinator) -> None:
+        super().__init__(coordinator, GLOBAL_HEIGHT_MM)
+
+    @property
+    def height(self) -> GlobalCuttingHeight | None:
+        value = self.coordinator.data.get(self.key)
+        return value if isinstance(value, GlobalCuttingHeight) else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.height is not None
+
+    @property
+    def native_value(self) -> int | None:
+        return height.value if (height := self.height) is not None else None
 
 
 class MowerSettingEntity(MowerValueEntity):

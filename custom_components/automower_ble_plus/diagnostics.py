@@ -5,6 +5,7 @@ from dataclasses import asdict
 from homeassistant.core import HomeAssistant
 
 from .coordinator import MowerEntry
+from .cutting_status import GlobalCuttingHeight
 from .fota import FirmwareStatus
 from .planner import PlannerOverride
 from .sites import InstallationSelection
@@ -23,7 +24,7 @@ async def async_get_config_entry_diagnostics(
         "available_settings": sorted(coordinator.setting_variants),
         "telemetry": {
             key: asdict(value)
-            if isinstance(value, (FirmwareStatus, PlannerOverride))
+            if isinstance(value, (FirmwareStatus, GlobalCuttingHeight, PlannerOverride))
             else value
             for key, value in coordinator.data.items()
             if key

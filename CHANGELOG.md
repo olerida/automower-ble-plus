@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.38.0
+
+- View the global cutting height in millimetres when the mower reports it. Compatible firmware also offers a control bounded by the mower's current minimum and maximum.
+- Home Assistant shows the height the mower actually saved, including when it differs from the requested value.
+
 ## v0.37.0
 
 - Choose **Random**, **Parallel**, **Checkerboard** or **Triangle** in the work area mowing editor on supported firmware.

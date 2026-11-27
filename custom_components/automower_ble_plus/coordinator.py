@@ -61,7 +61,15 @@ from .connect_module import (
     is_connect_update,
 )
 from .const import DOMAIN, LOGGER
-from .cutting_status import CUTTING_STATUS_KEYS, async_read_cutting_status
+from .cutting_status import (
+    CUTTING_STATUS_KEYS,
+    GLOBAL_HEIGHT_MM,
+    GLOBAL_HEIGHT_MM_WRITABLE,
+    GlobalCuttingHeight,
+    async_read_cutting_status,
+    async_read_global_height,
+    async_write_global_height,
+)
 from .epos import (
     EPOS_AVAILABLE,
     EPOS_CLOUD_EVENTS,
@@ -250,6 +258,7 @@ type MowerData = dict[
     int
     | str
     | FirmwareStatus
+    | GlobalCuttingHeight
     | InstallationSelection
     | PlannerOverride
     | WeeklySchedule,
@@ -399,6 +408,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     def can_configure_wifi(self) -> bool:
         """Whether the mower reported an available Wi-Fi interface."""
         return self.data is not None and "wifi_enabled" in self.data
+
+    @property
+    def can_set_global_height_mm(self) -> bool:
+        """Whether the identified firmware declares a native millimetre setter."""
+        profile = self.firmware_profile
+        return bool(profile and profile.global_height_mm == GLOBAL_HEIGHT_MM_WRITABLE)
 
     @property
     def can_change_pin(self) -> bool:
@@ -951,6 +966,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             )
         )
         probes.extend((key, None) for key in FIRMWARE_TARGETS)
+        if self.firmware_profile and self.firmware_profile.global_height_mm:
+            probes.append((GLOBAL_HEIGHT_MM, None))
         if self._configured_pin is not None:
             probes.append(("geofence_center_settable", None))
         if (profile := self.firmware_profile) and profile.blade_usage_reset:
@@ -1065,6 +1082,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         await self._async_refresh_gps_navigation(values)
                     elif key == "cutting_status":
                         await self._async_refresh_cutting_status(values)
+                    elif key == GLOBAL_HEIGHT_MM:
+                        await self._async_refresh_global_height(values)
                     elif key == "local_position":
                         for status in LOCAL_POSITION_KEYS:
                             values.pop(status, None)
@@ -1368,6 +1387,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             )
         )
 
+    async def _async_refresh_global_height(self, data: MowerData) -> None:
+        data.pop(GLOBAL_HEIGHT_MM, None)
+        if (status := await async_read_global_height(self.client)) is not None:
+            data[GLOBAL_HEIGHT_MM] = status
+
     async def _async_refresh_connect_module(self, data: MowerData) -> None:
         status = await async_read_connect_module(self.client)
         for key in CONNECT_STATUS_KEYS.difference(status):
@@ -1645,8 +1669,42 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         await self._async_refresh_gps_navigation(data)
                     else:
                         await self._async_refresh_cutting_status(data)
+                        if (
+                            self.firmware_profile
+                            and self.firmware_profile.global_height_mm
+                        ):
+                            await self._async_refresh_global_height(data)
                     if data != self.data:
                         self.async_set_updated_data(data)
+
+    async def async_set_global_height_mm(self, value: int) -> None:
+        """Set the global cutting height using the mower's current range."""
+        async with self._operation_lock:
+            if not self.can_set_global_height_mm or GLOBAL_HEIGHT_MM not in (
+                self.data or {}
+            ):
+                raise HomeAssistantError(
+                    "The mower does not report a writable height in millimetres"
+                )
+            try:
+                await self._async_connect()
+                actual = await async_write_global_height(self.client, value)
+            except (MowerConnectionError, CommandRejected, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Could not set the cutting height: {err}"
+                ) from err
+            data = {**self.data, GLOBAL_HEIGHT_MM: actual}
+            with suppress(CommandRejected, MowerConnectionError, ValueError):
+                if (legacy := self.setting_variants.get("cutting_height")) is not None:
+                    level = await self._read(legacy.read)
+                    if 1 <= level <= 9:
+                        data["cutting_height"] = level
+                await self._async_refresh_cutting_status(data)
+            self.async_set_updated_data(data)
+            if actual.value != value:
+                raise HomeAssistantError(
+                    f"The mower saved a cutting height of {actual.value} mm"
+                )
 
     async def _async_write_setting(self, setting: Setting, value: int) -> int:
         """Write and read back a setting while the operation lock is held."""

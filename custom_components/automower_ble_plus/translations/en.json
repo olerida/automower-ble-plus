@@ -455,6 +455,9 @@
       }
     },
     "number": {
+      "global_cutting_height_mm": {
+        "name": "Global cutting height"
+      },
       "cutting_height": {
         "name": "Cutting height level"
       },
@@ -591,6 +594,9 @@
       }
     },
     "sensor": {
+      "global_cutting_height_mm": {
+        "name": "Global cutting height"
+      },
       "local_heading": {
         "name": "Heading in installation"
       },

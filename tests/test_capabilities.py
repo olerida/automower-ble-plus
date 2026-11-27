@@ -197,6 +197,103 @@ async def test_planner_event_updates_named_restriction_and_keeps_raw_code(tmp_pa
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("model_id", "firmware", "access"),
+    [
+        ((5, 0), "App-G3_devicetype-5.0", "unsupported"),
+        ((27, 1), "40.14_Main-App-P22_102.14", "read"),
+        ((28, 2), "40.3_Main-App-P16_81.4", "write"),
+    ],
+)
+async def test_global_cutting_height_uses_reported_unit_and_live_range(
+    tmp_path, monkeypatch, model_id, firmware, access
+):
+    hass = HomeAssistant(str(tmp_path))
+    entry = _entry()
+    entry.runtime_data = coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    monkeypatch.setattr(client, "main_node_version", AsyncMock(return_value=firmware))
+    current = Command(4422, 28)
+    setter = Command(4422, 29)
+    maximum = Command(4422, 17)
+    client.values.update(
+        {
+            (Command(4698, 9), b""): bytes(model_id),
+            (Command(4422, 5), b""): b"\1",
+            (Command(4422, 2), b""): b"\x05",
+            (Command(4422, 15), b""): b"\x14",
+            (maximum, b""): b"\x50",
+            (current, b""): b"\x28",
+        }
+    )
+    send = client.command
+    writes = []
+
+    async def command(operation, payload=b""):
+        if operation == setter:
+            writes.append(payload)
+            client.values[current, b""] = b"\x3c" if payload == b"\x3d" else payload
+            client.values[Command(4422, 2), b""] = b"\x08"
+            return b""
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    try:
+        await coordinator._async_setup()
+        coordinator.async_set_updated_data(await coordinator._async_update_data())
+        numbers, sensors = [], []
+        await number.async_setup_entry(hass, entry, numbers.extend)
+        await sensor.async_setup_entry(hass, entry, sensors.extend)
+        await coordinator.async_refresh_optional()
+        editors = {entity.key: entity for entity in numbers}
+        readings = {entity.key: entity for entity in sensors}
+        key = "global_cutting_height_mm"
+        assert editors["cutting_height"].native_value == 5
+        if access != "write":
+            assert key not in editors
+            if access == "read":
+                assert readings[key].native_value == 40
+                assert readings[key].native_unit_of_measurement == "mm"
+            else:
+                assert key not in readings
+                assert (current, b"") not in client.calls
+            with pytest.raises(HomeAssistantError, match="does not report a writable"):
+                await coordinator.async_set_global_height_mm(45)
+            assert writes == []
+            return
+        assert key not in readings
+        entity = editors[key]
+        assert entity.native_unit_of_measurement == "mm"
+        assert (
+            entity.native_min_value,
+            entity.native_max_value,
+            entity.native_value,
+        ) == (20, 80, 40)
+        with pytest.raises(ServiceValidationError, match="whole number"):
+            await entity.async_set_native_value(42.5)
+        client.values[maximum, b""] = b"\x46"
+        with pytest.raises(HomeAssistantError, match="between 20 and 70 mm"):
+            await entity.async_set_native_value(75)
+        assert writes == []
+        await entity.async_set_native_value(62)
+        assert writes == [b"\x3e"]
+        assert entity.native_value == 62
+        assert entity.native_max_value == 70
+        assert editors["cutting_height"].native_value == 8
+        with pytest.raises(HomeAssistantError, match="saved a cutting height of 60 mm"):
+            await entity.async_set_native_value(61)
+        assert entity.native_value == 60
+        report = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
+        assert report["telemetry"][key] == {"minimum": 20, "maximum": 70, "value": 60}
+        client.values[maximum, b""] = b"\x14"
+        await coordinator.async_refresh_optional()
+        assert not entity.available
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("model_id", "firmware", "actual_height"),
     [
         ((5, 0), "App-G3_devicetype-5.0", None),
