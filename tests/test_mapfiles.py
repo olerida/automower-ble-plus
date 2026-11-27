@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from zlib import crc32
 
 import pytest
+from automower_ble.protocol import ResponseResult
 from PIL import Image
 
 from custom_components.automower_ble_plus.map_features import (
@@ -22,6 +23,7 @@ from custom_components.automower_ble_plus.mapfiles import (
     MapKind,
     async_get_map,
     async_read_map_kind,
+    async_read_map_status,
     async_replace_map,
     async_verify_mowing_area,
 )
@@ -185,6 +187,63 @@ async def test_zone_map_reads_attribute_103_and_checks_firmware_availability():
     calls = client.command.await_args_list
     assert calls[1].args == (Command(5578, 38),)
     assert unpack_from("<HH", calls[2].args[1]) == (5578, 103)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("modern_reply", [b"\x00", ResponseResult.NOT_AVAILABLE])
+async def test_legacy_aim_fallback_respects_an_explicit_unavailable_map(modern_reply):
+    client = AsyncMock()
+    command = Command(5578, 38)
+    reply = (
+        modern_reply
+        if isinstance(modern_reply, bytes)
+        else CommandRejected(command, modern_reply)
+    )
+    client.command.side_effect = [b"\x01", reply]
+    result = await async_read_map_kind(client, MapKind.ZONES, legacy_aim_maps=True)
+    assert result == {"available": False, "map_type": "zones"}
+    assert [call.args for call in client.command.await_args_list] == [
+        (Command(5578, 0),),
+        (command,),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_legacy_aim_status_omits_empty_map_and_keeps_the_other_map():
+    client = AsyncMock()
+    client.command.side_effect = [
+        b"\x01",
+        CommandRejected(Command(5578, 40), ResponseResult.INVALID_ID),
+        CommandRejected(Command(5578, 43), ResponseResult.INVALID_ID),
+        pack("<I", 42),
+        CommandRejected(Command(5578, 38), ResponseResult.INVALID_ID),
+        pack("<I", 0),
+        pack("<IIBI", 0, 0, 1, 0),
+        pack("<I", 0),
+    ]
+    assert await async_read_map_status(client, legacy_aim_maps=True) == {
+        MapKind.GENERATED: "0000002a"
+    }
+    calls = client.command.await_args_list
+    assert calls[3].args[0] == Command(5786, 15)
+    assert unpack_from("<HH", calls[3].args[1]) == (5578, 101)
+    assert calls[6].args[0] == Command(5786, 7)
+    assert unpack_from("<HH", calls[6].args[1]) == (5578, 103)
+
+
+@pytest.mark.asyncio
+async def test_legacy_aim_rejects_map_changed_during_download():
+    client = AsyncMock()
+    raw = gzip.compress(SVG.encode())
+    client.command.side_effect = [
+        b"\x01",
+        CommandRejected(Command(5578, 38), ResponseResult.INVALID_ID),
+        pack("<I", 7),
+        pack("<IIBI", crc32(raw), len(raw), 1, len(raw)) + raw,
+        pack("<I", 13),
+    ]
+    with pytest.raises(ValueError, match="map changed during the download"):
+        await async_read_map_kind(client, MapKind.ZONES, legacy_aim_maps=True)
 
 
 @pytest.mark.asyncio

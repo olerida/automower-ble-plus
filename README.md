@@ -4,6 +4,7 @@ Integración de Home Assistant para cortacéspedes Husqvarna Automower que admit
 
 ## Novedades principales
 
+- **v0.31** · Mapas AIM en seis versiones antiguas de firmware, incluidas versiones de los 405X y 415X, con acceso de solo lectura.
 - **v0.30** · Resumen de cambios en la ficha de Marketplace y durante la configuración inicial.
 - **v0.29** · Panel **Automower Maps** para consultar mapas BLE y dibujar o editar zonas y rutas en modelos compatibles.
 - **v0.27–0.28** · Crea y edita zonas de exclusión AIM. Las áreas de trabajo AIM se vinculan a una misión para programar el corte.

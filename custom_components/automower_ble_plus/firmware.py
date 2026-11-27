@@ -46,6 +46,7 @@ class FirmwareProfile:
     epos_boundary_switch: int = 0
     zone_map_writable: int = 0
     aim_work_areas: int = 0
+    legacy_aim_maps: int = 0
 
 
 @cache
@@ -132,5 +133,9 @@ def get_firmware_profile(
         aim_work_areas=int(
             result.aim_work_areas
             and all(profile and profile.aim_work_areas for profile in releases)
+        ),
+        legacy_aim_maps=int(
+            result.legacy_aim_maps
+            and all(profile and profile.legacy_aim_maps for profile in releases)
         ),
     )

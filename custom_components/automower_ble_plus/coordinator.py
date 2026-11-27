@@ -1314,12 +1314,18 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     self.setting_variants[CONNECT_ENABLED_KEY] = setting.variants[0]
                     break
 
+    @property
+    def _legacy_aim_maps(self) -> bool:
+        return bool(self.firmware_profile and self.firmware_profile.legacy_aim_maps)
+
     async def _async_refresh_map_previews(self, data: MowerData) -> None:
         data.pop("poi_parking_available", None)
         for key in MAP_PREVIEW_KEYS:
             data.pop(key, None)
         refresh_interval = int(monotonic() // _MAP_PREVIEW_RECHECK_SECONDS)
-        maps = await async_read_map_status(self.client)
+        maps = await async_read_map_status(
+            self.client, legacy_aim_maps=self._legacy_aim_maps
+        )
         for kind, checksum in maps.items():
             events = tuple(
                 self._map_event_payloads.get(event_id, b"").hex()
@@ -2139,6 +2145,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     kind,
                     check_revision=True,
                     allow_empty_zones=zone_writable,
+                    legacy_aim_maps=self._legacy_aim_maps,
                 )
                 checksum = result.get("checksum")
                 if not result["available"] and checksum is None:
@@ -2233,7 +2240,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             try:
                 await self._async_connect()
                 return await async_read_map_kind(
-                    self.client, kind, check_revision=check_revision
+                    self.client,
+                    kind,
+                    check_revision=check_revision,
+                    legacy_aim_maps=self._legacy_aim_maps,
                 )
             except (
                 MowerConnectionError,

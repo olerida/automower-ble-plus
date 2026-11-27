@@ -28,6 +28,8 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     epos_service_operations = {}
     epos_operations = {}
     mission_operations = {}
+    map_operations = {}
+    raw_operations = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -44,6 +46,10 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             station_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "SiteManager" and protocol.get("msgType") == "5900":
             site_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "SiteMap" and protocol.get("msgType") == "5578":
+            map_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "NativeAttributes" and protocol.get("msgType") == "5786":
+            raw_operations[method["command"]] = protocol.get("subCmd"), method
         if method["family"] == "FollowWire" and protocol.get("msgType") == "4706":
             follow_wire_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "MowerApp" and protocol.get("msgType") == "4586":
@@ -338,6 +344,31 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             )
         )
     )
+    checksum_opcode, checksum_method = raw_operations.get("GetRawChecksum", (None, {}))
+    raw_maps = {
+        (attribute["name"], protocol.get("attributeId"))
+        for attribute in profile.get("attributes", ())
+        if attribute["family"] == "SiteMap"
+        and (protocol := attribute.get("protocol", {})).get("familyId") == "5578"
+        and protocol.get("rawOnly") is True
+    }
+    legacy_aim_maps = int(
+        map_operations.get("GetAvailable") == "0"
+        and {"GetGeneratedMapAvailable", "GetZoneMapAvailable"}.isdisjoint(
+            map_operations
+        )
+        and {("GeneratedMap", "101"), ("ZoneMap", "103")} <= raw_maps
+        and raw_operations.get("GetRaw", (None,))[0] == "7"
+        and raw_operations.get("GetNext", (None,))[0] == "8"
+        and checksum_opcode == "15"
+        and checksum_method.get("inParams")
+        == [
+            {"name": "familyId", "type": "tIAttribute_FamilyId"},
+            {"name": "attributeId", "type": "tIAttribute_AttributeId"},
+            {"name": "transactionId", "type": "tIAttribute_TransactionId"},
+        ]
+        and checksum_method.get("outParams") == [{"name": "crc32", "type": "uint32"}]
+    )
     result = (
         *reverse,
         *angles,
@@ -365,10 +396,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         epos_boundary_switch,
         zone_map_writable,
         aim_work_areas,
+        legacy_aim_maps,
     )
     return (
         result
-        if any(result[:-13])
+        if any(result[:-14])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -380,6 +412,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or epos_cloud_origin_setup
         or epos_boundary_switch
         or zone_map_writable
+        or legacy_aim_maps
         else None
     )
 

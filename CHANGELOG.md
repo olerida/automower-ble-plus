@@ -1,5 +1,10 @@
 # Novedades de Automower BLE Plus
 
+## v0.31.0
+
+- Consulta el mapa generado y las zonas AIM en seis versiones antiguas de firmware, incluidas versiones de los Automower 405X y 415X. Los mapas se muestran en las entidades de imagen y en **Automower Maps** con acceso de solo lectura.
+- Home Assistant detecta por Bluetooth cuándo cambia o deja de estar disponible uno de esos mapas.
+
 ## v0.30.0
 
 - Marketplace muestra los cambios principales al consultar la integración y al abrir una actualización.

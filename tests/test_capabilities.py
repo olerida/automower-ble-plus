@@ -61,6 +61,7 @@ from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import I16, I32, U16, U32
 from custom_components.automower_ble_plus.firmware import get_firmware_profile
+from custom_components.automower_ble_plus.mapfiles import MapKind
 from custom_components.automower_ble_plus.schedule import ScheduleTask
 from custom_components.automower_ble_plus.transport import (
     CommandRejected,
@@ -2968,6 +2969,58 @@ async def test_wifi_options_scan_join_and_forget_without_storing_credentials(
                 await coordinator.async_scan_wifi()
             assert client.calls[-1] == (Command(wifi, 28), b"")
             assert await hass.config_entries.async_unload(entry.entry_id)
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+async def test_read_legacy_aim_maps_through_home_assistant(tmp_path, monkeypatch):
+    hass = HomeAssistant(str(tmp_path))
+    coordinator = MowerCoordinator(hass, _entry())
+    client = FakeAutomower420()
+    coordinator.client = client
+    client.values[Command(4698, 9), b""] = bytes((28, 2))
+    client.values[Command(5578, 0), b""] = b"\x01"
+    monkeypatch.setattr(
+        client, "main_node_version", AsyncMock(return_value="40.3_Main-App-P16_34.18")
+    )
+    maps = {
+        101: b'<svg><polygon fill="green" points="0,0 1000,0 0,1000"/></svg>',
+        103: b'<svg><polygon id="zone" fill="red" points="0,0 1000,0 0,1000"/></svg>',
+    }
+    send = client.command
+
+    async def command(operation, payload=b""):
+        if operation in (Command(5786, 7), Command(5786, 15)):
+            family, attribute, transaction = unpack_from("<HHI", payload)
+            assert family == 5578 and transaction != 0
+            if operation.operation == 15:
+                if attribute not in maps:
+                    raise CommandRejected(operation, ResponseResult.NOT_AVAILABLE)
+                return U32.pack(crc32(maps[attribute]))
+            raw = gzip.compress(maps[attribute], mtime=0)
+            return pack("<IIBI", crc32(raw), len(raw), 1, len(raw)) + raw
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    try:
+        await coordinator._async_setup()
+        coordinator.async_set_updated_data(await coordinator._async_update_data())
+        await coordinator.async_refresh_optional()
+        assert maps_panel._supported_maps(coordinator) == ["generated", "zones"]
+        preview = await coordinator.async_map_preview(MapKind.GENERATED)
+        assert preview.startswith(b"\x89PNG")
+        assert (await coordinator.async_read_zone_map())["svg"] == maps[103].decode()
+        zones = await coordinator.async_read_map_features(MapKind.ZONES)
+        assert not zones["can_create"]
+        assert zones["features"][0]["id"] == "zone"
+        assert not zones["features"][0]["editable"]
+        previous = coordinator.data["map_generated_preview"]
+        maps[101] = maps[101].replace(b'fill="green"', b'fill="red"')
+        del maps[103]
+        await coordinator.async_refresh_optional()
+        assert maps_panel._supported_maps(coordinator) == ["generated"]
+        assert coordinator.data["map_generated_preview"] != previous
     finally:
         await hass.async_stop(force=True)
 

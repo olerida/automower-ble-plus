@@ -13,6 +13,8 @@ from xml.etree import ElementTree
 from zlib import crc32
 from zlib import error as ZlibError
 
+from automower_ble.protocol import ResponseResult
+
 from .features import U8, U32
 from .transport import AutomowerClient, CommandRejected
 from .wire import Command
@@ -33,6 +35,7 @@ _GET_NEXT = Command(5786, 8)
 _SET_RAW = Command(5786, 11)
 _SET_NEXT = Command(5786, 12)
 _MAX_PAYLOAD = Command(5786, 13)
+_RAW_CHECKSUM = Command(5786, 15)
 _ATTRIBUTE = Struct("<HHI")
 _FIRST_CHUNK = Struct("<II")
 _CHUNK = Struct("<BI")
@@ -177,13 +180,55 @@ async def _async_checksum(client: AutomowerClient) -> bytes:
     return checksum
 
 
-async def _async_available(client: AutomowerClient, command: Command) -> bool:
+async def _async_available(client: AutomowerClient, command: Command) -> bool | None:
     try:
         return U8.unpack(await client.command(command))[0] == 1
     except CommandRejected as err:
-        if not err.unsupported:
-            raise
-        return False
+        if err.unsupported:
+            return None
+        if err.result == ResponseResult.NOT_AVAILABLE:
+            return False
+        raise
+
+
+async def _async_raw_checksum(client: AutomowerClient, attribute: int) -> int | None:
+    try:
+        transaction = randbelow(0xFFFFFFFF) + 1
+        payload = _ATTRIBUTE.pack(_MAP_FAMILY, attribute, transaction)
+        return U32.unpack(await client.command(_RAW_CHECKSUM, payload))[0]
+    except CommandRejected as err:
+        if err.unsupported or err.result == ResponseResult.NOT_AVAILABLE:
+            return None
+        raise
+
+
+async def _async_map_availability(
+    client: AutomowerClient, kind: MapKind, legacy_aim_maps: bool
+) -> tuple[bool, int | None]:
+    attribute, command = _MAPS[kind]
+    available = await _async_available(client, command)
+    if (
+        available is None
+        and legacy_aim_maps
+        and kind in (MapKind.GENERATED, MapKind.ZONES)
+    ):
+        checksum = await _async_raw_checksum(client, attribute)
+        return checksum is not None, checksum
+    return bool(available), None
+
+
+async def _async_read_legacy_map(
+    client: AutomowerClient, attribute: int, checksum: int
+) -> bytes | None:
+    try:
+        raw = await _async_read_raw_map(client, attribute)
+    except CommandRejected as err:
+        if err.unsupported or err.result == ResponseResult.NOT_AVAILABLE:
+            return None
+        raise
+    if await _async_raw_checksum(client, attribute) != checksum:
+        raise ValueError("The map changed during the download")
+    return raw or None
 
 
 async def async_get_map(client: AutomowerClient, generated: bool) -> dict:
@@ -192,20 +237,33 @@ async def async_get_map(client: AutomowerClient, generated: bool) -> dict:
     return await async_read_map_kind(client, kind)
 
 
-async def async_read_map_status(client: AutomowerClient) -> dict[MapKind, str]:
+async def async_read_map_status(
+    client: AutomowerClient, *, legacy_aim_maps: bool = False
+) -> dict[MapKind, str]:
     """Read availability plus the active map checksum when available."""
     if not await _async_available(client, _MAPS_AVAILABLE):
         return {}
     maps = {}
-    for kind, (_, availability) in _MAPS.items():
-        if await _async_available(client, availability):
-            maps[kind] = ""
-            if kind is MapKind.SITE:
-                try:
-                    maps[kind] = (await _async_checksum(client)).hex()
-                except CommandRejected as err:
-                    if not err.unsupported:
-                        raise
+    for kind, (attribute, _) in _MAPS.items():
+        available, checksum = await _async_map_availability(
+            client, kind, legacy_aim_maps
+        )
+        if not available:
+            continue
+        if checksum is not None:
+            # CRC32 is zero for an empty attribute and can also be zero for a map.
+            if checksum != 0 or await _async_read_legacy_map(
+                client, attribute, checksum
+            ):
+                maps[kind] = f"{checksum:08x}"
+            continue
+        maps[kind] = ""
+        if kind is MapKind.SITE:
+            try:
+                maps[kind] = (await _async_checksum(client)).hex()
+            except CommandRejected as err:
+                if not err.unsupported:
+                    raise
     return maps
 
 
@@ -215,12 +273,15 @@ async def async_read_map_kind(
     *,
     check_revision: bool = False,
     allow_empty_zones: bool = False,
+    legacy_aim_maps: bool = False,
 ) -> dict:
     """Read a specific map over the mower's native BLE attributes."""
     if not await _async_available(client, _MAPS_AVAILABLE):
         return {"available": False}
-    attribute, availability = _MAPS[kind]
-    available = await _async_available(client, availability)
+    attribute, _ = _MAPS[kind]
+    available, raw_checksum = await _async_map_availability(
+        client, kind, legacy_aim_maps
+    )
     result = {"available": available}
     if kind is MapKind.ZONES:
         result["map_type"] = kind.value
@@ -233,15 +294,22 @@ async def async_read_map_kind(
             if not check_revision or not err.unsupported:
                 raise
     if available:
-        raw = await _async_read_raw_map(client, attribute)
+        raw = (
+            await _async_read_raw_map(client, attribute)
+            if raw_checksum is None
+            else await _async_read_legacy_map(client, attribute, raw_checksum)
+        )
+        if raw is None:
+            result["available"] = False
+        else:
+            result["svg"] = await asyncio.to_thread(_decode_svg, raw)
         if (
             check_revision
             and "checksum" in result
             and (await _async_checksum(client)).hex() != result["checksum"]
         ):
             raise ValueError("The map changed during the download")
-        result["svg"] = await asyncio.to_thread(_decode_svg, raw)
-    if kind is MapKind.ZONES and (available or allow_empty_zones):
+    if kind is MapKind.ZONES and (result["available"] or allow_empty_zones):
         result.setdefault("svg", _EMPTY_ZONE_MAP)
         result["checksum"] = sha256(result["svg"].encode("utf-8")).hexdigest()
     return result
