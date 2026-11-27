@@ -77,6 +77,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     map_revision = {
         vol.Required("expected_checksum"): cv.string,
         vol.Optional("expected_installation_id"): mission,
+        vol.Optional("map_type", default=MapKind.SITE.value): vol.In(
+            (MapKind.SITE.value, MapKind.ZONES.value)
+        ),
     }
     selected_feature = {**map_revision, vol.Required("feature_id"): cv.string}
     map_points = vol.All([point], vol.Length(min=2))

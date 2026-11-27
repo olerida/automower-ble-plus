@@ -2906,6 +2906,154 @@ async def test_wifi_options_scan_join_and_forget_without_storing_credentials(
 
 
 @pytest.mark.asyncio
+async def test_edit_aim_exclusion_zones_through_home_assistant(tmp_path, monkeypatch):
+    integrations = Path(__file__).resolve().parents[1] / "custom_components"
+    (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
+    hass = HomeAssistant(str(tmp_path))
+    loader.async_setup(hass)
+    hass.config.skip_pip = True
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
+    hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    entry = _entry()
+    client = FakeAutomower420()
+    monkeypatch.setattr(coordinator_module, "AutomowerClient", lambda *args: client)
+    monkeypatch.setattr(
+        client, "main_node_version", AsyncMock(return_value="40.3_Main-App-P16_81.4")
+    )
+    state = Command(5758, 7)
+    get_raw = Command(5786, 7)
+    set_raw = Command(5786, 11)
+    set_next = Command(5786, 12)
+    client.values.update(
+        {
+            (Command(4698, 9), b""): bytes((28, 2)),
+            (Command(5758, 2), b""): b"\1",
+            (Command(5758, 4), b""): b"\1",
+            (state, b""): b"\2",
+            (Command(5578, 0), b""): b"\1",
+            (Command(5900, 17), b""): b"\1",
+            (Command(5900, 12), b""): U32.pack(5),
+            (Command(5786, 13), b""): U32.pack(40),
+        }
+    )
+    stored = b""
+    staged = bytearray()
+    uploads = []
+    total, checksum, transaction = 0, 0, 0
+    send = client.command
+
+    async def command(operation, payload=b""):
+        nonlocal stored, total, checksum, transaction
+        if operation == Command(5578, 38):
+            return bytes((bool(stored),))
+        if operation == get_raw:
+            assert unpack_from("<HH", payload) == (5578, 103)
+            return pack("<IIBI", crc32(stored), len(stored), 1, len(stored)) + stored
+        if operation in (set_raw, set_next):
+            if operation == set_raw:
+                family, attribute, transaction, checksum, total = unpack_from(
+                    "<HHIII", payload
+                )
+                assert (family, attribute) == (5578, 103)
+                staged.clear()
+                offset = 16
+            else:
+                assert U32.unpack_from(payload)[0] == transaction
+                offset = 4
+            last, length = unpack_from("<BI", payload, offset)
+            chunk = payload[offset + 5 :]
+            assert length == len(chunk) <= 40
+            staged.extend(chunk)
+            if last:
+                assert (len(staged), crc32(staged)) == (total, checksum)
+                stored = bytes(staged)
+                uploads.append(gzip.decompress(stored))
+            return b""
+        assert operation != Command(5578, 24)
+        return await send(operation, payload)
+
+    monkeypatch.setattr(client, "command", command)
+    entity_id = "lawn_mower.automower_420"
+
+    async def map_action(action, **data):
+        response = await hass.services.async_call(
+            DOMAIN,
+            action,
+            {"entity_id": entity_id, "map_type": "zones", **data},
+            blocking=True,
+            return_response=True,
+        )
+        return response[entity_id]
+
+    try:
+        async with asyncio.timeout(15):
+            assert await setup.async_setup_component(hass, DOMAIN, {})
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+            baseline = await map_action("get_map_features")
+            assert baseline["features"] == []
+            assert baseline["creatable_types"] == ["stay_out_zone"]
+            points = [
+                {"x_mm": 0, "y_mm": 0},
+                {"x_mm": 1000, "y_mm": 0},
+                {"x_mm": 0, "y_mm": 1000},
+            ]
+            revision = {
+                "expected_checksum": baseline["checksum"],
+                "expected_installation_id": baseline["installation_id"],
+            }
+            created = await map_action(
+                "create_map_feature",
+                **revision,
+                feature_type="stay_out_zone",
+                name="Flores",
+                points=points,
+            )
+            selected = {**revision, "feature_id": created["feature_id"]}
+            with pytest.raises(HomeAssistantError, match="map changed"):
+                await map_action("set_map_feature_settings", **selected, enabled=False)
+            selected["expected_checksum"] = created["checksum"]
+            client.values[state, b""] = b"\1"
+            readonly = await map_action("get_map_features")
+            assert not readonly["features"][0]["editable"]
+            assert not readonly["can_create"]
+            with pytest.raises(HomeAssistantError, match="ready AIM map"):
+                await map_action("set_map_feature_settings", **selected, enabled=False)
+            assert len(uploads) == 1
+            client.values[state, b""] = b"\2"
+            renamed = await map_action(
+                "set_map_feature_settings",
+                **selected,
+                name="Árbol & flores",
+                enabled=False,
+            )
+            selected["expected_checksum"] = renamed["checksum"]
+            points[1]["x_mm"] = 1500
+            edited = await map_action("edit_map_geometry", **selected, points=points)
+            selected["expected_checksum"] = edited["checksum"]
+            feature = (await map_action("get_map_features"))["features"][0]
+            assert (feature["name"], feature["points"], feature["enabled"]) == (
+                "Árbol & flores",
+                points,
+                False,
+            )
+            await map_action("delete_map_feature", **selected)
+            assert (await map_action("get_map_features"))["features"] == []
+            assert len(uploads) == 4
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "reply", ["acknowledged", "disconnected", "unsupported", "guest"]
 )

@@ -1,7 +1,7 @@
 """Validate Automower map fragment layouts and commit behavior."""
 
 import gzip
-from hashlib import md5
+from hashlib import md5, sha256
 from io import BytesIO
 from struct import pack, unpack_from
 from unittest.mock import AsyncMock
@@ -118,6 +118,20 @@ def test_map_settings_preserve_geometry_and_enforce_model_path_width():
         )
 
 
+def test_zone_map_editing_targets_exclusions_and_preserves_other_shapes():
+    zone = '<polygon id="flowers" title="Flores" fill="red" stroke="red" points="0,0 30,0 0,25"/>'
+    svg = SVG.replace("</svg>", zone + "</svg>")
+    work_area, exclusion = describe_map_features(svg, MapKind.ZONES, True)
+    assert not work_area["editable"]
+    assert exclusion["editable_settings"] == ["name", "enabled"]
+    with pytest.raises(ValueError, match="does not support editing"):
+        remove_map_feature(svg, "lawn", kind=MapKind.ZONES)
+    assert remove_map_feature(svg, "flowers", kind=MapKind.ZONES) == (
+        SVG,
+        "stay_out_zone",
+    )
+
+
 @pytest.mark.parametrize(
     "coordinates",
     [
@@ -166,6 +180,7 @@ async def test_zone_map_reads_attribute_103_and_checks_firmware_availability():
         "available": True,
         "map_type": "zones",
         "svg": SVG,
+        "checksum": sha256(SVG.encode()).hexdigest(),
     }
     calls = client.command.await_args_list
     assert calls[1].args == (Command(5578, 38),)

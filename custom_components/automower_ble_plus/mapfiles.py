@@ -3,8 +3,9 @@
 import asyncio
 import gzip
 import re
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from hashlib import md5
+from hashlib import md5, sha256
 from io import BytesIO
 from secrets import randbelow
 from struct import Struct
@@ -38,6 +39,7 @@ _CHUNK = Struct("<BI")
 _MAX_MAP_SIZE = 16 * 1024 * 1024
 _MAX_FRAME_CHUNK = 0xFF00
 SVG_NAMESPACE = "{http://www.w3.org/2000/svg}"
+_EMPTY_ZONE_MAP = "<svg/>"
 _POINT = re.compile(r"-?[0-9]{1,19},-?[0-9]{1,19}\Z")
 _SHAPE_ATTRIBUTES = {
     "id",
@@ -208,7 +210,11 @@ async def async_read_map_status(client: AutomowerClient) -> dict[MapKind, str]:
 
 
 async def async_read_map_kind(
-    client: AutomowerClient, kind: MapKind, *, check_revision: bool = False
+    client: AutomowerClient,
+    kind: MapKind,
+    *,
+    check_revision: bool = False,
+    allow_empty_zones: bool = False,
 ) -> dict:
     """Read a specific map over the mower's native BLE attributes."""
     if not await _async_available(client, _MAPS_AVAILABLE):
@@ -235,6 +241,9 @@ async def async_read_map_kind(
         ):
             raise ValueError("The map changed during the download")
         result["svg"] = await asyncio.to_thread(_decode_svg, raw)
+    if kind is MapKind.ZONES and (available or allow_empty_zones):
+        result.setdefault("svg", _EMPTY_ZONE_MAP)
+        result["checksum"] = sha256(result["svg"].encode("utf-8")).hexdigest()
     return result
 
 
@@ -282,22 +291,8 @@ async def async_replace_map(
         return {"checksum": digest.hex()}
     if current != bytes.fromhex(expected_checksum):
         raise ValueError("The active map changed. Read it again before updating")
-    maximum = U32.unpack(await client.command(_MAX_PAYLOAD))[0]
-    chunk_size = min(maximum, _MAX_FRAME_CHUNK)
-    if chunk_size < 1 or len(compressed) > _MAX_MAP_SIZE:
-        raise ValueError("The map exceeds the supported upload size")
-    transaction = randbelow(0xFFFFFFFF) + 1
-    first_prefix = _ATTRIBUTE.pack(_MAP_FAMILY, _SITE_MAP, transaction)
-    first_prefix += _FIRST_CHUNK.pack(crc32(compressed), len(compressed))
     try:
-        for offset in range(0, len(compressed), chunk_size):
-            data = compressed[offset : offset + chunk_size]
-            last = offset + len(data) == len(compressed)
-            operation = _SET_NEXT if offset else _SET_RAW
-            prefix = U32.pack(transaction) if offset else first_prefix
-            await client.command(
-                operation, prefix + _CHUNK.pack(last, len(data)) + data
-            )
+        await _async_upload_raw_map(client, _SITE_MAP, compressed)
         await client.command(_SET_CHECKSUM, digest)
     except BaseException:
         await client.disconnect()
@@ -305,3 +300,50 @@ async def async_replace_map(
     if await _async_checksum(client) != digest:
         raise ValueError("The mower did not confirm the uploaded map checksum")
     return {"checksum": digest.hex()}
+
+
+async def async_replace_zone_map(
+    client: AutomowerClient,
+    svg: str,
+    expected_checksum: str,
+    confirm_context: Callable[[], Awaitable[None]],
+) -> dict:
+    """Write the AIM zone attribute and confirm its contents over BLE."""
+    raw, _ = await asyncio.to_thread(parse_map_svg, svg, allow_empty=True)
+    compressed = await asyncio.to_thread(gzip.compress, raw, mtime=0)
+    digest = sha256(raw).hexdigest()
+    current = await async_read_map_kind(client, MapKind.ZONES, allow_empty_zones=True)
+    if current.get("checksum") != expected_checksum.lower():
+        raise ValueError("The zone map changed. Read it again before updating")
+    await confirm_context()
+    if current["checksum"] != digest:
+        try:
+            await _async_upload_raw_map(client, _ZONE_MAP, compressed)
+        except BaseException:
+            await client.disconnect()
+            raise
+        written = await async_read_map_kind(
+            client, MapKind.ZONES, allow_empty_zones=True
+        )
+        await confirm_context()
+        if written.get("checksum") != digest:
+            raise ValueError("The mower did not confirm the uploaded zone map")
+    return {"checksum": digest}
+
+
+async def _async_upload_raw_map(
+    client: AutomowerClient, attribute: int, compressed: bytes
+) -> None:
+    maximum = U32.unpack(await client.command(_MAX_PAYLOAD))[0]
+    chunk_size = min(maximum, _MAX_FRAME_CHUNK)
+    if chunk_size < 1 or len(compressed) > _MAX_MAP_SIZE:
+        raise ValueError("The map exceeds the supported upload size")
+    transaction = randbelow(0xFFFFFFFF) + 1
+    first_prefix = _ATTRIBUTE.pack(_MAP_FAMILY, attribute, transaction)
+    first_prefix += _FIRST_CHUNK.pack(crc32(compressed), len(compressed))
+    for offset in range(0, len(compressed), chunk_size):
+        data = compressed[offset : offset + chunk_size]
+        last = offset + len(data) == len(compressed)
+        operation = _SET_NEXT if offset else _SET_RAW
+        prefix = U32.pack(transaction) if offset else first_prefix
+        await client.command(operation, prefix + _CHUNK.pack(last, len(data)) + data)

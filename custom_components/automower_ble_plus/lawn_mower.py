@@ -184,10 +184,15 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         expected_checksum: str,
         points: list[dict[str, int]],
         expected_installation_id: int | None = None,
+        map_type: str = MapKind.SITE.value,
     ) -> dict:
         """Update the vertices of a selected feature in the active map."""
         return await self.coordinator.async_edit_map_geometry(
-            feature_id, expected_checksum, points, expected_installation_id
+            feature_id,
+            expected_checksum,
+            points,
+            expected_installation_id,
+            kind=MapKind(map_type),
         )
 
     async def async_set_map_feature_settings(
@@ -198,6 +203,7 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         name: str | None = None,
         enabled: bool | None = None,
         width_mm: int | None = None,
+        map_type: str = MapKind.SITE.value,
     ) -> dict:
         """Save name, activation or width for a compatible map feature."""
         return await self.coordinator.async_edit_map_feature_settings(
@@ -207,6 +213,7 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
             name,
             enabled,
             width_mm,
+            kind=MapKind(map_type),
         )
 
     async def async_create_map_feature(
@@ -217,6 +224,7 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         expected_checksum: str,
         expected_installation_id: int | None = None,
         width_mm: int | None = None,
+        map_type: str = MapKind.SITE.value,
     ) -> dict:
         """Add a polygon or route to the active map."""
         return await self.coordinator.async_create_map_feature(
@@ -226,6 +234,7 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
             expected_checksum,
             expected_installation_id,
             width_mm,
+            kind=MapKind(map_type),
         )
 
     async def async_delete_map_feature(
@@ -233,10 +242,14 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         feature_id: str,
         expected_checksum: str,
         expected_installation_id: int | None = None,
+        map_type: str = MapKind.SITE.value,
     ) -> dict:
         """Remove a feature from the selected map revision."""
         return await self.coordinator.async_delete_map_feature(
-            feature_id, expected_checksum, expected_installation_id
+            feature_id,
+            expected_checksum,
+            expected_installation_id,
+            kind=MapKind(map_type),
         )
 
     async def async_get_position(self) -> dict:

@@ -1319,8 +1319,12 @@
     },
     "edit_map_geometry": {
       "name": "Editar geometría del mapa",
-      "description": "Cambia los vértices de un elemento del mapa de la instalación activa.",
+      "description": "Cambia los vértices de un elemento editable del mapa seleccionado.",
       "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Mapa devuelto por Leer elementos del mapa."
+        },
         "feature_id": {
           "name": "ID del elemento",
           "description": "ID devuelto por Leer elementos del mapa."
@@ -1341,8 +1345,12 @@
     },
     "set_map_feature_settings": {
       "name": "Cambiar ajustes de un elemento del mapa",
-      "description": "Renombra, activa o cambia la anchura de un elemento del mapa de la instalación activa.",
+      "description": "Cambia el nombre, la activación o la anchura de un elemento compatible.",
       "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Mapa devuelto por Leer elementos del mapa."
+        },
         "feature_id": {
           "name": "ID del elemento",
           "description": "ID devuelto por Leer elementos del mapa."
@@ -1371,8 +1379,12 @@
     },
     "create_map_feature": {
       "name": "Crear elemento del mapa",
-      "description": "Añade un área o una ruta al mapa activo.",
+      "description": "Añade un elemento al mapa seleccionado según los tipos compatibles.",
       "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Mapa devuelto por Leer elementos del mapa."
+        },
         "feature_type": {
           "name": "Tipo de elemento",
           "description": "Tipo de área o ruta que quieres crear."
@@ -1401,8 +1413,12 @@
     },
     "delete_map_feature": {
       "name": "Eliminar elemento del mapa",
-      "description": "Retira el elemento seleccionado del mapa activo.",
+      "description": "Retira un elemento editable del mapa seleccionado.",
       "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Mapa devuelto por Leer elementos del mapa."
+        },
         "feature_id": {
           "name": "ID del elemento",
           "description": "ID devuelto por Leer elementos del mapa."

@@ -438,6 +438,14 @@ edit_map_geometry:
       integration: automower_ble_plus
       domain: lawn_mower
   fields:
+    map_type:
+      default: site
+      selector:
+        select:
+          translation_key: map_type
+          options:
+            - site
+            - zones
     feature_id:
       required: true
       selector:
@@ -462,6 +470,14 @@ set_map_feature_settings:
       integration: automower_ble_plus
       domain: lawn_mower
   fields:
+    map_type:
+      default: site
+      selector:
+        select:
+          translation_key: map_type
+          options:
+            - site
+            - zones
     feature_id:
       required: true
       selector:
@@ -495,6 +511,14 @@ create_map_feature:
       integration: automower_ble_plus
       domain: lawn_mower
   fields:
+    map_type:
+      default: site
+      selector:
+        select:
+          translation_key: map_type
+          options:
+            - site
+            - zones
     feature_type:
       required: true
       selector:
@@ -536,6 +560,14 @@ delete_map_feature:
       integration: automower_ble_plus
       domain: lawn_mower
   fields:
+    map_type:
+      default: site
+      selector:
+        select:
+          translation_key: map_type
+          options:
+            - site
+            - zones
     feature_id:
       required: true
       selector:

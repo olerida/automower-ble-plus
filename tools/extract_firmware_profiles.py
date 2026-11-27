@@ -304,6 +304,19 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             )
         )
     )
+    zone_map_writable = int(
+        any(
+            attribute["family"] == "SiteMap"
+            and attribute["name"] == "ZoneMap"
+            and {"read", "write"}.issubset(attribute.get("operations", ()))
+            and attribute.get("params")
+            == [{"name": "map", "type": "tIRoboticTypes_Svg"}]
+            and attribute["protocol"].get("familyId") == "5578"
+            and attribute["protocol"].get("attributeId") == "103"
+            and attribute["protocol"].get("rawOnly") is True
+            for attribute in profile.get("attributes-v2", ())
+        )
+    )
     result = (
         *reverse,
         *angles,
@@ -329,10 +342,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         aim_map_regeneration,
         epos_cloud_origin_setup,
         epos_boundary_switch,
+        zone_map_writable,
     )
     return (
         result
-        if any(result[:-11])
+        if any(result[:-12])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -343,6 +357,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or aim_map_regeneration
         or epos_cloud_origin_setup
         or epos_boundary_switch
+        or zone_map_writable
         else None
     )
 

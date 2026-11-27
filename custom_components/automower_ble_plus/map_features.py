@@ -44,6 +44,17 @@ def _points(shape: Element) -> list[dict[str, int]]:
     ]
 
 
+def _editable(shape: Element, kind: MapKind) -> bool:
+    feature_type = _feature_type(shape, kind)
+    if kind is MapKind.ZONES:
+        return bool(shape.get("id")) and feature_type == "stay_out_zone"
+    return (
+        kind is MapKind.SITE
+        and feature_type not in _READ_ONLY
+        and shape.get("id") != _MAIN_AREA_ID
+    )
+
+
 def has_parking_destination(svg: str) -> bool:
     """Check that the active map has one enabled point-of-interest path."""
     _, root = parse_map_svg(svg, allow_empty=True)
@@ -61,17 +72,12 @@ def describe_map_features(
 ) -> list[dict]:
     """Describe the SVG features without exposing raw XML in the response."""
     _, root = parse_map_svg(
-        svg, require_unique_ids=kind is MapKind.SITE, allow_empty=True
+        svg, require_unique_ids=kind is MapKind.SITE or writable, allow_empty=True
     )
     features = []
     for shape in root:
         feature_type = _feature_type(shape, kind)
-        editable = (
-            writable
-            and kind is MapKind.SITE
-            and feature_type not in _READ_ONLY
-            and shape.get("id") != _MAIN_AREA_ID
-        )
+        editable = writable and _editable(shape, kind)
         feature = {
             "id": shape.get("id"),
             "type": feature_type,
@@ -136,12 +142,14 @@ def _validate_geometry(vertices: list[Point], polygon: bool) -> None:
         active.append((right, bottom, top, a, b))
 
 
-def _find_editable_feature(svg: str, feature_id: str) -> tuple[bytes, Element]:
+def _find_editable_feature(
+    svg: str, feature_id: str, kind: MapKind
+) -> tuple[bytes, Element]:
     raw, root = parse_map_svg(svg, allow_empty=True)
     shape = next((shape for shape in root if shape.get("id") == feature_id), None)
     if shape is None:
         raise ValueError("The active map does not contain the selected feature")
-    if feature_id == _MAIN_AREA_ID or _feature_type(shape, MapKind.SITE) in _READ_ONLY:
+    if not _editable(shape, kind):
         raise ValueError("The selected map feature does not support editing")
     return raw, shape
 
@@ -165,9 +173,15 @@ def _set_feature_attributes(
         return document.documentElement.toxml()
 
 
-def update_map_geometry(svg: str, feature_id: str, points: list[dict[str, int]]) -> str:
+def update_map_geometry(
+    svg: str,
+    feature_id: str,
+    points: list[dict[str, int]],
+    *,
+    kind: MapKind = MapKind.SITE,
+) -> str:
     """Update only the coordinates of an existing area or path."""
-    raw, shape = _find_editable_feature(svg, feature_id)
+    raw, shape = _find_editable_feature(svg, feature_id, kind)
     encoded = _encode_points(
         points, polygon=shape.tag.removeprefix(SVG_NAMESPACE) == "polygon"
     )
@@ -206,9 +220,15 @@ def add_map_feature(
     points: list[dict[str, int]],
     width_mm: int | None,
     path_width_min: int,
+    *,
+    kind: MapKind = MapKind.SITE,
 ) -> str:
     """Append an app-supported polygon or path to the active site map."""
-    if feature_type not in CREATABLE_MAP_TYPES:
+    if (
+        feature_type not in CREATABLE_MAP_TYPES
+        or kind is MapKind.GENERATED
+        or (kind is MapKind.ZONES and feature_type != "stay_out_zone")
+    ):
         raise ValueError("Unsupported new map feature type")
     raw, root = parse_map_svg(svg, allow_empty=True)
     if any(shape.get("id") == feature_id for shape in root):
@@ -248,9 +268,11 @@ def add_map_feature(
         return base.toxml()
 
 
-def remove_map_feature(svg: str, feature_id: str) -> tuple[str, str]:
+def remove_map_feature(
+    svg: str, feature_id: str, *, kind: MapKind = MapKind.SITE
+) -> tuple[str, str]:
     """Remove one feature and return its type for mission consistency checks."""
-    raw, shape = _find_editable_feature(svg, feature_id)
+    raw, shape = _find_editable_feature(svg, feature_id, kind)
     with minidom.parseString(raw) as document:
         base = document.documentElement
         for node in base.childNodes:
@@ -260,7 +282,7 @@ def remove_map_feature(svg: str, feature_id: str) -> tuple[str, str]:
             ):
                 base.removeChild(node)
                 break
-        return base.toxml(), _feature_type(shape, MapKind.SITE)
+        return base.toxml(), _feature_type(shape, kind)
 
 
 def update_map_feature_settings(
@@ -270,12 +292,14 @@ def update_map_feature_settings(
     enabled: bool | None,
     width_mm: int | None,
     path_width_min: int,
+    *,
+    kind: MapKind = MapKind.SITE,
 ) -> str:
     """Change a map object's metadata without altering geometry or mission IDs."""
     if name is None and enabled is None and width_mm is None:
         raise ValueError("Select at least one map feature setting")
-    raw, shape = _find_editable_feature(svg, feature_id)
-    feature_type = _feature_type(shape, MapKind.SITE)
+    raw, shape = _find_editable_feature(svg, feature_id, kind)
+    feature_type = _feature_type(shape, kind)
     if feature_type == "work_area":
         raise ValueError(
             "Use the work area action to change the associated mission settings"

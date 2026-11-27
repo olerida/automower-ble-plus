@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequen
 from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import timedelta
+from functools import partial
 from struct import error as StructError
 from time import monotonic
 from uuid import uuid4
@@ -143,6 +144,7 @@ from .mapfiles import (
     async_read_map_kind,
     async_read_map_status,
     async_replace_map,
+    async_replace_zone_map,
     async_verify_mowing_area,
 )
 from .models import DEFAULT_MAP_PATH_WIDTH_MINIMUM, MAP_PATH_WIDTH_MINIMUMS
@@ -2122,10 +2124,16 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             try:
                 await self._async_connect()
                 installation_id = await async_active_installation_id(self.client)
-                result = await async_read_map_kind(
-                    self.client, kind, check_revision=True
+                zone_writable = (
+                    kind is MapKind.ZONES and await self._async_zone_map_writable()
                 )
-                checksum = result.get("checksum") if kind is MapKind.SITE else None
+                result = await async_read_map_kind(
+                    self.client,
+                    kind,
+                    check_revision=True,
+                    allow_empty_zones=zone_writable,
+                )
+                checksum = result.get("checksum")
                 if not result["available"] and checksum is None:
                     return {"available": False, "map_type": kind.value, "features": []}
                 if installation_id != await async_active_installation_id(self.client):
@@ -2138,11 +2146,18 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         describe_map_features,
                         result["svg"],
                         kind,
-                        checksum is not None,
+                        zone_writable
+                        or (kind is MapKind.SITE and checksum is not None),
                         self._map_path_min_width,
                     )
                 can_create = checksum is not None and (
-                    result["available"] or await async_epos_enabled(self.client)
+                    zone_writable
+                    or (
+                        kind is MapKind.SITE
+                        and (
+                            result["available"] or await async_epos_enabled(self.client)
+                        )
+                    )
                 )
             except (
                 MowerConnectionError,
@@ -2163,6 +2178,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         if checksum is not None:
             response["checksum"] = checksum
             response["can_create"] = can_create
+            if zone_writable:
+                response["creatable_types"] = ["stay_out_zone"]
         return response
 
     async def async_map_preview(self, kind: MapKind) -> bytes | None:
@@ -3087,6 +3104,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         expected_checksum: str,
         points: list[dict[str, int]],
         expected_installation_id: int | None,
+        *,
+        kind: MapKind = MapKind.SITE,
     ) -> dict:
         """Replace one feature using the map revision and profile returned by the read."""
         return await self._async_change_map_feature(
@@ -3095,6 +3114,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             expected_installation_id,
             update_map_geometry,
             points,
+            kind=kind,
         )
 
     async def async_edit_map_feature_settings(
@@ -3105,6 +3125,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         name: str | None,
         enabled: bool | None,
         width_mm: int | None,
+        *,
+        kind: MapKind = MapKind.SITE,
     ) -> dict:
         """Save settings for an existing area or path in the active map."""
         return await self._async_change_map_feature(
@@ -3116,6 +3138,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             enabled,
             width_mm,
             self._map_path_min_width,
+            kind=kind,
         )
 
     async def _async_change_map_feature(
@@ -3125,17 +3148,23 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         expected_installation_id: int | None,
         change: Callable[..., str],
         *args,
+        kind: MapKind = MapKind.SITE,
     ) -> dict:
         async with self._async_map_revision(
-            expected_checksum, expected_installation_id
+            expected_checksum, expected_installation_id, kind=kind
         ) as old_svg:
             svg = await self.hass.async_add_executor_job(
-                change, old_svg, feature_id, *args
+                partial(change, kind=kind), old_svg, feature_id, *args
             )
             await self._async_confirm_map_installation(expected_installation_id)
             if svg == old_svg:
                 return {"checksum": expected_checksum.lower(), "feature_id": feature_id}
-            result = await self._async_publish_map(svg, expected_checksum)
+            result = await self._async_publish_map(
+                svg,
+                expected_checksum,
+                kind=kind,
+                expected_installation_id=expected_installation_id,
+            )
             return {**result, "feature_id": feature_id}
 
     async def async_create_map_feature(
@@ -3146,14 +3175,19 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         expected_checksum: str,
         expected_installation_id: int | None,
         width_mm: int | None,
+        *,
+        kind: MapKind = MapKind.SITE,
     ) -> dict:
         """Add geometry and link a mowing mission when adding a work area."""
         async with self._async_map_revision(
-            expected_checksum, expected_installation_id, allow_unavailable=True
+            expected_checksum,
+            expected_installation_id,
+            kind=kind,
+            allow_unavailable=True,
         ) as old_svg:
             feature_id = str(uuid4())
             svg = await self.hass.async_add_executor_job(
-                add_map_feature,
+                partial(add_map_feature, kind=kind),
                 old_svg,
                 feature_id,
                 feature_type,
@@ -3168,7 +3202,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     self.client, name
                 )
             await self._async_confirm_map_installation(expected_installation_id)
-            result = await self._async_publish_map(svg, expected_checksum)
+            result = await self._async_publish_map(
+                svg,
+                expected_checksum,
+                kind=kind,
+                expected_installation_id=expected_installation_id,
+            )
             result["feature_id"] = feature_id
             if missions_before is not None:
                 try:
@@ -3218,13 +3257,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         feature_id: str,
         expected_checksum: str,
         expected_installation_id: int | None,
+        *,
+        kind: MapKind = MapKind.SITE,
     ) -> dict:
         """Remove one polygon or path, preserving scheduled mowing missions."""
         async with self._async_map_revision(
-            expected_checksum, expected_installation_id
+            expected_checksum, expected_installation_id, kind=kind
         ) as old_svg:
             svg, feature_type = await self.hass.async_add_executor_job(
-                remove_map_feature, old_svg, feature_id
+                partial(remove_map_feature, kind=kind), old_svg, feature_id
             )
             linked = []
             if feature_type == "work_area":
@@ -3244,7 +3285,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             try:
                 await self._async_confirm_map_installation(expected_installation_id)
                 result = await self._async_publish_map(
-                    svg, expected_checksum, allow_empty=True
+                    svg,
+                    expected_checksum,
+                    allow_empty=True,
+                    kind=kind,
+                    expected_installation_id=expected_installation_id,
                 )
             except (
                 MowerConnectionError,
@@ -3265,20 +3310,45 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         if expected_installation_id != await async_active_installation_id(self.client):
             raise ValueError("Read the map again and pass its current installation ID")
 
+    async def _async_zone_map_writable(self) -> bool:
+        profile = self.firmware_profile
+        if not (profile and profile.zone_map_writable):
+            return False
+        if await async_epos_enabled(self.client):
+            return False
+        aim = await async_read_aim_status(self.client)
+        return aim.get("aim_enabled") == 1 and aim.get("aim_map_state") == AIM_READY
+
+    async def _async_confirm_zone_map(
+        self, expected_installation_id: int | None
+    ) -> None:
+        if not await self._async_zone_map_writable():
+            raise ValueError("A ready AIM map is required to edit exclusion zones")
+        await self._async_confirm_map_installation(expected_installation_id)
+
     @asynccontextmanager
     async def _async_map_revision(
         self,
         expected_checksum: str,
         expected_installation_id: int | None,
         *,
+        kind: MapKind = MapKind.SITE,
         allow_unavailable: bool = False,
     ) -> AsyncIterator[str]:
         async with self._operation_lock:
             try:
                 await self._async_connect()
-                await self._async_confirm_map_installation(expected_installation_id)
+                if kind is MapKind.GENERATED:
+                    raise ValueError("The generated map does not support editing")
+                if kind is MapKind.ZONES:
+                    await self._async_confirm_zone_map(expected_installation_id)
+                else:
+                    await self._async_confirm_map_installation(expected_installation_id)
                 current = await async_read_map_kind(
-                    self.client, MapKind.SITE, check_revision=True
+                    self.client,
+                    kind,
+                    check_revision=True,
+                    allow_empty_zones=kind is MapKind.ZONES and allow_unavailable,
                 )
                 if "checksum" not in current or (
                     not allow_unavailable and not current["available"]
@@ -3290,8 +3360,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     raise ValueError(
                         "The active map changed. Read it again before updating"
                     )
-                if not current["available"] and not await async_epos_enabled(
-                    self.client
+                if (
+                    kind is MapKind.SITE
+                    and not current["available"]
+                    and not await async_epos_enabled(self.client)
                 ):
                     raise ValueError(
                         "The mower does not report an active map or enabled EPOS installation"
@@ -3308,11 +3380,26 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ) from err
 
     async def _async_publish_map(
-        self, svg: str, expected_checksum: str, *, allow_empty: bool = False
+        self,
+        svg: str,
+        expected_checksum: str,
+        *,
+        allow_empty: bool = False,
+        kind: MapKind = MapKind.SITE,
+        expected_installation_id: int | None = None,
     ) -> dict:
-        result = await async_replace_map(
-            self.client, svg, expected_checksum, allow_empty=allow_empty
-        )
+        if kind is MapKind.ZONES:
+            result = await async_replace_zone_map(
+                self.client,
+                svg,
+                expected_checksum,
+                partial(self._async_confirm_zone_map, expected_installation_id),
+            )
+            self._map_generation += 1
+        else:
+            result = await async_replace_map(
+                self.client, svg, expected_checksum, allow_empty=allow_empty
+            )
         data = dict(self.data)
         with suppress(CommandRejected, MowerConnectionError, ValueError, StructError):
             await self._async_refresh_map_previews(data)

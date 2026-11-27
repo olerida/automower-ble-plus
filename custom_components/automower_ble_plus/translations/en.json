@@ -1319,8 +1319,12 @@
     },
     "edit_map_geometry": {
       "name": "Edit map geometry",
-      "description": "Change the vertices of an existing feature in the active installation map.",
+      "description": "Change the vertices of an editable feature in the selected map.",
       "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map returned by Read map features."
+        },
         "feature_id": {
           "name": "Feature ID",
           "description": "ID returned by Read map features."
@@ -1341,8 +1345,12 @@
     },
     "set_map_feature_settings": {
       "name": "Set map feature settings",
-      "description": "Rename, activate or change the width of a feature in the active installation map.",
+      "description": "Change the name, activation or width of a compatible map feature.",
       "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map returned by Read map features."
+        },
         "feature_id": {
           "name": "Feature ID",
           "description": "ID returned by Read map features."
@@ -1371,8 +1379,12 @@
     },
     "create_map_feature": {
       "name": "Create map feature",
-      "description": "Add an area or route to the active map.",
+      "description": "Add a supported feature to the selected map.",
       "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map returned by Read map features."
+        },
         "feature_type": {
           "name": "Feature type",
           "description": "Type of area or route to create."
@@ -1401,8 +1413,12 @@
     },
     "delete_map_feature": {
       "name": "Delete map feature",
-      "description": "Remove the selected feature from the active map.",
+      "description": "Remove an editable feature from the selected map.",
       "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map returned by Read map features."
+        },
         "feature_id": {
           "name": "Feature ID",
           "description": "ID returned by Read map features."
