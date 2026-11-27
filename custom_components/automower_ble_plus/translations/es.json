@@ -1406,6 +1406,62 @@
         }
       }
     },
+    "get_map_work_area_mowing": {
+      "name": "Leer ajustes de corte del área del mapa",
+      "description": "Lee los ajustes de corte que admite un área de trabajo en el mapa seleccionado.",
+      "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Tipo de mapa devuelto por Leer elementos del mapa."
+        },
+        "feature_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID del área devuelto por Leer elementos del mapa."
+        },
+        "expected_checksum": {
+          "name": "Checksum del mapa",
+          "description": "Valor checksum devuelto por Leer elementos del mapa."
+        },
+        "expected_installation_id": {
+          "name": "ID de la instalación",
+          "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
+        }
+      }
+    },
+    "set_map_work_area_mowing": {
+      "name": "Cambiar ajuste de corte del área del mapa",
+      "description": "Guarda un ajuste para el área de trabajo verificada.",
+      "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Tipo de mapa devuelto por Leer elementos del mapa."
+        },
+        "feature_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID del área devuelto por Leer elementos del mapa."
+        },
+        "expected_checksum": {
+          "name": "Checksum del mapa",
+          "description": "Valor checksum devuelto por Leer elementos del mapa."
+        },
+        "expected_installation_id": {
+          "name": "ID de la instalación",
+          "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
+        },
+        "expected_mission_id": {
+          "name": "ID de misión esperado",
+          "description": "ID devuelto por Leer ajustes de corte del área del mapa."
+        },
+        "expected_value": {
+          "name": "Valor esperado",
+          "description": "Valor actual del ajuste devuelto por la lectura."
+        },
+        "change": {
+          "name": "Cambio",
+          "description": "Un ajuste y su nuevo valor. Usa un campo incluido en editable."
+        }
+      }
+    },
     "get_map_features": {
       "name": "Leer elementos del mapa",
       "description": "Consulta las áreas, rutas y la base del mapa por Bluetooth.",

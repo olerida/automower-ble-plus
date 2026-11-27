@@ -31,7 +31,20 @@ const COPY = {
     scheduleStart: "Start", scheduleEnd: "End",
     scheduleHint: "Times follow the mower's time zone. Identical start and end times make a 24-hour interval.",
     scheduleDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    save: "Save", cancel: "Cancel", fit: "Fit map", zoomIn: "Zoom in", zoomOut: "Zoom out",
+    mowingSettings: "Mowing settings", mowingSetting: "Setting", mowingValue: "Value",
+    mowingEmpty: "This work area has no adjustable mowing settings.", useMowerSetting: "Use mower setting for",
+    off: "Off", on: "On", level: "level 1–9",
+    mowingLabels: {
+      mowing_pattern: "Mowing pattern", orientation: "Mowing direction", orientation_shift: "Direction shift",
+      boundary_mowing: "Perimeter mowing", cutting_height: "Cutting height", priority: "Priority",
+      vision_positioning: "Vision-assisted positioning", daylight_only: "Mow in daylight only",
+      boundary_edge_detection: "Boundary edge detection", obstacle_avoidance: "Obstacle avoidance",
+      obstacle_avoidance_at_boundary: "Obstacle avoidance near boundary", vision_obstacle_profile: "Obstacle profile",
+      random: "Random", systematic: "Systematic", lowest: "Lowest", low: "Low", medium: "Medium",
+      high: "High", highest: "Highest", default_pro: "Default", risk_objects_only: "Risk objects only",
+      residential_garden: "Residential garden",
+    },
+    save: "Save", cancel: "Cancel", close: "Close", fit: "Fit map", zoomIn: "Zoom in", zoomOut: "Zoom out",
     point: "Point", addPoint: "Add point", removePoint: "Remove point",
     usePosition: "Use mower position", points: "Points (mm)", metre: "m",
     canvas: "Map of the mower installation", draw: "Click to add a point or drag a point to move it.",
@@ -59,7 +72,20 @@ const COPY = {
     scheduleStart: "Inicio", scheduleEnd: "Fin",
     scheduleHint: "Se usa la zona horaria del cortacésped. Si el inicio y el fin coinciden, la franja dura 24 horas.",
     scheduleDays: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
-    save: "Guardar", cancel: "Cancelar", fit: "Ajustar mapa", zoomIn: "Acercar", zoomOut: "Alejar",
+    mowingSettings: "Ajustes de corte", mowingSetting: "Ajuste", mowingValue: "Valor",
+    mowingEmpty: "Esta área no tiene ajustes de corte editables.", useMowerSetting: "Usar el ajuste general para",
+    off: "Desactivado", on: "Activado", level: "nivel 1–9",
+    mowingLabels: {
+      mowing_pattern: "Patrón de corte", orientation: "Dirección de corte", orientation_shift: "Variación de dirección",
+      boundary_mowing: "Corte del perímetro", cutting_height: "Altura de corte", priority: "Prioridad",
+      vision_positioning: "Posicionamiento asistido por visión", daylight_only: "Cortar solo con luz diurna",
+      boundary_edge_detection: "Detección del borde", obstacle_avoidance: "Detección de obstáculos",
+      obstacle_avoidance_at_boundary: "Detección de obstáculos junto al perímetro", vision_obstacle_profile: "Perfil de obstáculos",
+      random: "Aleatorio", systematic: "Sistemático", lowest: "Mínima", low: "Baja", medium: "Media",
+      high: "Alta", highest: "Máxima", default_pro: "Predeterminado", risk_objects_only: "Solo objetos de riesgo",
+      residential_garden: "Jardín residencial",
+    },
+    save: "Guardar", cancel: "Cancelar", close: "Cerrar", fit: "Ajustar mapa", zoomIn: "Acercar", zoomOut: "Alejar",
     point: "Punto", addPoint: "Añadir punto", removePoint: "Quitar punto",
     usePosition: "Usar posición del robot", points: "Puntos (mm)", metre: "m",
     canvas: "Mapa de la instalación del cortacésped",
@@ -194,6 +220,8 @@ class AutomowerMaps extends HTMLElement {
         .schedule-days label { display: flex; align-items: center; }
         .schedule-days input { min-height: auto; accent-color: var(--accent); }
         #schedule-error { color: var(--error-color, #a23941); }
+        #mowing-fields { display: grid; gap: 0.75rem; margin: 0.85rem 0; }
+        #mowing-result[data-error="true"] { color: var(--error-color, #a23941); }
         @media (max-width: 700px) {
           .workspace { grid-template-columns: 1fr; }
           aside { padding: 0.8rem 0; border-left: 0; border-top: 1px solid var(--line); }
@@ -231,6 +259,7 @@ class AutomowerMaps extends HTMLElement {
                   <button type="button" id="geometry" data-text="geometry"></button>
                   <button type="button" id="settings" data-text="settings"></button>
                   <button type="button" id="schedule" data-text="schedule"></button>
+                  <button type="button" id="mowing" data-text="mowingSettings"></button>
                   <button type="button" id="remove" class="danger" data-text="remove"></button>
                 </div>
               </div>
@@ -266,6 +295,21 @@ class AutomowerMaps extends HTMLElement {
           <form method="dialog" class="actions">
             <button value="cancel" data-text="cancel" autofocus></button>
             <button value="delete" class="danger" data-text="remove"></button>
+          </form>
+        </dialog>
+        <dialog id="mowing-dialog" aria-labelledby="mowing-title">
+          <form id="mowing-form">
+            <h2 id="mowing-title"></h2>
+            <p id="mowing-empty" data-text="mowingEmpty" hidden></p>
+            <div id="mowing-fields" hidden>
+              <label><span data-text="mowingSetting"></span><select id="mowing-setting"></select></label>
+              <label><span id="mowing-value-label"></span><span id="mowing-value"></span></label>
+            </div>
+            <div class="actions">
+              <button type="submit" id="mowing-save" class="primary" data-text="save"></button>
+              <button type="button" id="mowing-close" data-text="close"></button>
+            </div>
+            <p id="mowing-result" role="status" aria-live="polite" hidden></p>
           </form>
         </dialog>
         <dialog id="schedule-dialog" aria-labelledby="schedule-title">
@@ -323,6 +367,16 @@ class AutomowerMaps extends HTMLElement {
     ui["add-point"].addEventListener("click", () => this._addPoint({ ...this.center }));
     ui["position-point"].addEventListener("click", () => this._addMowerPoint());
     ui.schedule.addEventListener("click", () => this._openSchedule());
+    ui.mowing.addEventListener("click", () => this._openMowing());
+    ui["mowing-setting"].addEventListener("change", () => this._renderMowingValue());
+    ui["mowing-close"].addEventListener("click", () => ui["mowing-dialog"].close());
+    ui["mowing-dialog"].addEventListener("cancel", event => {
+      if (this.busy) event.preventDefault();
+    });
+    ui["mowing-form"].addEventListener("submit", event => {
+      event.preventDefault();
+      this._saveMowing();
+    });
     ui["schedule-add"].addEventListener("click", () => this._addScheduleInterval());
     ui["schedule-cancel"].addEventListener("click", () => ui["schedule-dialog"].close());
     ui["schedule-dialog"].addEventListener("cancel", event => {
@@ -551,8 +605,10 @@ class AutomowerMaps extends HTMLElement {
     ui.settings.hidden = !this.selected?.editable_settings?.length;
     ui.schedule.hidden = this.selected?.type !== "work_area" || !this.selected.editable
       || !this.map?.can_schedule_full_day;
+    ui.mowing.hidden = this.selected?.type !== "work_area" || !this.selected.editable
+      || !this.map?.creatable_types?.includes("work_area");
     ui.remove.hidden = !this.selected?.editable;
-    for (const key of ["geometry", "settings", "schedule", "remove"]) ui[key].disabled = this.busy;
+    for (const key of ["geometry", "settings", "schedule", "mowing", "remove"]) ui[key].disabled = this.busy;
     ui.draft.hidden = !this.draft;
     for (const control of ui.draft.elements) control.disabled = this.busy;
     if (!this.draft) return;
@@ -736,6 +792,124 @@ class AutomowerMaps extends HTMLElement {
     const revision = { map_type: this.map.map_type, expected_checksum: this.map.checksum };
     if (Number.isInteger(this.map.installation_id)) revision.expected_installation_id = this.map.installation_id;
     return revision;
+  }
+
+  _mowingLabel(key) {
+    const prefix = "use_global_";
+    const labels = this.copy.mowingLabels;
+    if (key.startsWith(prefix)) {
+      return `${this.copy.useMowerSetting} ${(labels[key.slice(prefix.length)] || key).toLocaleLowerCase()}`;
+    }
+    return labels[key] || key;
+  }
+
+  async _openMowing() {
+    if (this.busy || this.ui.mowing.hidden) return;
+    const sequence = this.sequence;
+    const target = { feature_id: this.selected.id, ...this._mapRevision() };
+    this.busy = true;
+    this._renderActions();
+    this._status(this.copy.loading);
+    try {
+      const snapshot = await this._action("get_map_work_area_mowing", target);
+      if (!this.isConnected || sequence !== this.sequence) return;
+      this.mowingTarget = target;
+      this._showMowing(snapshot);
+      this.ui["mowing-result"].hidden = true;
+      this.ui["mowing-dialog"].showModal();
+      this._status();
+    } catch (error) {
+      if (this.isConnected && sequence === this.sequence) this._status(error.message || this.copy.failed, true);
+    } finally {
+      if (this.isConnected && sequence === this.sequence) {
+        this.busy = false;
+        this._renderActions();
+      }
+    }
+  }
+
+  _showMowing(snapshot, previousKey) {
+    const ui = this.ui;
+    this.mowingSnapshot = snapshot;
+    ui["mowing-title"].textContent = `${this.copy.mowingSettings} · ${snapshot.name}`;
+    const keys = snapshot.editable;
+    ui["mowing-empty"].hidden = Boolean(keys.length);
+    ui["mowing-fields"].hidden = !keys.length;
+    ui["mowing-save"].hidden = !keys.length;
+    ui["mowing-setting"].replaceChildren(...keys.map(key => labeledOption(key, this._mowingLabel(key))));
+    if (keys.includes(previousKey)) ui["mowing-setting"].value = previousKey;
+    if (keys.length) this._renderMowingValue();
+    else ui["mowing-value"].replaceChildren();
+  }
+
+  _renderMowingValue() {
+    const ui = this.ui;
+    const key = ui["mowing-setting"].value;
+    const { settings, options } = this.mowingSnapshot;
+    const value = settings[key];
+    const choices = options?.[key];
+    const isBoolean = typeof value === "boolean";
+    const field = document.createElement(choices || isBoolean ? "select" : "input");
+    let unit = "";
+    if (choices) {
+      field.append(...choices.map(choice => labeledOption(choice, this.copy.mowingLabels[choice] || choice)));
+    } else if (isBoolean) {
+      field.append(labeledOption("true", this.copy.on), labeledOption("false", this.copy.off));
+    } else {
+      field.type = "number";
+      field.required = true;
+      if (key === "cutting_height") {
+        const percent = settings.cutting_height_unit === "%";
+        field.min = percent ? 0 : 1;
+        field.max = percent ? 100 : 9;
+        field.step = 1;
+        unit = percent ? "%" : this.copy.level;
+      } else {
+        field.min = -360;
+        field.max = 360;
+        field.step = 0.1;
+        unit = "°";
+      }
+    }
+    field.value = String(value);
+    ui["mowing-value-label"].textContent = unit ? `${this.copy.mowingValue} (${unit})` : this.copy.mowingValue;
+    ui["mowing-value"].replaceChildren(field);
+  }
+
+  async _saveMowing() {
+    if (this.busy) return;
+    const ui = this.ui;
+    const key = ui["mowing-setting"].value;
+    const snapshot = this.mowingSnapshot;
+    if (!snapshot.editable.includes(key)) return;
+    const field = ui["mowing-value"].firstElementChild;
+    const expected = snapshot.settings[key];
+    const value = typeof expected === "boolean" ? field.value === "true"
+      : typeof expected === "number" ? field.valueAsNumber : field.value;
+    const note = ui["mowing-result"];
+    const controls = ui["mowing-form"].elements;
+    this.busy = true;
+    note.hidden = true;
+    for (const control of controls) control.disabled = true;
+    try {
+      const fresh = await this._action("set_map_work_area_mowing", {
+        ...this.mowingTarget,
+        expected_mission_id: snapshot.mission_id,
+        expected_value: expected,
+        change: { [key]: value },
+      });
+      this._showMowing(fresh, key);
+      note.textContent = this.copy.saved;
+      note.dataset.error = "false";
+    } catch (error) {
+      note.textContent = error.message || this.copy.failed;
+      note.dataset.error = "true";
+    } finally {
+      note.hidden = false;
+      this.busy = false;
+      for (const control of controls) control.disabled = false;
+      this._renderActions();
+    }
   }
 
   async _openSchedule() {

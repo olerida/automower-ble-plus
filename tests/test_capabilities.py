@@ -3242,6 +3242,7 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
                     if refuse_mission:
                         raise CommandRejected(operation, ResponseResult.INVALID_VALUE)
                     work_area["name"] = payload
+                    work_area["height"] = b"\x23"
                     return U32.pack(12)
                 case 2:
                     return U32.pack(bool(work_area))
@@ -3267,6 +3268,16 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
                     return b""
                 case 38:
                     return U32.pack(5)
+                case 9:
+                    assert payload == U32.pack(12)
+                    return work_area["height"]
+                case 10:
+                    assert U32.unpack_from(payload)[0] == 12
+                    work_area["height"] = payload[U32.size :]
+                    return b""
+                case 13:
+                    assert payload == U32.pack(12)
+                    return b"\1"
         if operation.family == 4690:
             match operation.operation:
                 case 4:
@@ -3420,6 +3431,34 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
             area_edit["expected_checksum"] = edited_area["checksum"]
             assert work_area["polygon"].rstrip(b"\0").decode() == area["feature_id"]
             if schedule_result == "confirmed":
+                settings = await map_action("get_map_work_area_mowing", **area_edit)
+                assert settings["name"] == "Huerto"
+                assert settings["editable"] == ["cutting_height"]
+                assert settings["settings"] == {
+                    "cutting_height": 35,
+                    "cutting_height_unit": "%",
+                }
+                change_height = dict(
+                    area_edit,
+                    expected_mission_id=12,
+                    expected_value=35,
+                    change={"cutting_height": 45},
+                )
+                with pytest.raises(
+                    HomeAssistantError, match="linked mowing mission changed"
+                ):
+                    await map_action(
+                        "set_map_work_area_mowing",
+                        **dict(change_height, expected_mission_id=13),
+                    )
+                assert work_area["height"] == b"\x23"
+                confirmed = await map_action(
+                    "set_map_work_area_mowing", **change_height
+                )
+                assert confirmed["settings"]["cutting_height"] == 45
+                with pytest.raises(HomeAssistantError, match="setting changed"):
+                    await map_action("set_map_work_area_mowing", **change_height)
+                assert work_area["height"] == b"\x2d"
                 initial = await map_action("get_work_area_schedule", **area_edit)
                 assert initial["mission_id"] == 12
                 assert initial["intervals"][0]["duration_seconds"] == 86400

@@ -172,6 +172,42 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
         """Change one supported setting for a mowing area."""
         await self.coordinator.async_write_work_area_mowing(mission_id, changes)
 
+    async def async_get_map_work_area_mowing(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None = None,
+        map_type: str = MapKind.SITE.value,
+    ) -> dict:
+        """Read mowing settings for a work area in a selected map."""
+        return await self.coordinator.async_map_work_area_mowing(
+            feature_id,
+            expected_checksum,
+            expected_installation_id,
+            kind=MapKind(map_type),
+        )
+
+    async def async_set_map_work_area_mowing(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_mission_id: int,
+        expected_value: str | bool | float,
+        change: dict,
+        expected_installation_id: int | None = None,
+        map_type: str = MapKind.SITE.value,
+    ) -> dict:
+        """Change a verified map work area's mowing setting."""
+        return await self.coordinator.async_map_work_area_mowing(
+            feature_id,
+            expected_checksum,
+            expected_installation_id,
+            kind=MapKind(map_type),
+            expected_mission_id=expected_mission_id,
+            expected_value=expected_value,
+            change=change,
+        )
+
     async def async_update_work_area(
         self, mission_id: int, name: str | None = None, enabled: bool | None = None
     ) -> None:

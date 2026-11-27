@@ -227,6 +227,8 @@ from .wifi import (
 from .wire import Command, Event
 from .wire_test import WireTest, WireTestPhase, WireTestRoute
 from .work_areas import (
+    area_mowing_options,
+    async_confirm_linked_area,
     async_confirm_schedulable_area,
     async_create_work_area,
     async_delete_work_area,
@@ -2141,6 +2143,63 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not read work area mowing settings: {err}"
                 ) from err
+
+    async def async_map_work_area_mowing(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None,
+        *,
+        kind: MapKind,
+        expected_mission_id: int | None = None,
+        expected_value: str | bool | float | None = None,
+        change: dict | None = None,
+    ) -> dict:
+        """Read or change a single setting of a verified mapped work area."""
+        async with self._async_map_revision(
+            expected_checksum, expected_installation_id, kind=kind
+        ):
+            linked = await async_get_linked_work_areas(
+                self.client, feature_id, require_available=True
+            )
+            if len(linked) != 1:
+                raise ValueError(
+                    "The selected area must have one linked mowing mission"
+                )
+            mission_id, name = linked[0]
+            height_max = (
+                self.firmware_profile.work_area_height_max
+                if self.firmware_profile
+                else 0
+            )
+
+            async def confirm() -> None:
+                await self._async_confirm_map_installation(expected_installation_id)
+                await async_confirm_linked_area(self.client, mission_id, feature_id)
+
+            await confirm()
+            if change is not None:
+                if mission_id != expected_mission_id:
+                    raise ValueError(
+                        "The linked mowing mission changed. Read the area again"
+                    )
+                await async_set_area_mowing_setting(
+                    self.client,
+                    mission_id,
+                    height_max,
+                    change,
+                    expected_value=expected_value,
+                    confirm_context=confirm,
+                )
+            result = await async_get_area_mowing_settings(
+                self.client, mission_id, height_max
+            )
+            await confirm()
+            return {
+                **result,
+                "name": name,
+                "options": area_mowing_options(result["editable"]),
+            }
 
     async def async_write_work_area_mowing(
         self, mission_id: int, changes: dict

@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.36.0
+
+- Open **Mowing settings** on a work area in **Automower Maps** to change the settings the mower reports for that area, including cutting height, pattern and direction where supported.
+- Each change checks the map, linked mission and previous value before writing, then reads back the confirmed settings.
+
 ## v0.35.0
 
 - **Mowing restriction** explains why the mower is waiting, including a parking override, Frost Guard, the weekly schedule or the daily operating limit.

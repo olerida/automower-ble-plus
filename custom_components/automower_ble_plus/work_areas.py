@@ -219,16 +219,24 @@ async def async_get_work_areas(
     return result
 
 
-async def async_confirm_schedulable_area(
+async def async_confirm_linked_area(
     client: AutomowerClient, mission_id: int, area_id: str
 ) -> None:
-    """Verify a mission still refers to the area and accepts schedule intervals."""
+    """Verify a mission still refers to the selected polygon."""
     if mission_id == 0:
         raise ValueError("The selected work area has no dedicated mowing mission")
     identity = U32.pack(mission_id)
     raw_id = await client.command(_GET_MOWING_AREA, identity)
     if raw_id.partition(b"\0")[0].decode("ascii") != area_id:
         raise ValueError("The mowing mission no longer matches this area")
+
+
+async def async_confirm_schedulable_area(
+    client: AutomowerClient, mission_id: int, area_id: str
+) -> None:
+    """Verify a mission still refers to the area and accepts schedule intervals."""
+    await async_confirm_linked_area(client, mission_id, area_id)
+    identity = U32.pack(mission_id)
     if U8.unpack(await client.command(_SCHEDULABLE, identity))[0] != 1:
         raise ValueError("The mower reports that this area does not support scheduling")
 
@@ -520,8 +528,19 @@ async def async_get_area_mowing_settings(
     return {"mission_id": mission_id, "settings": settings, "editable": editable}
 
 
+def area_mowing_options(editable: list[str]) -> dict[str, list[str]]:
+    """Return the available choices for editable enumerated settings."""
+    return {key: list(_OPTIONS[key].values()) for key in editable if key in _OPTIONS}
+
+
 async def async_set_area_mowing_setting(
-    client: AutomowerClient, mission_id: int, height_max: int, changes: dict
+    client: AutomowerClient,
+    mission_id: int,
+    height_max: int,
+    changes: dict,
+    *,
+    expected_value: str | bool | float | None = None,
+    confirm_context: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     """Write one supported setting and verify the value stored by the mower."""
     if len(changes) != 1:
@@ -556,7 +575,21 @@ async def async_set_area_mowing_setting(
         key in _OPTIONS and current not in _OPTIONS[key]
     ):
         raise ValueError(f"The mower did not report a supported value for {key}")
+    if expected_value is not None:
+        decoded = current
+        if key in _ANGLE_SETTINGS:
+            decoded = current / 10
+        elif key in _OPTIONS:
+            decoded = _OPTIONS[key][current]
+        elif key in _BOOLEAN_SETTINGS:
+            decoded = bool(current)
+        if decoded != expected_value:
+            raise ValueError(
+                "The work area setting changed. Read it again before saving"
+            )
     if current != encoded:
+        if confirm_context is not None:
+            await confirm_context()
         await client.command(setter, identity + reader.codec.pack(encoded))
         if reader.decode(await client.command(reader.command, identity)) != encoded:
             raise ValueError(

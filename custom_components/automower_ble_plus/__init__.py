@@ -94,6 +94,26 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     )
     map_points = vol.All([point], vol.Length(min=2))
     map_width = _bounded_integer(1, MAX_PATH_WIDTH)
+    mowing_change = {
+        vol.Exclusive("mowing_pattern", "mowing_change"): vol.In(
+            ("random", "systematic")
+        ),
+        vol.Exclusive("orientation", "mowing_change"): angle,
+        vol.Exclusive("orientation_shift", "mowing_change"): angle,
+        vol.Exclusive("boundary_mowing", "mowing_change"): cv.boolean,
+        vol.Exclusive("cutting_height", "mowing_change"): _bounded_integer(0, 100),
+        vol.Exclusive("use_global_cutting_height", "mowing_change"): cv.boolean,
+        vol.Exclusive("vision_obstacle_profile", "mowing_change"): vol.In(
+            tuple(AREA_VISION_PROFILES.values())
+        ),
+        vol.Exclusive("priority", "mowing_change"): vol.In(
+            tuple(AREA_PRIORITIES.values())
+        ),
+        **{
+            vol.Exclusive(key, "mowing_change"): cv.boolean
+            for key in sorted(AREA_ASSISTANCE_BOOLEAN_SETTINGS)
+        },
+    }
     schemas = {
         "mow_for": {
             vol.Required("minutes"): duration,
@@ -178,26 +198,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Exclusive("name", "work_area_change"): cv.string,
             vol.Exclusive("enabled", "work_area_change"): cv.boolean,
         },
-        "set_work_area_mowing": {
-            vol.Required("mission_id"): mission,
-            vol.Exclusive("mowing_pattern", "mowing_change"): vol.In(
-                ("random", "systematic")
-            ),
-            vol.Exclusive("orientation", "mowing_change"): angle,
-            vol.Exclusive("orientation_shift", "mowing_change"): angle,
-            vol.Exclusive("boundary_mowing", "mowing_change"): cv.boolean,
-            vol.Exclusive("cutting_height", "mowing_change"): _bounded_integer(0, 100),
-            vol.Exclusive("use_global_cutting_height", "mowing_change"): cv.boolean,
-            vol.Exclusive("vision_obstacle_profile", "mowing_change"): vol.In(
-                tuple(AREA_VISION_PROFILES.values())
-            ),
-            vol.Exclusive("priority", "mowing_change"): vol.In(
-                tuple(AREA_PRIORITIES.values())
-            ),
-            **{
-                vol.Exclusive(key, "mowing_change"): cv.boolean
-                for key in sorted(AREA_ASSISTANCE_BOOLEAN_SETTINGS)
-            },
+        "set_work_area_mowing": {vol.Required("mission_id"): mission, **mowing_change},
+        "get_map_work_area_mowing": selected_feature,
+        "set_map_work_area_mowing": {
+            **selected_feature,
+            vol.Required("expected_mission_id"): mission,
+            vol.Required("expected_value"): vol.Any(bool, int, float, str),
+            vol.Required("change"): vol.Schema(mowing_change),
         },
     }
     for action, schema in schemas.items():
@@ -221,6 +228,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 "create_map_feature",
                 "delete_map_feature",
                 "replace_work_area_schedule",
+                "set_map_work_area_mowing",
             )
             else SupportsResponse.NONE,
         )

@@ -120,7 +120,7 @@ get_work_area_schedule:
     entity:
       integration: automower_ble_plus
       domain: lawn_mower
-  fields: &work_area_schedule_fields
+  fields: &mapped_work_area_fields
     map_type:
       default: site
       selector:
@@ -149,12 +149,40 @@ replace_work_area_schedule:
       integration: automower_ble_plus
       domain: lawn_mower
   fields:
-    <<: *work_area_schedule_fields
+    <<: *mapped_work_area_fields
     expected_schedule_revision:
       required: true
       selector:
         text:
     intervals:
+      required: true
+      selector:
+        object:
+get_map_work_area_mowing:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields: *mapped_work_area_fields
+set_map_work_area_mowing:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    <<: *mapped_work_area_fields
+    expected_mission_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 4294967295
+          mode: box
+    expected_value:
+      required: true
+      selector:
+        object:
+    change:
       required: true
       selector:
         object:

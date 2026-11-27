@@ -35,7 +35,7 @@ The APK contains 166 TIF files for firmware variants. An operation name in a TIF
 | BLE notifications | 4586, 4730 | Notifications update status, activity and faults. The event entity requires firmware that supports message subscriptions |
 | Spiral cutting and spot cutting | 4710, 4658, 4586 | Spiral cutting switch and intensity. Manual spot cutting starts when the profile declares the command |
 | Work areas | 5604, 4658 | List areas, create linked missions, delete missions, start mowing, rename areas, read progress and enable areas according to firmware |
-| Per-area mowing settings | 5582, 5604 | Pattern, direction, variation, perimeter mowing, height and priority according to the area and firmware |
+| Per-area mowing settings | 5582, 5604 | Pattern, direction, variation, perimeter mowing, height and priority according to the area and firmware. Editable from Automower Maps |
 | Installation profiles | 5900, 5896, 5578 | Select, rename, copy, create and delete profiles according to firmware, and view map availability |
 | Map geometry and previews | 5578, 5786 | Download active, generated and zone maps over BLE. PNG image entities update on events. Upload the active map with a revision check |
 | AIM mapping | 5758, 5578, 5786, 5604 | Status, progress and regeneration. Create, edit and delete stay-out zones and work areas on compatible firmware |
@@ -85,6 +85,8 @@ REA identified the GeoFence centre change (`ev_b0392b33703ebe84b62c72825bf368ac0
 Edge cutting (`ev_57d5396fbb4053a2b2a6012b16a6c44ff85ae6210651ebbd2b596d91485f07cb`) and ultrasonic controls (`ev_f88be4afd15e7f7ce92f0413811d73240df10bebe195e6b2b9c90377d09a00ed`) use Boolean values. Each switch requires a positive availability response and a valid setting read.
 
 The app writes mowing pattern, orientation and perimeter settings with `SetMissionPattern` (`ev_ca00b3b57f0bb24e32d86f74c7acd1339b2aa10fe881ce7e5d113cac1296ba5d`). The protocol uses tenths of a degree for angles. Work area height can be a level from 1 to 9 or a percentage (`ev_9392f199a6777106a194920df1794203d9e8b0f42139beb04d80516300e898ed`). The integration exposes height editing when it identifies the format in the exact firmware profile and can read the area's height.
+
+The **Automower Maps** mowing editor resolves the selected polygon to one mission. It sends the map checksum, installation ID, mission ID and current value when changing a setting. The integration verifies the link and checks the current value immediately before writing. It reads back the result and refreshes the list of editable settings, since changing the mowing pattern can change which settings the area supports.
 
 REA identified the BLE firmware installation commands for the mower (`ev_7192095d433119df061d28ef9d374817c98a00c869be1ab10577a3848eeadc33`) and charging station (`ev_c18c2d79950de1684156894069a854d5f1840304dcc7ca1c8bb3efb3e72851fd`), along with the app's check that the mower is parked or charging (`ev_23b232712c38d23bfcb0be7582df2b3ebd9f576edc9dc721dc60adc51e7af712`). The integration verifies that the selected version is still ready and the mower is parked or charging before sending the command. The app uses the `Enabled` attribute in the Fota and CSFota families for automatic update checks (`ev_1dabb550495df6b4706ad6dc8ecf87f1c732c76a56a8cc94afddfb2481702bc4`, `ev_678596f071ffa15ea0a27becb0543ae7c5790cd92f317cce5a144ef121db82f1`, `ev_6108243aa59c4feca3b86c5b8de7bc40c1480ff1fbe8e4ca4058dca3664105f7`).
 

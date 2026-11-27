@@ -1406,6 +1406,62 @@
         }
       }
     },
+    "get_map_work_area_mowing": {
+      "name": "Read map work area mowing settings",
+      "description": "Read the supported mowing settings for a work area on the selected map.",
+      "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map type returned by Read map features."
+        },
+        "feature_id": {
+          "name": "Work area ID",
+          "description": "Feature ID of the work area returned by Read map features."
+        },
+        "expected_checksum": {
+          "name": "Map checksum",
+          "description": "Checksum returned by Read map features."
+        },
+        "expected_installation_id": {
+          "name": "Installation ID",
+          "description": "Installation ID returned by Read map features when available."
+        }
+      }
+    },
+    "set_map_work_area_mowing": {
+      "name": "Change map work area mowing setting",
+      "description": "Save one setting for the verified work area.",
+      "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map type returned by Read map features."
+        },
+        "feature_id": {
+          "name": "Work area ID",
+          "description": "Feature ID of the work area returned by Read map features."
+        },
+        "expected_checksum": {
+          "name": "Map checksum",
+          "description": "Checksum returned by Read map features."
+        },
+        "expected_installation_id": {
+          "name": "Installation ID",
+          "description": "Installation ID returned by Read map features when available."
+        },
+        "expected_mission_id": {
+          "name": "Expected mission ID",
+          "description": "Mission ID returned by Read map work area mowing settings."
+        },
+        "expected_value": {
+          "name": "Expected value",
+          "description": "Current setting value returned by the read action."
+        },
+        "change": {
+          "name": "Change",
+          "description": "One setting and its new value. Use a field listed in editable."
+        }
+      }
+    },
     "get_map_features": {
       "name": "Read map features",
       "description": "Read the areas, paths and charging station in a Bluetooth map.",

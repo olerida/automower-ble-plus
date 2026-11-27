@@ -4,6 +4,7 @@ A Home Assistant integration for Husqvarna Automower robotic lawn mowers that su
 
 ## Highlights
 
+- **v0.36** · Change mowing settings for compatible work areas directly in **Automower Maps**.
 - **v0.35** · See why the mower is waiting and receive updates when its next start time changes.
 - **v0.34** · See TargetHeight progress, the current cutting height and GPS-assisted navigation status where reported by the mower.
 - **v0.33** · Edit weekly work area schedules from **Automower Maps** on compatible models.
@@ -51,6 +52,7 @@ Compatible mowers also expose spiral cutting and its intensity, along with any t
 - `mow_secondary_area` starts secondary area mode. If you omit `minutes`, the mower cuts until the battery is low.
 - `get_work_areas` returns area names and IDs on compatible models. Pass `mission_id` to `mow_for` to mow that area or to `update_work_area` to change its name or enabled state.
 - `get_work_area_mowing` reads an area's pattern, direction, perimeter mowing and cutting height. On compatible models it also includes vision assistance, obstacle detection and daylight-only mowing. `set_work_area_mowing` changes a setting listed in `editable`. Use the unit reported by the read action for height, either a percentage or a level from 1 to 9.
+- Select a work area in **Automower Maps** and open **Mowing settings** to edit the controls reported by the mower. Select one setting and save its new value. Available controls can change after switching the mowing pattern. The actions `get_map_work_area_mowing` and `set_map_work_area_mowing` use the map revision and linked mission to confirm the selected area. [Husqvarna work area settings](https://www.husqvarna.com/us/discover/wireless-automower-faqs/)
 - `get_work_area_status` reads progress for the current or selected area. `reset_work_area_progress` resets stored progress. On compatible firmware, `set_work_area_mowing` also changes priority.
 - `create_work_area` links a mowing mission to an existing work area polygon. Use the polygon `id` and the checksum returned by `get_map`. Before deleting a mission with `delete_work_area`, remove its scheduled intervals and provide its ID and exact name.
 - **Active installation** appears when the mower reports multiple installations. `get_installations` returns the profiles and the active ID. Actions support activation, renaming, copying and, on supported firmware, creating an empty installation. To remove an inactive profile, provide its ID and exact name.
