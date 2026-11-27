@@ -27,6 +27,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     aim_map_regeneration = 0
     epos_service_operations = {}
     epos_operations = {}
+    mission_operations = {}
     for method in profile.get("methods", ()):
         protocol = {item["key"]: item["value"] for item in method["protocol"]}
         if method["family"] == FAMILY and protocol.get("msgType") == FAMILY_ID:
@@ -51,6 +52,8 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             epos_service_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "Epos" and protocol.get("msgType") == "6170":
             epos_operations[method["command"]] = protocol.get("subCmd")
+        if method["family"] == "Missions" and protocol.get("msgType") == "5604":
+            mission_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "AutomowerConnect"
             and method["command"] == "SetEnabledNoPin"
@@ -317,6 +320,24 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             for attribute in profile.get("attributes-v2", ())
         )
     )
+    aim_work_areas = int(
+        zone_map_writable
+        and all(
+            mission_operations.get(name) == operation
+            for name, operation in (
+                ("CreateMission", "1"),
+                ("GetNumberOfMissions", "2"),
+                ("GetIdListEntry", "3"),
+                ("DeleteMission", "5"),
+                ("GetName", "7"),
+                ("GetMowingAreaId", "11"),
+                ("SetMowingAreaId", "12"),
+                ("GetSchedulable", "18"),
+                ("SetSchedulable", "19"),
+                ("GetAvailable", "20"),
+            )
+        )
+    )
     result = (
         *reverse,
         *angles,
@@ -343,10 +364,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         epos_cloud_origin_setup,
         epos_boundary_switch,
         zone_map_writable,
+        aim_work_areas,
     )
     return (
         result
-        if any(result[:-12])
+        if any(result[:-13])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states

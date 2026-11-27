@@ -248,15 +248,24 @@ async def async_read_map_kind(
 
 
 async def async_verify_mowing_area(
-    client: AutomowerClient, area_id: str, expected_checksum: str
+    client: AutomowerClient,
+    area_id: str,
+    expected_checksum: str,
+    *,
+    kind: MapKind = MapKind.SITE,
 ) -> None:
     """Verify that the current map revision contains the requested mowing polygon."""
-    if not re.fullmatch(r"[0-9a-fA-F]{32}", expected_checksum):
-        raise ValueError("Enter the checksum returned for the active map")
-    current = await async_get_map(client, generated=False)
+    length = 64 if kind is MapKind.ZONES else 32
+    if kind is MapKind.GENERATED or not (
+        len(expected_checksum) == length
+        and re.fullmatch(r"[0-9a-fA-F]+", expected_checksum)
+    ):
+        raise ValueError("Enter the checksum returned for the selected editable map")
+    current = await async_read_map_kind(client, kind)
     if not current["available"]:
-        raise ValueError("The mower does not report an active site map")
-    if current["checksum"] != expected_checksum.lower():
+        raise ValueError("The mower does not report the selected map")
+    revision = expected_checksum.lower()
+    if current.get("checksum") != revision:
         raise ValueError(
             "The active map changed. Read it again before creating an area"
         )
@@ -269,7 +278,11 @@ async def async_verify_mowing_area(
         for shape in root
     ):
         raise ValueError("The active map does not contain the selected mowing polygon")
-    if (await _async_checksum(client)).hex() != expected_checksum.lower():
+    if kind is MapKind.ZONES:
+        final = (await async_read_map_kind(client, kind)).get("checksum")
+    else:
+        final = (await _async_checksum(client)).hex()
+    if final != revision:
         raise ValueError("The active map changed while reading it")
 
 

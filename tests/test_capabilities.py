@@ -2906,7 +2906,9 @@ async def test_wifi_options_scan_join_and_forget_without_storing_credentials(
 
 
 @pytest.mark.asyncio
-async def test_edit_aim_exclusion_zones_through_home_assistant(tmp_path, monkeypatch):
+async def test_edit_aim_zones_and_work_areas_through_home_assistant(
+    tmp_path, monkeypatch
+):
     integrations = Path(__file__).resolve().parents[1] / "custom_components"
     (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
     hass = HomeAssistant(str(tmp_path))
@@ -2949,6 +2951,9 @@ async def test_edit_aim_exclusion_zones_through_home_assistant(tmp_path, monkeyp
     staged = bytearray()
     uploads = []
     total, checksum, transaction = 0, 0, 0
+    work_area = {}
+    refuse_mission = False
+    scheduled = False
     send = client.command
 
     async def command(operation, payload=b""):
@@ -2979,6 +2984,42 @@ async def test_edit_aim_exclusion_zones_through_home_assistant(tmp_path, monkeyp
                 uploads.append(gzip.decompress(stored))
             return b""
         assert operation != Command(5578, 24)
+        if operation.family == 5604:
+            match operation.operation:
+                case 1:
+                    if refuse_mission:
+                        raise CommandRejected(operation, ResponseResult.INVALID_VALUE)
+                    work_area["name"] = payload
+                    return U32.pack(12)
+                case 2:
+                    return U32.pack(bool(work_area))
+                case 3:
+                    assert payload == U32.pack(0)
+                    return U32.pack(12) + work_area["name"]
+                case 5:
+                    assert payload == U32.pack(12)
+                    work_area.clear()
+                    return b""
+                case 7 | 11 | 18:
+                    assert payload == U32.pack(12)
+                    return work_area[
+                        {7: "name", 11: "polygon", 18: "schedulable"}[
+                            operation.operation
+                        ]
+                    ]
+                case 12 | 19:
+                    assert U32.unpack_from(payload)[0] == 12
+                    work_area[
+                        {12: "polygon", 19: "schedulable"}[operation.operation]
+                    ] = payload[4:]
+                    return b""
+                case 38:
+                    return U32.pack(5)
+        if operation == Command(4690, 4):
+            return U32.pack(scheduled)
+        if operation == Command(4690, 5):
+            assert payload == U32.pack(0)
+            return pack("<II7BI", 3600, 1800, 1, 0, 0, 0, 0, 0, 0, 12)
         return await send(operation, payload)
 
     monkeypatch.setattr(client, "command", command)
@@ -3049,6 +3090,50 @@ async def test_edit_aim_exclusion_zones_through_home_assistant(tmp_path, monkeyp
             await map_action("delete_map_feature", **selected)
             assert (await map_action("get_map_features"))["features"] == []
             assert len(uploads) == 4
+            client.values[Command(5604, 20), b""] = b"\1"
+            client.values[Command(4690, 14), b""] = U32.pack(8)
+            client.values[Command(4690, 15), b""] = U32.pack(4)
+            empty = await map_action("get_map_features")
+            assert empty["creatable_types"] == ["work_area", "stay_out_zone"]
+            new_area = {
+                "expected_checksum": empty["checksum"],
+                "expected_installation_id": empty["installation_id"],
+                "feature_type": "work_area",
+                "name": "Huerto",
+                "points": points,
+            }
+            refuse_mission = True
+            with pytest.raises(HomeAssistantError, match="polygon was reverted"):
+                await map_action("create_map_feature", **new_area)
+            assert not work_area
+            assert (await map_action("get_map_features"))["checksum"] == empty[
+                "checksum"
+            ]
+            refuse_mission = False
+            area = await map_action("create_map_feature", **new_area)
+            assert area["mission_id"] == 12
+            assert area["mowing_area_id"] == area["feature_id"]
+            areas = await entry.runtime_data.async_read_work_areas(0, 20)
+            assert areas["work_areas"][0]["mowing_area_id"] == area["feature_id"]
+            area_edit = {
+                "feature_id": area["feature_id"],
+                "expected_checksum": area["checksum"],
+                "expected_installation_id": 5,
+            }
+            points[1]["x_mm"] = 1600
+            edited_area = await map_action(
+                "edit_map_geometry", **area_edit, points=points
+            )
+            area_edit["expected_checksum"] = edited_area["checksum"]
+            assert work_area["polygon"].rstrip(b"\0").decode() == area["feature_id"]
+            scheduled = True
+            with pytest.raises(HomeAssistantError, match="Remove the schedule"):
+                await map_action("delete_map_feature", **area_edit)
+            assert work_area
+            scheduled = False
+            await map_action("delete_map_feature", **area_edit)
+            assert not work_area
+            assert (await map_action("get_map_features"))["features"] == []
     finally:
         await hass.async_stop(force=True)
 

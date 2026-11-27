@@ -45,6 +45,7 @@ class FirmwareProfile:
     epos_cloud_origin_setup: int = 0
     epos_boundary_switch: int = 0
     zone_map_writable: int = 0
+    aim_work_areas: int = 0
 
 
 @cache
@@ -127,5 +128,9 @@ def get_firmware_profile(
         zone_map_writable=int(
             result.zone_map_writable
             and all(profile and profile.zone_map_writable for profile in releases)
+        ),
+        aim_work_areas=int(
+            result.aim_work_areas
+            and all(profile and profile.aim_work_areas for profile in releases)
         ),
     )

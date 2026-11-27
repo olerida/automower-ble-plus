@@ -302,7 +302,7 @@ async def test_mission_can_only_link_to_a_mowing_polygon_on_the_confirmed_revisi
     checksum = bytes(16)
     state = {"available": True, "checksum": checksum.hex(), "svg": SVG}
     monkeypatch.setattr(
-        "custom_components.automower_ble_plus.mapfiles.async_get_map",
+        "custom_components.automower_ble_plus.mapfiles.async_read_map_kind",
         AsyncMock(return_value=state),
     )
     client.command.return_value = checksum

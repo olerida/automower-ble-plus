@@ -103,3 +103,9 @@ def test_epos_boundary_switch_obeys_the_app_model_and_firmware_rules():
     assert not get_firmware_profile(
         (39, 7), "40.27_Main-App-P17V_unknown"
     ).epos_boundary_switch
+
+
+def test_aim_work_area_capability_requires_zone_mission_support():
+    assert get_firmware_profile((28, 2), "40.3_Main-App-P16_81.4").aim_work_areas
+    assert not get_firmware_profile((28, 2), "40.3_Main-App-P16_34.18").aim_work_areas
+    assert not get_firmware_profile((5, 0), "App-G3_devicetype-5.0").aim_work_areas

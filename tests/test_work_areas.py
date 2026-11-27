@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.automower_ble_plus.features import I16, U32
+from custom_components.automower_ble_plus.mapfiles import MapKind
 from custom_components.automower_ble_plus.schedule import ScheduleTask
 from custom_components.automower_ble_plus.transport import CommandRejected
 from custom_components.automower_ble_plus.wire import Command
@@ -232,8 +233,42 @@ async def test_work_area_creation_links_the_verified_polygon_and_cleans_up_failu
             "mowing_area_id": "lawn",
         }
         client.command.assert_any_await(Command(5604, 19), identity + b"\x01")
-    verify.assert_awaited_once_with(client, "lawn", checksum)
+    verify.assert_awaited_once_with(client, "lawn", checksum, kind=MapKind.SITE)
     client.command.assert_any_await(Command(5604, 12), identity + b"lawn\0")
+
+
+@pytest.mark.asyncio
+async def test_interrupted_aim_creation_does_not_remove_a_mission_in_another_profile(
+    monkeypatch,
+):
+    client = AsyncMock()
+    client.is_connected = lambda: True
+    monkeypatch.setattr(
+        "custom_components.automower_ble_plus.work_areas.async_verify_mowing_area",
+        AsyncMock(),
+    )
+    confirm = AsyncMock(
+        side_effect=[
+            None,
+            ValueError("Installation changed"),
+            ValueError("Installation changed"),
+        ]
+    )
+    client.command.side_effect = [b"\1", U32.pack(0), U32.pack(12)]
+    with pytest.raises(ValueError, match="Check work area 12"):
+        await async_create_work_area(
+            client,
+            "Huerto",
+            "polygon",
+            "a" * 64,
+            kind=MapKind.ZONES,
+            confirm_context=confirm,
+        )
+    assert [call.args[0].operation for call in client.command.await_args_list] == [
+        20,
+        2,
+        1,
+    ]
 
 
 @pytest.mark.asyncio

@@ -59,3 +59,12 @@ async def async_read_aim_status(client: AutomowerClient) -> dict[str, int]:
     if updated not in (None, 0, 0xFFFFFFFF):
         status["aim_map_updated"] = updated
     return status
+
+
+async def async_aim_map_ready(client: AutomowerClient) -> bool:
+    """Check the live mapping prerequisites for an edit."""
+    return (
+        await _async_read(client, _AIM_AVAILABLE) == 1
+        and await _async_read(client, _AIM_ENABLED) == 1
+        and await _async_read(client, _AIM_STATE) == AIM_READY
+    )
