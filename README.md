@@ -2,6 +2,16 @@
 
 Integración de Home Assistant para cortacéspedes Husqvarna Automower que admiten el servicio Bluetooth LE de Automower Connect. Usa un adaptador Bluetooth de Home Assistant o un proxy ESPHome que admita conexiones activas.
 
+## Novedades principales
+
+- **v0.30** · Resumen de cambios en la ficha de Marketplace y durante la configuración inicial.
+- **v0.29** · Panel **Automower Maps** para consultar mapas BLE y dibujar o editar zonas y rutas en modelos compatibles.
+- **v0.27–0.28** · Crea y edita zonas de exclusión AIM. Las áreas de trabajo AIM se vinculan a una misión para programar el corte.
+- **v0.23–0.26** · Cambio del PIN, estado y regeneración del mapa AIM y configuración del perímetro y origen EPOS, según el firmware.
+- **Automower 420** · El perfil conocido ofrece ajustes del cable y de las guías, horario semanal y gestión del PIN y del módulo Automower Connect según el equipo instalado.
+
+[Consultar el historial de cambios](https://github.com/olerida/automower-ble-plus/blob/main/CHANGELOG.md)
+
 ## Instalación desde Marketplace
 
 1. En Home Assistant 2026.11.0 o posterior, abre **Ajustes → Marketplace → Añadir desde enlace**. Añade `olerida/automower-ble-plus` como integración e instala **Automower BLE Plus**. [Abrir en Marketplace](https://my.home-assistant.io/redirect/hacs_repository/?owner=olerida&repository=automower-ble-plus&category=integration)

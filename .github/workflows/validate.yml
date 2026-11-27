@@ -47,9 +47,9 @@ jobs:
       - name: Build the HACS archive
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: python3 tools/build_hacs_release.py --tag "$RELEASE_TAG" --output-dir "$RUNNER_TEMP"
+        run: python3 tools/build_hacs_release.py --tag "$RELEASE_TAG" --output-dir "$RUNNER_TEMP" --notes-file "$RUNNER_TEMP/release-notes.md"
       - name: Publish the tagged release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" "$RUNNER_TEMP/automower_ble_plus.zip" --verify-tag --generate-notes
+        run: gh release create "$RELEASE_TAG" "$RUNNER_TEMP/automower_ble_plus.zip" --verify-tag --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"

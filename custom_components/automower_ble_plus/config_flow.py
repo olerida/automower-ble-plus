@@ -31,6 +31,7 @@ _SECRET = selector.TextSelector(
 )
 _MAC = re.compile(r"(?:[A-F0-9]{2}:){5}[A-F0-9]{2}")
 _PIN = re.compile(r"[0-9]{4}")
+_CHANGELOG_URL = "https://github.com/olerida/automower-ble-plus/blob/main/CHANGELOG.md"
 
 
 def normalize_address(value: str) -> str:
@@ -125,13 +126,16 @@ class AutomowerConfigFlow(ConfigFlow, domain=DOMAIN):
                             data={CONF_ADDRESS: self.address, CONF_PIN: pin},
                         )
         suggested = user_input and {CONF_ADDRESS: user_input.get(CONF_ADDRESS)}
+        description = {"name": getattr(self, "address", "")}
+        if step != "reauth_confirm":
+            description["changelog_url"] = _CHANGELOG_URL
         return self.async_show_form(
             step_id=step,
             data_schema=self.add_suggested_values_to_schema(
                 vol.Schema(fields), suggested
             ),
             errors=errors,
-            description_placeholders={"name": getattr(self, "address", "")},
+            description_placeholders=description,
         )
 
     async def _async_validate(self, pin: str | None) -> tuple[str | None, str | None]:

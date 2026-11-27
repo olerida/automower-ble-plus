@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Connect to your mower",
-        "description": "Put the mower in Bluetooth pairing mode and enter its Bluetooth address. Enter the operator PIN if required.",
+        "description": "Put the mower in Bluetooth pairing mode and enter its Bluetooth address. Enter the operator PIN if required.\n\n**Release highlights**\n\n- View and edit maps, AIM work areas, and stay-out zones on compatible models.\n- Manage the PIN, EPOS boundary, or boundary and guide wire settings depending on the model.\n\n[View the changelog]({changelog_url})",
         "data": {
           "address": "Bluetooth address",
           "pin": "Operator PIN"
@@ -12,7 +12,7 @@
       },
       "bluetooth_confirm": {
         "title": "Set up {name}",
-        "description": "Put the mower in pairing mode and enter its operator PIN if required.",
+        "description": "Put the mower in pairing mode and enter its operator PIN if required.\n\n**Release highlights**\n\n- View and edit maps, AIM work areas, and stay-out zones on compatible models.\n- Manage the PIN, EPOS boundary, or boundary and guide wire settings depending on the model.\n\n[View the changelog]({changelog_url})",
         "data": {
           "pin": "Operator PIN"
         }

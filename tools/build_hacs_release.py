@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,8 +13,22 @@ DOMAIN = "automower_ble_plus"
 COMPONENT = f"custom_components/{DOMAIN}"
 
 
-def build_release(output_dir: Path, tag: str | None) -> Path:
-    """Write the release archive at the path declared by hacs.json."""
+def release_notes(tag: str) -> str:
+    """Return the committed changelog section for this tag."""
+    changelog = subprocess.check_output(
+        ["git", "show", "HEAD:CHANGELOG.md"], cwd=ROOT, text=True
+    )
+    for section in re.split(r"(?m)^## ", changelog)[1:]:
+        heading, _, body = section.partition("\n")
+        if heading.strip() == tag and body.strip():
+            return body.strip() + "\n"
+    raise ValueError(f"CHANGELOG.md must include release notes under '## {tag}'")
+
+
+def build_release(
+    output_dir: Path, tag: str | None, notes_file: Path | None = None
+) -> Path:
+    """Write the HACS archive and optionally its published release notes."""
     manifest = json.loads(
         subprocess.check_output(
             ["git", "show", f"HEAD:{COMPONENT}/manifest.json"], cwd=ROOT
@@ -29,6 +44,7 @@ def build_release(output_dir: Path, tag: str | None) -> Path:
     expected_tag = f"v{manifest['version']}"
     if tag is not None and tag != expected_tag:
         raise ValueError(f"The integration manifest requires tag {expected_tag}")
+    notes = release_notes(expected_tag) if notes_file is not None else None
 
     output_dir.mkdir(parents=True, exist_ok=True)
     destination = output_dir / metadata["filename"]
@@ -55,6 +71,8 @@ def build_release(output_dir: Path, tag: str | None) -> Path:
                 ZipInfo("LICENSE"), license_text, compress_type=ZIP_DEFLATED
             )
         archive.replace(destination)
+    if notes_file is not None and notes is not None:
+        notes_file.write_text(notes, encoding="utf-8")
     return destination.resolve()
 
 
@@ -62,5 +80,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=Path("dist"))
     parser.add_argument("--tag")
+    parser.add_argument("--notes-file", type=Path)
     options = parser.parse_args()
-    print(build_release(options.output_dir, options.tag))
+    print(build_release(options.output_dir, options.tag, options.notes_file))
