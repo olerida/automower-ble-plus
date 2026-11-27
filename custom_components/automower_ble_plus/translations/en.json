@@ -1307,6 +1307,58 @@
         }
       }
     },
+    "get_work_area_schedule": {
+      "name": "Read work area schedule",
+      "description": "Read the weekly intervals of a work area on the selected map.",
+      "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map type returned by Read map features."
+        },
+        "feature_id": {
+          "name": "Work area ID",
+          "description": "Feature ID of the work area returned by Read map features."
+        },
+        "expected_checksum": {
+          "name": "Map checksum",
+          "description": "Checksum returned by Read map features."
+        },
+        "expected_installation_id": {
+          "name": "Installation ID",
+          "description": "Installation ID returned by Read map features when available."
+        }
+      }
+    },
+    "replace_work_area_schedule": {
+      "name": "Replace work area schedule",
+      "description": "Save the intervals of this area while preserving other areas' schedules.",
+      "fields": {
+        "map_type": {
+          "name": "Map",
+          "description": "Map type returned by Read map features."
+        },
+        "feature_id": {
+          "name": "Work area ID",
+          "description": "Feature ID of the work area returned by Read map features."
+        },
+        "expected_checksum": {
+          "name": "Map checksum",
+          "description": "Checksum returned by Read map features."
+        },
+        "expected_installation_id": {
+          "name": "Installation ID",
+          "description": "Installation ID returned by Read map features when available."
+        },
+        "expected_schedule_revision": {
+          "name": "Schedule revision",
+          "description": "Revision returned by Read work area schedule."
+        },
+        "intervals": {
+          "name": "Intervals",
+          "description": "List of intervals with start, duration_seconds and weekdays. An empty list clears this area's schedule."
+        }
+      }
+    },
     "get_map_features": {
       "name": "Read map features",
       "description": "Read the areas, paths and charging station in a Bluetooth map.",

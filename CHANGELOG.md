@@ -1,5 +1,10 @@
 # Novedades de Automower BLE Plus
 
+## v0.33.0
+
+- Selecciona un área en **Automower Maps** y abre **Horario** para añadir, editar o quitar franjas semanales. Puedes programar intervalos de día completo o que crucen medianoche.
+- El panel conserva los horarios de las demás áreas y avisa si el horario seleccionado cambió desde que abriste el editor.
+
 ## v0.32.0
 
 - Al crear un área en **Automower Maps**, puedes permitir el corte a cualquier hora, todos los días. La opción aparece en modelos que admiten horarios por área y se activa de forma explícita.

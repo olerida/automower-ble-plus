@@ -100,6 +100,42 @@ class AutomowerEntity(MowerEntity, LawnMowerEntity):
             [ScheduleTask.from_action(**interval) for interval in intervals]
         )
 
+    async def async_get_work_area_schedule(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None = None,
+        map_type: str = MapKind.SITE.value,
+    ) -> dict:
+        """Read the weekly schedule of the mission linked to a map area."""
+        return await self.coordinator.async_work_area_schedule(
+            feature_id,
+            expected_checksum,
+            expected_installation_id,
+            kind=MapKind(map_type),
+        )
+
+    async def async_replace_work_area_schedule(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_schedule_revision: str,
+        intervals: list[dict],
+        expected_installation_id: int | None = None,
+        map_type: str = MapKind.SITE.value,
+    ) -> dict:
+        """Update one area's intervals while preserving the rest of the schedule."""
+        return await self.coordinator.async_work_area_schedule(
+            feature_id,
+            expected_checksum,
+            expected_installation_id,
+            kind=MapKind(map_type),
+            intervals=[
+                ScheduleTask.from_wall_time(**interval) for interval in intervals
+            ],
+            expected_schedule_revision=expected_schedule_revision,
+        )
+
     async def async_get_message_history(self, offset: int, limit: int) -> dict:
         """Return messages from the mower's local history."""
         return await self.coordinator.async_read_history(offset, limit)

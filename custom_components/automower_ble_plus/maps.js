@@ -1,4 +1,6 @@
 const DOMAIN = "automower_ble_plus";
+const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const DAY_SECONDS = 86400;
 const LINE_TYPES = new Set(["transport_path", "poi_path", "charging_station"]);
 const COLORS = {
   work_area: "#287750",
@@ -24,6 +26,11 @@ const COPY = {
     fullDay: "Allow mowing all day, every day",
     scheduleSaved: "Area created and its all-day schedule saved.",
     scheduleUnconfirmed: "Area created. Check its schedule in Calendar before trying again.",
+    schedule: "Schedule", addInterval: "Add interval", removeInterval: "Remove interval",
+    emptySchedule: "This area has no scheduled intervals.", noWeekdays: "Choose at least one day for every interval.",
+    scheduleStart: "Start", scheduleEnd: "End",
+    scheduleHint: "Times follow the mower's time zone. Identical start and end times make a 24-hour interval.",
+    scheduleDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     save: "Save", cancel: "Cancel", fit: "Fit map", zoomIn: "Zoom in", zoomOut: "Zoom out",
     point: "Point", addPoint: "Add point", removePoint: "Remove point",
     usePosition: "Use mower position", points: "Points (mm)", metre: "m",
@@ -47,6 +54,11 @@ const COPY = {
     fullDay: "Permitir el corte a cualquier hora, todos los días",
     scheduleSaved: "Área creada y horario de día completo guardado.",
     scheduleUnconfirmed: "Área creada. Comprueba su horario en Calendario antes de volver a intentarlo.",
+    schedule: "Horario", addInterval: "Añadir franja", removeInterval: "Quitar franja",
+    emptySchedule: "Esta área no tiene franjas programadas.", noWeekdays: "Elige al menos un día en cada franja.",
+    scheduleStart: "Inicio", scheduleEnd: "Fin",
+    scheduleHint: "Se usa la zona horaria del cortacésped. Si el inicio y el fin coinciden, la franja dura 24 horas.",
+    scheduleDays: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
     save: "Guardar", cancel: "Cancelar", fit: "Ajustar mapa", zoomIn: "Acercar", zoomOut: "Alejar",
     point: "Punto", addPoint: "Añadir punto", removePoint: "Quitar punto",
     usePosition: "Usar posición del robot", points: "Puntos (mm)", metre: "m",
@@ -61,6 +73,16 @@ const COPY = {
     charging_station: "Estación de carga", unknown: "Elemento del mapa",
   },
 };
+
+function clockSeconds(value) {
+  const [hours, minutes, seconds = 0] = value.split(":").map(Number);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+function clockLabel(value) {
+  return [Math.floor(value / 3600), Math.floor(value / 60) % 60, value % 60]
+    .map(part => String(part).padStart(2, "0")).join(":");
+}
 
 function labeledOption(value, label) {
   const option = document.createElement("option");
@@ -165,6 +187,13 @@ class AutomowerMaps extends HTMLElement {
           background: var(--surface); color: inherit; padding: 1.25rem; }
         dialog::backdrop { background: #14221c80; }
         dialog p { margin: 0.7rem 0 1rem; }
+        #schedule-dialog { width: min(32rem, calc(100vw - 3rem)); max-height: 80vh; overflow: auto; }
+        #schedule-list { display: grid; gap: 0.65rem; margin-bottom: 0.9rem; }
+        .schedule-interval { border: 1px solid var(--line); border-radius: 7px; padding: 0.7rem; min-width: 0; }
+        .schedule-days { display: flex; flex-wrap: wrap; gap: 0.55rem; margin: 0.65rem 0; }
+        .schedule-days label { display: flex; align-items: center; }
+        .schedule-days input { min-height: auto; accent-color: var(--accent); }
+        #schedule-error { color: var(--error-color, #a23941); }
         @media (max-width: 700px) {
           .workspace { grid-template-columns: 1fr; }
           aside { padding: 0.8rem 0; border-left: 0; border-top: 1px solid var(--line); }
@@ -201,6 +230,7 @@ class AutomowerMaps extends HTMLElement {
                 <div class="actions">
                   <button type="button" id="geometry" data-text="geometry"></button>
                   <button type="button" id="settings" data-text="settings"></button>
+                  <button type="button" id="schedule" data-text="schedule"></button>
                   <button type="button" id="remove" class="danger" data-text="remove"></button>
                 </div>
               </div>
@@ -236,6 +266,20 @@ class AutomowerMaps extends HTMLElement {
           <form method="dialog" class="actions">
             <button value="cancel" data-text="cancel" autofocus></button>
             <button value="delete" class="danger" data-text="remove"></button>
+          </form>
+        </dialog>
+        <dialog id="schedule-dialog" aria-labelledby="schedule-title">
+          <form id="schedule-form">
+            <h2 id="schedule-title"></h2>
+            <p><span data-text="scheduleHint"></span> <span id="schedule-zone"></span></p>
+            <p id="schedule-empty" data-text="emptySchedule"></p>
+            <div id="schedule-list"></div>
+            <p id="schedule-error" role="alert" hidden></p>
+            <div class="actions">
+              <button type="button" id="schedule-add" data-text="addInterval"></button>
+              <button type="submit" id="schedule-save" class="primary" data-text="save"></button>
+              <button type="button" id="schedule-cancel" data-text="cancel"></button>
+            </div>
           </form>
         </dialog>
       </main>`;
@@ -278,6 +322,16 @@ class AutomowerMaps extends HTMLElement {
     ui.width.addEventListener("input", () => this._renderActions());
     ui["add-point"].addEventListener("click", () => this._addPoint({ ...this.center }));
     ui["position-point"].addEventListener("click", () => this._addMowerPoint());
+    ui.schedule.addEventListener("click", () => this._openSchedule());
+    ui["schedule-add"].addEventListener("click", () => this._addScheduleInterval());
+    ui["schedule-cancel"].addEventListener("click", () => ui["schedule-dialog"].close());
+    ui["schedule-dialog"].addEventListener("cancel", event => {
+      if (this.busy) event.preventDefault();
+    });
+    ui["schedule-form"].addEventListener("submit", event => {
+      event.preventDefault();
+      this._saveSchedule();
+    });
     ui.remove.addEventListener("click", () => {
       const feature = this.selected;
       if (!feature?.editable) return;
@@ -495,8 +549,10 @@ class AutomowerMaps extends HTMLElement {
     ui.add.disabled = this.busy;
     ui.geometry.hidden = !this.selected?.editable;
     ui.settings.hidden = !this.selected?.editable_settings?.length;
+    ui.schedule.hidden = this.selected?.type !== "work_area" || !this.selected.editable
+      || !this.map?.can_schedule_full_day;
     ui.remove.hidden = !this.selected?.editable;
-    for (const key of ["geometry", "settings", "remove"]) ui[key].disabled = this.busy;
+    for (const key of ["geometry", "settings", "schedule", "remove"]) ui[key].disabled = this.busy;
     ui.draft.hidden = !this.draft;
     for (const control of ui.draft.elements) control.disabled = this.busy;
     if (!this.draft) return;
@@ -660,9 +716,7 @@ class AutomowerMaps extends HTMLElement {
     this._status(this.copy.loading);
     this._renderActions();
     try {
-      const revision = { map_type: this.map.map_type, expected_checksum: this.map.checksum };
-      if (Number.isInteger(this.map.installation_id)) revision.expected_installation_id = this.map.installation_id;
-      const result = await this._action(service, { ...fields, ...revision });
+      const result = await this._action(service, { ...fields, ...this._mapRevision() });
       if (!this.isConnected || sequence !== this.sequence) return;
       this.busy = false;
       const scheduleUnconfirmed = result.schedule_confirmed === false;
@@ -675,6 +729,114 @@ class AutomowerMaps extends HTMLElement {
         this._status(error.message || this.copy.failed, true);
         this._renderActions();
       }
+    }
+  }
+
+  _mapRevision() {
+    const revision = { map_type: this.map.map_type, expected_checksum: this.map.checksum };
+    if (Number.isInteger(this.map.installation_id)) revision.expected_installation_id = this.map.installation_id;
+    return revision;
+  }
+
+  async _openSchedule() {
+    if (this.busy || this.ui.schedule.hidden) return;
+    const sequence = this.sequence;
+    const target = { feature_id: this.selected.id, ...this._mapRevision() };
+    this.busy = true;
+    this._renderActions();
+    this._status(this.copy.loading);
+    try {
+      const schedule = await this._action("get_work_area_schedule", target);
+      if (!this.isConnected || sequence !== this.sequence) return;
+      this.scheduleTarget = { ...target, expected_schedule_revision: schedule.revision };
+      this.ui["schedule-title"].textContent = `${this.copy.schedule} · ${schedule.name}`;
+      this.ui["schedule-zone"].textContent = schedule.time_zone;
+      this.ui["schedule-list"].replaceChildren();
+      this.ui["schedule-empty"].hidden = Boolean(schedule.intervals.length);
+      this.ui["schedule-error"].hidden = true;
+      for (const interval of schedule.intervals) this._addScheduleInterval(interval);
+      this.ui["schedule-dialog"].showModal();
+      this._status();
+    } catch (error) {
+      if (this.isConnected && sequence === this.sequence) this._status(error.message || this.copy.failed, true);
+    } finally {
+      if (this.isConnected && sequence === this.sequence) {
+        this.busy = false;
+        this._renderActions();
+      }
+    }
+  }
+
+  _addScheduleInterval(interval = { start: "09:00:00", duration_seconds: 10800, weekdays: [] }) {
+    const row = document.createElement("fieldset");
+    row.className = "schedule-interval";
+    const clocks = document.createElement("div");
+    clocks.className = "actions";
+    const end = (clockSeconds(interval.start) + interval.duration_seconds) % DAY_SECONDS;
+    for (const [label, value] of [[this.copy.scheduleStart, interval.start], [this.copy.scheduleEnd, clockLabel(end)]]) {
+      const wrapper = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "time";
+      input.step = "1";
+      input.required = true;
+      input.value = value;
+      wrapper.append(label, input);
+      clocks.append(wrapper);
+    }
+    const days = document.createElement("div");
+    days.className = "schedule-days";
+    for (const [index, day] of WEEKDAYS.entries()) {
+      const wrapper = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = day;
+      checkbox.checked = interval.weekdays.includes(day);
+      wrapper.append(checkbox, this.copy.scheduleDays[index]);
+      days.append(wrapper);
+    }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = this.copy.removeInterval;
+    remove.addEventListener("click", () => {
+      row.remove();
+      this.ui["schedule-empty"].hidden = Boolean(this.ui["schedule-list"].childElementCount);
+    });
+    row.append(clocks, days, remove);
+    this.ui["schedule-list"].append(row);
+    this.ui["schedule-empty"].hidden = true;
+  }
+
+  async _saveSchedule() {
+    if (this.busy) return;
+    const ui = this.ui;
+    const errorText = ui["schedule-error"];
+    const intervals = [];
+    for (const row of ui["schedule-list"].children) {
+      const [start, end] = [...row.querySelectorAll("input[type=time]")].map(input => input.value);
+      const weekdays = [...row.querySelectorAll("input:checked")].map(input => input.value);
+      if (!weekdays.length) {
+        errorText.textContent = this.copy.noWeekdays;
+        errorText.hidden = false;
+        return;
+      }
+      const seconds = (clockSeconds(end) - clockSeconds(start) + DAY_SECONDS) % DAY_SECONDS;
+      intervals.push({ start, duration_seconds: seconds || DAY_SECONDS, weekdays });
+    }
+    this.busy = true;
+    errorText.hidden = true;
+    const controls = ui["schedule-form"].elements;
+    for (const control of controls) control.disabled = true;
+    try {
+      await this._action("replace_work_area_schedule", { ...this.scheduleTarget, intervals });
+      ui["schedule-dialog"].close();
+      this._status(this.copy.saved);
+    } catch (error) {
+      errorText.textContent = error.message || this.copy.failed;
+      errorText.hidden = false;
+    } finally {
+      this.busy = false;
+      for (const control of controls) control.disabled = false;
+      this._renderActions();
     }
   }
 

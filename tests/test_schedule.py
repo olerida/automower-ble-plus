@@ -82,3 +82,14 @@ async def test_mower_schedule_limit_is_checked_before_any_change():
     with pytest.raises(ValueError, match="intervals per day"):
         await async_replace_schedule(client, [task, task, task])
     assert client.staged is None
+
+
+@pytest.mark.asyncio
+async def test_external_calendar_edit_is_preserved_before_opening_transaction():
+    client = FakeCalendar(fail_operation=10)
+    original = ScheduleTask.from_action(time(9), 120, ["mon"])
+    remote_change = ScheduleTask.from_action(time(10), 60, ["tue"])
+    client.committed = [remote_change.encode()[1]]
+    with pytest.raises(ValueError, match="changed before saving"):
+        await async_replace_schedule(client, [original], expected_tasks=[original])
+    assert await async_get_schedule(client) == [remote_change]

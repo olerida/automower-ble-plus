@@ -115,6 +115,49 @@ get_work_areas:
           max: 100
           step: 1
           mode: box
+get_work_area_schedule:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields: &work_area_schedule_fields
+    map_type:
+      default: site
+      selector:
+        select:
+          translation_key: map_type
+          options:
+            - site
+            - zones
+    feature_id:
+      required: true
+      selector:
+        text:
+    expected_checksum:
+      required: true
+      selector:
+        text:
+    expected_installation_id:
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          mode: box
+replace_work_area_schedule:
+  target:
+    entity:
+      integration: automower_ble_plus
+      domain: lawn_mower
+  fields:
+    <<: *work_area_schedule_fields
+    expected_schedule_revision:
+      required: true
+      selector:
+        text:
+    intervals:
+      required: true
+      selector:
+        object:
 update_work_area:
   target:
     entity:

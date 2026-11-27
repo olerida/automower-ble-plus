@@ -1307,6 +1307,58 @@
         }
       }
     },
+    "get_work_area_schedule": {
+      "name": "Leer horario del área de trabajo",
+      "description": "Lee las franjas semanales de un área de trabajo del mapa seleccionado.",
+      "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Tipo de mapa devuelto por Leer elementos del mapa."
+        },
+        "feature_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID del área devuelto por Leer elementos del mapa."
+        },
+        "expected_checksum": {
+          "name": "Checksum del mapa",
+          "description": "Valor checksum devuelto por Leer elementos del mapa."
+        },
+        "expected_installation_id": {
+          "name": "ID de la instalación",
+          "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
+        }
+      }
+    },
+    "replace_work_area_schedule": {
+      "name": "Guardar horario del área de trabajo",
+      "description": "Guarda las franjas de esta área y conserva los horarios de las demás.",
+      "fields": {
+        "map_type": {
+          "name": "Mapa",
+          "description": "Tipo de mapa devuelto por Leer elementos del mapa."
+        },
+        "feature_id": {
+          "name": "ID del área de trabajo",
+          "description": "ID del área devuelto por Leer elementos del mapa."
+        },
+        "expected_checksum": {
+          "name": "Checksum del mapa",
+          "description": "Valor checksum devuelto por Leer elementos del mapa."
+        },
+        "expected_installation_id": {
+          "name": "ID de la instalación",
+          "description": "ID devuelto por Leer elementos del mapa cuando está disponible."
+        },
+        "expected_schedule_revision": {
+          "name": "Revisión del horario",
+          "description": "Revisión devuelta por Leer horario del área de trabajo."
+        },
+        "intervals": {
+          "name": "Franjas",
+          "description": "Lista de franjas con start, duration_seconds y weekdays. Usa una lista vacía para borrar el horario de esta área."
+        }
+      }
+    },
     "get_map_features": {
       "name": "Leer elementos del mapa",
       "description": "Consulta las áreas, rutas y la base del mapa por Bluetooth.",

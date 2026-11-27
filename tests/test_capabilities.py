@@ -3293,6 +3293,50 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
             )
             area_edit["expected_checksum"] = edited_area["checksum"]
             assert work_area["polygon"].rstrip(b"\0").decode() == area["feature_id"]
+            if schedule_result == "confirmed":
+                initial = await map_action("get_work_area_schedule", **area_edit)
+                assert initial["mission_id"] == 12
+                assert initial["intervals"][0]["duration_seconds"] == 86400
+                update = {
+                    **area_edit,
+                    "expected_schedule_revision": initial["revision"],
+                }
+                intervals = [
+                    {
+                        "start": "23:20:05",
+                        "duration_seconds": 6901,
+                        "weekdays": ["sat", "sun"],
+                    }
+                ]
+                changed_lawn = pack("<II7B", 7200, 1800, 0, 1, 0, 0, 0, 0, 0)
+                schedule[0] = changed_lawn
+                saved = await map_action(
+                    "replace_work_area_schedule", **update, intervals=intervals
+                )
+                assert saved["revision"] != initial["revision"]
+                assert saved["intervals"][0]["start"] == intervals[0]["start"]
+                assert schedule == [
+                    changed_lawn,
+                    pack("<II7BI", 84005, 6901, 0, 0, 0, 0, 0, 1, 1, 12),
+                ]
+                with pytest.raises(HomeAssistantError, match="area schedule changed"):
+                    await map_action(
+                        "replace_work_area_schedule", **update, intervals=[]
+                    )
+                update["expected_schedule_revision"] = saved["revision"]
+                work_area["schedulable"] = b"\0"
+                with pytest.raises(
+                    HomeAssistantError, match="does not support scheduling"
+                ):
+                    await map_action(
+                        "replace_work_area_schedule", **update, intervals=[]
+                    )
+                work_area["schedulable"] = b"\1"
+                cleared = await map_action(
+                    "replace_work_area_schedule", **update, intervals=[]
+                )
+                assert cleared["intervals"] == []
+                assert schedule == [changed_lawn]
             schedule[:] = [area_interval]
             with pytest.raises(HomeAssistantError, match="Remove the schedule"):
                 await map_action("delete_map_feature", **area_edit)

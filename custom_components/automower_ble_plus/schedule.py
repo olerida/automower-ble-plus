@@ -4,6 +4,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import time
+from hashlib import sha256
 from struct import Struct
 from zoneinfo import ZoneInfo
 
@@ -55,9 +56,20 @@ class ScheduleTask:
         weekdays: Sequence[str],
         mission_id: int = 0,
     ) -> "ScheduleTask":
+        return cls.from_wall_time(start, duration_minutes * 60, weekdays, mission_id)
+
+    @classmethod
+    def from_wall_time(
+        cls,
+        start: time,
+        duration_seconds: int,
+        weekdays: Sequence[str],
+        mission_id: int = 0,
+    ) -> "ScheduleTask":
+        """Make a recurring interval from a local wall-clock time."""
         return cls(
             (start.hour * 60 + start.minute) * 60 + start.second,
-            duration_minutes * 60,
+            duration_seconds,
             tuple(int(day in weekdays) for day in WEEKDAYS),
             mission_id,
         )
@@ -95,6 +107,17 @@ class WeeklySchedule:
 
     tasks: tuple[ScheduleTask, ...]
     time_zone: ZoneInfo
+
+
+def work_area_schedule_revision(
+    mission_id: int, time_zone: ZoneInfo, tasks: Sequence[ScheduleTask]
+) -> str:
+    """Identify a mission and its intervals independently of firmware list order."""
+    revision = sha256(U32.pack(mission_id))
+    revision.update(time_zone.key.encode() + b"\0")
+    for payload in sorted(task.encode()[1] for task in tasks):
+        revision.update(payload)
+    return revision.hexdigest()
 
 
 async def async_get_weekly_schedule(
@@ -153,6 +176,7 @@ async def async_replace_schedule(
     tasks: Sequence[ScheduleTask],
     *,
     confirm_context: Callable[[], Awaitable[None]] | None = None,
+    expected_tasks: Sequence[ScheduleTask] | None = None,
 ) -> None:
     """Write a complete schedule in the mower's Calendar transaction."""
     maximum, per_day = await async_get_schedule_limits(client)
@@ -177,6 +201,10 @@ async def async_replace_schedule(
     commands = [task.encode() for task in tasks]
     if confirm_context is not None:
         await confirm_context()
+    if expected_tasks is not None and Counter(
+        await async_get_schedule(client, maximum=maximum)
+    ) != Counter(expected_tasks):
+        raise ValueError("The mower schedule changed before saving. Read it again")
     await client.command(_BEGIN)
     committed = False
     try:

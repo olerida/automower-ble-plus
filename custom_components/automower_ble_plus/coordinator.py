@@ -180,6 +180,7 @@ from .schedule import (
     async_get_schedule_limits,
     async_get_weekly_schedule,
     async_replace_schedule,
+    work_area_schedule_revision,
 )
 from .sites import (
     InstallationSelection,
@@ -219,6 +220,7 @@ from .wifi import (
 from .wire import Command, Event
 from .wire_test import WireTest, WireTestPhase, WireTestRoute
 from .work_areas import (
+    async_confirm_schedulable_area,
     async_create_work_area,
     async_delete_work_area,
     async_get_area_mowing_settings,
@@ -1861,6 +1863,101 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 }
             )
 
+    async def async_work_area_schedule(
+        self,
+        feature_id: str,
+        expected_checksum: str,
+        expected_installation_id: int | None,
+        *,
+        kind: MapKind,
+        intervals: Sequence[ScheduleTask] | None = None,
+        expected_schedule_revision: str | None = None,
+    ) -> dict:
+        """Read or edit one area's intervals for a confirmed installation and mission."""
+        async with self._async_map_revision(
+            expected_checksum, expected_installation_id, kind=kind
+        ):
+            if not (self.firmware_profile and self.firmware_profile.mission_schedule):
+                raise ValueError(
+                    "The mower firmware does not support work area schedules"
+                )
+            linked = await async_get_linked_work_areas(
+                self.client, feature_id, require_available=True
+            )
+            if len(linked) != 1:
+                raise ValueError(
+                    "The selected area must have one linked mowing mission"
+                )
+            mission_id, name = linked[0]
+
+            async def confirm() -> None:
+                await self._async_confirm_map_installation(expected_installation_id)
+                await async_confirm_schedulable_area(
+                    self.client, mission_id, feature_id
+                )
+
+            await confirm()
+            schedule = await async_get_weekly_schedule(
+                self.client, self.hass.config.time_zone
+            )
+            area_tasks = tuple(
+                task for task in schedule.tasks if task.mission_id == mission_id
+            )
+            revision = work_area_schedule_revision(
+                mission_id, schedule.time_zone, area_tasks
+            )
+            if intervals is not None:
+                if revision != expected_schedule_revision:
+                    raise ValueError(
+                        "The work area schedule changed. Read it again before saving"
+                    )
+                replacement = tuple(
+                    replace(task, mission_id=mission_id) for task in intervals
+                )
+                if replacement != area_tasks:
+                    tasks = tuple(
+                        task for task in schedule.tasks if task.mission_id != mission_id
+                    )
+                    tasks += replacement
+                    try:
+                        await async_replace_schedule(
+                            self.client,
+                            tasks,
+                            confirm_context=confirm,
+                            expected_tasks=schedule.tasks,
+                        )
+                    except (
+                        CommandRejected,
+                        MowerConnectionError,
+                        ValueError,
+                        StructError,
+                    ):
+                        self._calendar_update_pending = True
+                        self._async_schedule_event_refresh()
+                        raise
+                    schedule = replace(schedule, tasks=tasks)
+                    self.async_set_updated_data(
+                        {**(self.data or {}), "weekly_schedule": schedule}
+                    )
+                    area_tasks = replacement
+                    revision = work_area_schedule_revision(
+                        mission_id, schedule.time_zone, area_tasks
+                    )
+                else:
+                    await confirm()
+            else:
+                await confirm()
+        return {
+            "name": name,
+            "mission_id": mission_id,
+            "revision": revision,
+            "time_zone": schedule.time_zone.key,
+            "intervals": [
+                {**task.as_response(), "duration_seconds": task.duration}
+                for task in area_tasks
+            ],
+        }
+
     async def async_read_history(self, offset: int, limit: int) -> dict:
         """Read one page of the mower's local messages."""
         async with self._operation_lock:
@@ -3356,7 +3453,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         tasks = current.tasks
         if interval not in tasks:
             tasks = (*tasks, interval)
-            await async_replace_schedule(self.client, tasks, confirm_context=confirm)
+            await async_replace_schedule(
+                self.client,
+                tasks,
+                confirm_context=confirm,
+                expected_tasks=current.tasks,
+            )
         else:
             await confirm()
         self.async_set_updated_data(

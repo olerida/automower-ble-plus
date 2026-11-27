@@ -219,6 +219,20 @@ async def async_get_work_areas(
     return result
 
 
+async def async_confirm_schedulable_area(
+    client: AutomowerClient, mission_id: int, area_id: str
+) -> None:
+    """Verify a mission still refers to the area and accepts schedule intervals."""
+    if mission_id == 0:
+        raise ValueError("The selected work area has no dedicated mowing mission")
+    identity = U32.pack(mission_id)
+    raw_id = await client.command(_GET_MOWING_AREA, identity)
+    if raw_id.partition(b"\0")[0].decode("ascii") != area_id:
+        raise ValueError("The mowing mission no longer matches this area")
+    if U8.unpack(await client.command(_SCHEDULABLE, identity))[0] != 1:
+        raise ValueError("The mower reports that this area does not support scheduling")
+
+
 async def async_update_work_area(
     client: AutomowerClient, mission_id: int, *, name: str | None, enabled: bool | None
 ) -> None:

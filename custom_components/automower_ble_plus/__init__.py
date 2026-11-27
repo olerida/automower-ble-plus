@@ -83,6 +83,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         ),
     }
     selected_feature = {**map_revision, vol.Required("feature_id"): cv.string}
+    area_interval = vol.Schema(
+        {
+            vol.Required("start"): cv.time,
+            vol.Required("duration_seconds"): _bounded_integer(1, 86400),
+            vol.Required("weekdays"): vol.All(
+                [vol.In(WEEKDAYS)], vol.Length(min=1, max=7)
+            ),
+        }
+    )
     map_points = vol.All([point], vol.Length(min=2))
     map_width = _bounded_integer(1, MAX_PATH_WIDTH)
     schemas = {
@@ -100,6 +109,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "get_message_history": page_schema,
         "get_work_areas": page_schema,
         "get_work_area_status": {vol.Optional("mission_id"): mission},
+        "get_work_area_schedule": selected_feature,
+        "replace_work_area_schedule": {
+            **selected_feature,
+            vol.Required("expected_schedule_revision"): cv.string,
+            vol.Required("intervals"): [area_interval],
+        },
         "create_work_area": {
             vol.Required("name"): cv.string,
             vol.Required("area_id"): cv.string,
@@ -205,6 +220,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 "set_map_feature_settings",
                 "create_map_feature",
                 "delete_map_feature",
+                "replace_work_area_schedule",
             )
             else SupportsResponse.NONE,
         )
