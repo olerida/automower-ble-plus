@@ -51,6 +51,11 @@ _PRIORITY = (Reading(Command(5604, 71), U8), Command(5604, 72))
 AREA_PRIORITIES = {0: "lowest", 1: "low", 2: "medium", 3: "high", 4: "highest"}
 _SYSTEMATIC_AVAILABLE = Reading(Command(5582, 0), U8)
 _MOWING_PATTERNS = {1: "random", 2: "systematic"}
+_PATTERN_TYPE_SET = Command(5604, 17)
+_PRESET_SHIFTS = {"parallel": 0, "checkerboard": 900, "triangle": 600}
+_PRESET_NAMES = {shift: name for name, shift in _PRESET_SHIFTS.items()}
+AREA_PATTERN_PRESETS = ("random", *_PRESET_SHIFTS)
+_AREA_PATTERN_PRESET_KEY = "mowing_pattern_preset"
 _SYSTEMATIC_SETTINGS = {
     "orientation": (Reading(Command(5582, 3), I16), Command(5582, 4)),
     "orientation_shift": (Reading(Command(5582, 5), I16), Command(5582, 6)),
@@ -449,7 +454,7 @@ async def _async_area_mowing_fields(
             raise
         return fields
     if available == 1:
-        fields["mowing_pattern"] = (Reading(_TYPE, U8), Command(5604, 17))
+        fields["mowing_pattern"] = (Reading(_TYPE, U8), _PATTERN_TYPE_SET)
         if mission_type == 2:
             fields.update(_SYSTEMATIC_SETTINGS)
             fields["current_orientation"] = (Reading(Command(5582, 7), I16), None)
@@ -494,7 +499,11 @@ async def _async_area_assistance_fields(
 
 
 async def async_get_area_mowing_settings(
-    client: AutomowerClient, mission_id: int, height_max: int
+    client: AutomowerClient,
+    mission_id: int,
+    height_max: int,
+    *,
+    pattern_presets: bool = False,
 ) -> dict:
     """Read the mowing settings supported in a single work area."""
     identity = U32.pack(mission_id)
@@ -525,12 +534,24 @@ async def async_get_area_mowing_settings(
             editable.append(key)
     if "cutting_height" in settings:
         settings["cutting_height_unit"] = "%" if height_max == 100 else "level"
+    if pattern_presets and "mowing_pattern" in editable:
+        if settings["mowing_pattern"] == "random":
+            settings[_AREA_PATTERN_PRESET_KEY] = "random"
+        elif "orientation_shift" in editable:
+            settings[_AREA_PATTERN_PRESET_KEY] = _PRESET_NAMES.get(
+                round(settings["orientation_shift"] * 10), "custom"
+            )
+        if _AREA_PATTERN_PRESET_KEY in settings:
+            editable.append(_AREA_PATTERN_PRESET_KEY)
     return {"mission_id": mission_id, "settings": settings, "editable": editable}
 
 
 def area_mowing_options(editable: list[str]) -> dict[str, list[str]]:
     """Return the available choices for editable enumerated settings."""
-    return {key: list(_OPTIONS[key].values()) for key in editable if key in _OPTIONS}
+    options = {key: list(_OPTIONS[key].values()) for key in editable if key in _OPTIONS}
+    if _AREA_PATTERN_PRESET_KEY in editable:
+        options[_AREA_PATTERN_PRESET_KEY] = list(AREA_PATTERN_PRESETS)
+    return options
 
 
 async def async_set_area_mowing_setting(
@@ -541,12 +562,22 @@ async def async_set_area_mowing_setting(
     *,
     expected_value: str | bool | float | None = None,
     confirm_context: Callable[[], Awaitable[None]] | None = None,
+    pattern_presets: bool = False,
 ) -> None:
     """Write one supported setting and verify the value stored by the mower."""
     if len(changes) != 1:
         raise ValueError("Provide exactly one work area setting")
     key, value = next(iter(changes.items()))
     identity = U32.pack(mission_id)
+    if key == _AREA_PATTERN_PRESET_KEY:
+        if not pattern_presets:
+            raise ValueError(
+                "This mower firmware does not support mowing pattern presets"
+            )
+        await _async_set_pattern_preset(
+            client, identity, value, expected_value, confirm_context
+        )
+        return
     fields = await _async_area_mowing_fields(client, identity, height_max, key)
     if key not in fields or (setter := fields[key][1]) is None:
         raise ValueError(f"This work area does not support changing {key}")
@@ -595,3 +626,78 @@ async def async_set_area_mowing_setting(
             raise ValueError(
                 "The mower returned a different work area value after writing"
             )
+
+
+async def _async_set_pattern_preset(
+    client: AutomowerClient,
+    identity: bytes,
+    preset: str,
+    expected: str | bool | float | None,
+    confirm_context: Callable[[], Awaitable[None]] | None,
+) -> None:
+    if preset not in AREA_PATTERN_PRESETS:
+        raise ValueError("Select a supported mowing pattern preset")
+    fields = await _async_area_mowing_fields(client, identity, 0, "mowing_pattern")
+    if "mowing_pattern" not in fields:
+        raise ValueError("This work area does not support systematic mowing")
+    reader, setter = _SYSTEMATIC_SETTINGS["orientation_shift"]
+    previous_type = U8.unpack(await client.command(_TYPE, identity))[0]
+    if previous_type not in _MOWING_PATTERNS:
+        raise ValueError("The mower returned an unsupported mowing pattern")
+    previous_shift = (
+        reader.decode(await client.command(reader.command, identity))
+        if previous_type == 2
+        else None
+    )
+    previous_preset = (
+        "random" if previous_type == 1 else _PRESET_NAMES.get(previous_shift, "custom")
+    )
+    if expected is not None and expected != previous_preset:
+        raise ValueError("The work area setting changed. Read it again before saving")
+    if preset == previous_preset:
+        return
+
+    async def set_type(value: int) -> None:
+        await client.command(_PATTERN_TYPE_SET, identity + U8.pack(value))
+        if U8.unpack(await client.command(_TYPE, identity))[0] != value:
+            raise ValueError("The mower did not confirm the new mowing type")
+
+    if confirm_context is not None:
+        await confirm_context()
+    if preset == "random":
+        await set_type(1)
+        return
+    shift = _PRESET_SHIFTS[preset]
+    try:
+        if previous_type == 1:
+            await set_type(2)
+            if confirm_context is not None:
+                await confirm_context()
+        await client.command(setter, identity + I16.pack(shift))
+        if reader.decode(await client.command(reader.command, identity)) != shift:
+            raise ValueError(
+                "The mower did not confirm the pattern's orientation shift"
+            )
+    except (CommandRejected, MowerConnectionError, StructError, ValueError) as err:
+        if previous_type != 1:
+            raise
+        if client.is_connected():
+            try:
+                if confirm_context is not None:
+                    await confirm_context()
+                active_type = U8.unpack(await client.command(_TYPE, identity))[0]
+                if active_type == 2:
+                    await set_type(1)
+                elif active_type != 1:
+                    raise ValueError(
+                        "The mower did not report the previous mowing type"
+                    )
+            except CommandRejected, MowerConnectionError, StructError, ValueError:
+                pass
+            else:
+                raise ValueError(
+                    f"The mower kept the previous mowing type: {err}"
+                ) from err
+        raise ValueError(
+            f"Check the area's mowing pattern before retrying: {err}"
+        ) from err

@@ -1182,6 +1182,10 @@
           "name": "Work area ID",
           "description": "ID returned by Read work areas."
         },
+        "mowing_pattern_preset": {
+          "name": "Mowing pattern preset",
+          "description": "Select a pattern for this area on compatible firmware."
+        },
         "mowing_pattern": {
           "name": "Mowing pattern",
           "description": "Select random or systematic mowing."
@@ -1604,6 +1608,14 @@
       "options": {
         "connect": "Connect",
         "forget": "Forget network"
+      }
+    },
+    "mowing_pattern_preset": {
+      "options": {
+        "random": "Random",
+        "parallel": "Parallel",
+        "checkerboard": "Checkerboard",
+        "triangle": "Triangle"
       }
     },
     "mowing_pattern": {

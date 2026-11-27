@@ -35,7 +35,9 @@ const COPY = {
     mowingEmpty: "This work area has no adjustable mowing settings.", useMowerSetting: "Use mower setting for",
     off: "Off", on: "On", level: "level 1–9",
     mowingLabels: {
-      mowing_pattern: "Mowing pattern", orientation: "Mowing direction", orientation_shift: "Direction shift",
+      mowing_pattern: "Mowing pattern", mowing_pattern_preset: "Mowing pattern",
+      parallel: "Parallel", checkerboard: "Checkerboard", triangle: "Triangle", custom: "Custom direction shift",
+      orientation: "Mowing direction", orientation_shift: "Direction shift",
       boundary_mowing: "Perimeter mowing", cutting_height: "Cutting height", priority: "Priority",
       vision_positioning: "Vision-assisted positioning", daylight_only: "Mow in daylight only",
       boundary_edge_detection: "Boundary edge detection", obstacle_avoidance: "Obstacle avoidance",
@@ -76,7 +78,9 @@ const COPY = {
     mowingEmpty: "Esta área no tiene ajustes de corte editables.", useMowerSetting: "Usar el ajuste general para",
     off: "Desactivado", on: "Activado", level: "nivel 1–9",
     mowingLabels: {
-      mowing_pattern: "Patrón de corte", orientation: "Dirección de corte", orientation_shift: "Variación de dirección",
+      mowing_pattern: "Patrón de corte", mowing_pattern_preset: "Patrón de corte",
+      parallel: "Paralelo", checkerboard: "Cuadrícula", triangle: "Triángulo", custom: "Variación de dirección personalizada",
+      orientation: "Dirección de corte", orientation_shift: "Variación de dirección",
       boundary_mowing: "Corte del perímetro", cutting_height: "Altura de corte", priority: "Prioridad",
       vision_positioning: "Posicionamiento asistido por visión", daylight_only: "Cortar solo con luz diurna",
       boundary_edge_detection: "Detección del borde", obstacle_avoidance: "Detección de obstáculos",
@@ -832,7 +836,8 @@ class AutomowerMaps extends HTMLElement {
     const ui = this.ui;
     this.mowingSnapshot = snapshot;
     ui["mowing-title"].textContent = `${this.copy.mowingSettings} · ${snapshot.name}`;
-    const keys = snapshot.editable;
+    const keys = snapshot.editable.includes("mowing_pattern_preset")
+      ? snapshot.editable.filter(key => key !== "mowing_pattern") : snapshot.editable;
     ui["mowing-empty"].hidden = Boolean(keys.length);
     ui["mowing-fields"].hidden = !keys.length;
     ui["mowing-save"].hidden = !keys.length;
@@ -853,6 +858,11 @@ class AutomowerMaps extends HTMLElement {
     let unit = "";
     if (choices) {
       field.append(...choices.map(choice => labeledOption(choice, this.copy.mowingLabels[choice] || choice)));
+      if (!choices.includes(value)) {
+        const current = labeledOption(value, this.copy.mowingLabels[value] || value);
+        current.disabled = true;
+        field.prepend(current);
+      }
     } else if (isBoolean) {
       field.append(labeledOption("true", this.copy.on), labeledOption("false", this.copy.off));
     } else {
@@ -886,6 +896,7 @@ class AutomowerMaps extends HTMLElement {
     const expected = snapshot.settings[key];
     const value = typeof expected === "boolean" ? field.value === "true"
       : typeof expected === "number" ? field.valueAsNumber : field.value;
+    if (value === expected) return;
     const note = ui["mowing-result"];
     const controls = ui["mowing-form"].elements;
     this.busy = true;

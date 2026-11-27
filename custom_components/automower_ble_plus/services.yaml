@@ -304,6 +304,15 @@ set_work_area_mowing:
           options:
             - random
             - systematic
+    mowing_pattern_preset:
+      selector:
+        select:
+          translation_key: mowing_pattern_preset
+          options:
+            - random
+            - parallel
+            - checkerboard
+            - triangle
     orientation:
       selector:
         number:

@@ -15,5 +15,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/olerida/automower-ble-plus/issues",
   "requirements": ["automower-ble>=0.2.9"],
-  "version": "0.36.0"
+  "version": "0.37.0"
 }

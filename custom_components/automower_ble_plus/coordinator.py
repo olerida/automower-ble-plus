@@ -2133,6 +2133,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     self.client,
                     mission_id,
                     profile.work_area_height_max if profile else 0,
+                    pattern_presets=bool(profile and profile.pattern_presets),
                 )
             except (
                 MowerConnectionError,
@@ -2167,11 +2168,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     "The selected area must have one linked mowing mission"
                 )
             mission_id, name = linked[0]
-            height_max = (
-                self.firmware_profile.work_area_height_max
-                if self.firmware_profile
-                else 0
-            )
+            profile = self.firmware_profile
+            height_max = profile.work_area_height_max if profile else 0
+            pattern_presets = bool(profile and profile.pattern_presets)
 
             async def confirm() -> None:
                 await self._async_confirm_map_installation(expected_installation_id)
@@ -2190,9 +2189,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     change,
                     expected_value=expected_value,
                     confirm_context=confirm,
+                    pattern_presets=pattern_presets,
                 )
             result = await async_get_area_mowing_settings(
-                self.client, mission_id, height_max
+                self.client, mission_id, height_max, pattern_presets=pattern_presets
             )
             await confirm()
             return {
@@ -2214,6 +2214,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     mission_id,
                     profile.work_area_height_max if profile else 0,
                     changes,
+                    pattern_presets=bool(profile and profile.pattern_presets),
                 )
             except (
                 MowerConnectionError,

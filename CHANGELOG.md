@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.37.0
+
+- Choose **Random**, **Parallel**, **Checkerboard** or **Triangle** in the work area mowing editor on supported firmware.
+- The integration checks the saved pattern and attempts to restore the previous mowing type if the mower rejects part of a switch from random mowing.
+
 ## v0.36.0
 
 - Open **Mowing settings** on a work area in **Automower Maps** to change the settings the mower reports for that area, including cutting height, pattern and direction where supported.

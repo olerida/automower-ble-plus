@@ -131,3 +131,8 @@ def test_target_height_status_distinguishes_ongoing_from_enabled():
     assert not get_firmware_profile(
         (29, 1), "40.4_Main-App-P2Z_28.8"
     ).target_height_status
+
+
+def test_pattern_presets_require_firmware_with_systematic_direction_control():
+    assert get_firmware_profile((31, 1), "40.16_Main-App-P21NA_112.3").pattern_presets
+    assert not get_firmware_profile((5, 0), "App-G3_devicetype-5.0").pattern_presets

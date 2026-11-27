@@ -28,6 +28,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     epos_service_operations = {}
     epos_operations = {}
     mission_operations = {}
+    systematic_operations = {}
     mission_schedule = 0
     target_height_status = 0
     map_operations = {}
@@ -62,6 +63,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             epos_operations[method["command"]] = protocol.get("subCmd")
         if method["family"] == "Missions" and protocol.get("msgType") == "5604":
             mission_operations[method["command"]] = protocol.get("subCmd")
+        if (
+            method["family"] == "SystematicMissions"
+            and protocol.get("msgType") == "5582"
+        ):
+            systematic_operations[method["command"]] = protocol.get("subCmd")
         if (
             method["family"] == "Calendar"
             and method["command"] == "AddTaskWithMission"
@@ -141,6 +147,13 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             "",
         ),
         0,
+    )
+    pattern_presets = int(
+        mission_operations.get("GetMissionType") == "13"
+        and mission_operations.get("SetMissionType") == "17"
+        and systematic_operations.get("GetAvailable") == "0"
+        and systematic_operations.get("GetOrientationShift") == "5"
+        and systematic_operations.get("SetOrientationShift") == "6"
     )
 
     def value_range(name: str) -> tuple[int, int]:
@@ -439,10 +452,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         mission_schedule,
         target_height_status,
         planner_reason_9,
+        pattern_presets,
     )
     return (
         result
-        if any(result[:-17])
+        if any(result[:-18])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -458,6 +472,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or mission_schedule
         or target_height_status
         or planner_reason_9
+        or pattern_presets
         else None
     )
 

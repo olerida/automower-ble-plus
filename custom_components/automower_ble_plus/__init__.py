@@ -25,6 +25,7 @@ from .maps_panel import async_attach_maps_panel, async_setup_maps_panel
 from .schedule import WEEKDAYS
 from .work_areas import (
     AREA_ASSISTANCE_BOOLEAN_SETTINGS,
+    AREA_PATTERN_PRESETS,
     AREA_PRIORITIES,
     AREA_VISION_PROFILES,
 )
@@ -97,6 +98,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     mowing_change = {
         vol.Exclusive("mowing_pattern", "mowing_change"): vol.In(
             ("random", "systematic")
+        ),
+        vol.Exclusive("mowing_pattern_preset", "mowing_change"): vol.In(
+            AREA_PATTERN_PRESETS
         ),
         vol.Exclusive("orientation", "mowing_change"): angle,
         vol.Exclusive("orientation_shift", "mowing_change"): angle,

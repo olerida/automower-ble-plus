@@ -1,6 +1,6 @@
 """Verify indexed work areas and Unicode names over BLE."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -135,6 +135,97 @@ async def test_orientation_write_uses_signed_tenths_and_checks_the_result():
     identity = U32.pack(12)
     client.command.assert_any_await(Command(5582, 4), identity + I16.pack(-125))
     client.command.assert_awaited_with(Command(5582, 3), identity)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("preset", "shift", "reject_shift"),
+    [
+        ("parallel", 0, False),
+        ("checkerboard", 900, False),
+        ("triangle", 600, False),
+        ("triangle", 600, True),
+    ],
+)
+async def test_pattern_preset_uses_mission_type_and_orientation_shift(
+    preset, shift, reject_shift
+):
+    identity = U32.pack(12)
+    mission_type = Command(5604, 13)
+    set_type = Command(5604, 17)
+    read_shift = Command(5582, 5)
+    set_shift = Command(5582, 6)
+    client = AsyncMock()
+    client.is_connected = Mock(return_value=True)
+    current_type = b"\x01"
+    current_shift = 450
+    writes = []
+
+    async def reply(command, payload=b""):
+        nonlocal current_type, current_shift
+        if command in (Command(5604, 20), Command(5582, 0)):
+            return b"\1"
+        if command == mission_type:
+            assert payload == identity
+            return current_type
+        if command == set_type:
+            assert payload[:4] == identity
+            writes.append((command, payload))
+            current_type = payload[4:]
+            return b""
+        if command == read_shift:
+            assert payload == identity and current_type == b"\x02"
+            return I16.pack(current_shift)
+        if command == set_shift:
+            assert payload[:4] == identity and current_type == b"\x02"
+            writes.append((command, payload))
+            if reject_shift:
+                raise CommandRejected(command, 2)
+            current_shift = I16.unpack(payload[4:])[0]
+            return b""
+        raise CommandRejected(command, 7)
+
+    client.command.side_effect = reply
+    desired = {"mowing_pattern_preset": preset}
+    with pytest.raises(ValueError, match="firmware does not support"):
+        await async_set_area_mowing_setting(client, 12, 0, desired)
+    assert not client.command.called
+    with pytest.raises(ValueError, match="setting changed"):
+        await async_set_area_mowing_setting(
+            client, 12, 0, desired, pattern_presets=True, expected_value="checkerboard"
+        )
+    assert writes == []
+    if reject_shift:
+        with pytest.raises(ValueError, match="previous mowing type"):
+            await async_set_area_mowing_setting(
+                client, 12, 0, desired, pattern_presets=True, expected_value="random"
+            )
+        assert writes[-1] == (set_type, identity + b"\x01")
+        assert current_type == b"\x01"
+        assert current_shift == 450
+    else:
+        await async_set_area_mowing_setting(
+            client, 12, 0, desired, pattern_presets=True, expected_value="random"
+        )
+        assert writes == [
+            (set_type, identity + b"\x02"),
+            (set_shift, identity + I16.pack(shift)),
+        ]
+        settings = await async_get_area_mowing_settings(
+            client, 12, 0, pattern_presets=True
+        )
+        assert settings["settings"]["mowing_pattern"] == "systematic"
+        assert settings["settings"]["mowing_pattern_preset"] == preset
+        await async_set_area_mowing_setting(
+            client,
+            12,
+            0,
+            {"mowing_pattern_preset": "random"},
+            pattern_presets=True,
+            expected_value=preset,
+        )
+        assert writes[-1] == (set_type, identity + b"\x01")
+        assert current_shift == shift
 
 
 @pytest.mark.asyncio

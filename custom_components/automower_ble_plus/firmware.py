@@ -50,6 +50,7 @@ class FirmwareProfile:
     mission_schedule: int = 0
     target_height_status: int = 0
     planner_reason_9: int = 0
+    pattern_presets: int = 0
 
 
 @cache
@@ -155,4 +156,8 @@ def get_firmware_profile(
             for profile in releases
         )
         else 0,
+        pattern_presets=int(
+            result.pattern_presets
+            and all(profile and profile.pattern_presets for profile in releases)
+        ),
     )

@@ -1182,6 +1182,10 @@
           "name": "ID del área de trabajo",
           "description": "ID devuelto por Leer áreas de trabajo."
         },
+        "mowing_pattern_preset": {
+          "name": "Patrón de corte predefinido",
+          "description": "Selecciona el patrón de esta área si el firmware lo admite."
+        },
         "mowing_pattern": {
           "name": "Patrón de corte",
           "description": "Selecciona corte aleatorio o sistemático."
@@ -1604,6 +1608,14 @@
       "options": {
         "connect": "Conectar",
         "forget": "Olvidar red"
+      }
+    },
+    "mowing_pattern_preset": {
+      "options": {
+        "random": "Aleatorio",
+        "parallel": "Paralelo",
+        "checkerboard": "Cuadrícula",
+        "triangle": "Triángulo"
       }
     },
     "mowing_pattern": {
