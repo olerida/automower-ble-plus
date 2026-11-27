@@ -249,6 +249,34 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     blade_ids = (
         tuple(map(int, blade)) if blade in (("7", "8"), ("13", "14")) else (0, 0)
     )
+    statistics_channels = blade_operations.get("SubscribeAllStatistics")
+    statistics_fields = (
+        ("totalRunningTime", "tDuration"),
+        ("totalCuttingTime", "tDuration"),
+        ("totalChargingTime", "tDuration"),
+        ("totalSearchingTime", "tDuration"),
+        ("numberOfCollisions", "tIStatistics_Counter"),
+        ("numberOfChargingCycles", "tIStatistics_Counter"),
+        ("cuttingBladeUsageTime", "tDuration"),
+    )
+    statistics_subscription = 0
+    if (
+        statistics_channels in ("10", "16")
+        and all(
+            types.get(name, {}).get("type") == "uint32"
+            for name in ("tDuration", "tIStatistics_Counter")
+        )
+        and any(
+            event["family"] == "Statistics"
+            and event["name"] == "StatisticsUpdated"
+            and {item["key"]: item["value"] for item in event["protocol"]}
+            == {"family": "4726", "eventId": "0"}
+            and tuple((param["name"], param["type"]) for param in event["params"])
+            == statistics_fields
+            for event in profile.get("events", ())
+        )
+    ):
+        statistics_subscription = int(statistics_channels)
     enable = 0
     if geofence_operations.get("GetEnabled") == "2":
         if geofence_operations.get("SetEnabledNoPin") == "15":
@@ -511,10 +539,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         pattern_presets,
         global_height_mm,
         headlight_themes,
+        statistics_subscription,
     )
     return (
         result
-        if any(result[:-20])
+        if any(result[:-21])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -533,6 +562,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or pattern_presets
         or global_height_mm
         or headlight_themes
+        or statistics_subscription
         else None
     )
 

@@ -53,6 +53,7 @@ class FirmwareProfile:
     pattern_presets: int = 0
     global_height_mm: int = 0
     headlight_themes: str = ""
+    statistics_subscription: int = 0
 
 
 @cache
@@ -175,4 +176,11 @@ def get_firmware_profile(
             for profile in releases
         )
         else "",
+        statistics_subscription=result.statistics_subscription
+        if all(
+            profile
+            and profile.statistics_subscription == result.statistics_subscription
+            for profile in releases
+        )
+        else 0,
     )

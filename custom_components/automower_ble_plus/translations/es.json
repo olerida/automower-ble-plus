@@ -710,6 +710,9 @@
       "total_running_time": {
         "name": "Tiempo total de funcionamiento"
       },
+      "estimated_travel_distance": {
+        "name": "Distancia recorrida estimada"
+      },
       "total_cutting_time": {
         "name": "Tiempo total de corte"
       },

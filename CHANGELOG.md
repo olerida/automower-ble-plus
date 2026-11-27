@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.40.0
+
+- See estimated distance travelled in Home Assistant. The integration uses the mower's reported running time and the same model-specific speed as Automower Connect.
+- Update operating times, charging cycles, collisions and blade usage when supported firmware sends a Bluetooth notification. Periodic readings also keep the counters current.
+
 ## v0.39.0
 
 - Choose a headlight theme over Bluetooth on supported mowers. Home Assistant shows the options defined for the firmware, including solid or flashing amber and, where available, white or white and red.

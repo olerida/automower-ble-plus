@@ -159,7 +159,12 @@ from .mapfiles import (
     async_replace_zone_map,
     async_verify_mowing_area,
 )
-from .models import DEFAULT_MAP_PATH_WIDTH_MINIMUM, MAP_PATH_WIDTH_MINIMUMS
+from .models import (
+    DEFAULT_MAP_PATH_WIDTH_MINIMUM,
+    DEFAULT_TRAVEL_SPEED_CM_PER_SECOND,
+    MAP_PATH_WIDTH_MINIMUMS,
+    TRAVEL_SPEED_CM_PER_SECOND,
+)
 from .mower_clock import MOWER_CLOCK, async_sync_mower_clock
 from .planner import (
     PLANNER_EVENTS,
@@ -318,6 +323,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self.firmware_profile: FirmwareProfile | None = None
         self._site_map_snapshot: tuple[str, str, bool] | None = None
         self._map_path_min_width = DEFAULT_MAP_PATH_WIDTH_MINIMUM
+        self._travel_speed_cm_per_second = DEFAULT_TRAVEL_SPEED_CM_PER_SECOND
         self.settings: tuple[Setting, ...] = ()
         self.setting_variants: dict[str, SettingVariant] = {}
         self._operation_lock = asyncio.Lock()
@@ -336,6 +342,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._aim_map_requested_until = 0.0
         self._calendar_time: int | None = None
         self._planner_refresh_pending = False
+        self._statistics_refresh_pending = False
         self.wire_test: WireTest | None = None
         self._reference_scan: ReferenceScan | None = None
         self._reference_scan_task: asyncio.Task[None] | None = None
@@ -548,6 +555,18 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         elif is_planner_update(event):
             self._planner_refresh_pending = True
             self._async_schedule_event_refresh()
+        elif (
+            event.family == GET_STATISTICS.family
+            and event.event_id == 0
+            and len(event.payload) == STATISTICS.size
+            and "statistics" not in self._unsupported
+            and any(
+                command.family == GET_STATISTICS.family
+                for command in self._active_subscriptions
+            )
+        ):
+            self._statistics_refresh_pending = True
+            self._async_schedule_event_refresh()
         elif self.wire_test is not None and self.wire_test.handle_event(event):
             self._async_schedule_event_refresh()
         elif event.family == _MOWER_EVENTS.family and event.event_id in (1, 2, 3):
@@ -604,6 +623,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         if (
             self._calendar_update_pending
             or self._planner_refresh_pending
+            or self._statistics_refresh_pending
             or self._map_refresh_pending
             or self._connect_refresh_pending
             or self._epos_refresh_pending
@@ -647,6 +667,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._planner_refresh_pending = bool(
             self.data and {"restriction_reason", "next_start"} & self.data.keys()
         )
+        self._statistics_refresh_pending = "total_running_time" in (self.data or {})
 
     async def _async_subscribe_events(self) -> None:
         profile = self.firmware_profile
@@ -676,6 +697,15 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             commands += EPOS_CLOUD_EVENTS
         if self.data and AIM_KEYS & self.data.keys():
             commands += (AIM_EVENTS,)
+        if (
+            profile
+            and profile.statistics_subscription
+            and "total_running_time" in (self.data or {})
+            and "statistics" not in self._unsupported
+        ):
+            commands += (
+                Command(GET_STATISTICS.family, profile.statistics_subscription),
+            )
         for command in commands:
             if (
                 command in self._unavailable_subscriptions
@@ -742,6 +772,9 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         identity = MowerModels.get(model_id)
         self._map_path_min_width = MAP_PATH_WIDTH_MINIMUMS.get(
             model_id, DEFAULT_MAP_PATH_WIDTH_MINIMUM
+        )
+        self._travel_speed_cm_per_second = TRAVEL_SPEED_CM_PER_SECOND.get(
+            model_id, DEFAULT_TRAVEL_SPEED_CM_PER_SECOND
         )
         self.firmware_profile = await self.hass.async_add_executor_job(
             get_firmware_profile, model_id, node_version
@@ -817,6 +850,17 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                     await self._async_refresh_calendar(data)
                 if self._planner_refresh_pending and self.client.is_connected():
                     await self._async_refresh_planner(data)
+                if self._statistics_refresh_pending and self.client.is_connected():
+                    self._statistics_refresh_pending = False
+                    try:
+                        await self._async_refresh_statistics(data)
+                    except CommandRejected as err:
+                        if err.unsupported:
+                            self._unsupported.add("statistics")
+                    except MowerConnectionError:
+                        self._statistics_refresh_pending = True
+                    except StructError:
+                        LOGGER.debug("Unexpected mower statistics response")
                 if self._connect_refresh_pending and self.client.is_connected():
                     self._connect_refresh_pending = False
                     with suppress(CommandRejected, MowerConnectionError):
@@ -900,6 +944,16 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 data["next_start"] = await self._read(READINGS["next_start"])
             except CommandRejected, MowerConnectionError, ValueError:
                 LOGGER.debug("Could not refresh the next start after a calendar event")
+
+    async def _async_refresh_statistics(self, data: MowerData) -> None:
+        counters = STATISTICS.unpack(await self.client.command(GET_STATISTICS))
+        data.update(zip(STATISTIC_KEYS, counters, strict=True))
+        running_time = counters[0]
+        data.pop("estimated_travel_distance", None)
+        if running_time != 0xFFFFFFFF:
+            data["estimated_travel_distance"] = (
+                running_time * self._travel_speed_cm_per_second // 100
+            )
 
     async def _probe_setting(self, setting: Setting) -> int | None:
         previous = self.setting_variants.get(setting.key)
@@ -1021,10 +1075,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                                     exc_info=True,
                                 )
                     elif key == "statistics":
-                        raw = await self.client.command(GET_STATISTICS)
-                        values.update(
-                            zip(STATISTIC_KEYS, STATISTICS.unpack(raw), strict=True)
-                        )
+                        await self._async_refresh_statistics(values)
                     elif key == "mower_name":
                         values[key] = decode_mower_name(
                             await self.client.command(GET_MOWER_NAME)

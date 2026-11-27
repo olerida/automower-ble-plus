@@ -24,6 +24,7 @@ def test_legacy_profile_requires_the_mower_to_report_the_same_model():
         wire_test_states="legacy",
         reset_user_settings=8,
         target_height_status=1,
+        statistics_subscription=10,
     )
     assert get_firmware_profile((23, 1), "App-G3_devicetype-5.0") is None
 
@@ -48,6 +49,7 @@ def test_exact_release_precedes_family_and_unknown_versions_stay_unknown():
         wire_test_states="idle in_operation done error aborted",
         reset_user_settings=8,
         mission_schedule=1,
+        statistics_subscription=10,
     )
     assert get_firmware_profile((26, 1), "40.1_Main-App-P25_other") == FirmwareProfile(
         600,
@@ -65,6 +67,7 @@ def test_exact_release_precedes_family_and_unknown_versions_stay_unknown():
         passage_cutting_read=26,
         reset_user_settings=8,
         mission_schedule=1,
+        statistics_subscription=10,
     )
     assert get_firmware_profile((5, 0), "999.1_Main-App-Unrecognized") is None
 

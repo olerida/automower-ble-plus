@@ -710,6 +710,9 @@
       "total_running_time": {
         "name": "Total running time"
       },
+      "estimated_travel_distance": {
+        "name": "Estimated distance travelled"
+      },
       "total_cutting_time": {
         "name": "Total cutting time"
       },

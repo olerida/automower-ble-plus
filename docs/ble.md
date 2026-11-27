@@ -30,7 +30,7 @@ The APK contains 166 TIF files for firmware variants. An operation name in a TIF
 | Edge cutting and ultrasonic sensors | 6690, 4728 | Enable each feature when the mower reports support |
 | FlexiFence detection | 5926, 6050 | Switch shown when the mower reports accessory support |
 | Frost protection | 5370, 5412 | Setting exposed after detecting the supported variant |
-| Statistics and blade usage | 4726 | Readings and blade counter reset according to the firmware profile |
+| Statistics and blade usage | 4726 | Operating times, charging cycles, collisions, estimated distance and blade counter reset according to firmware. Bluetooth notifications refresh the counters |
 | Messages and faults | 4730, 4586 | Paginated history with codes and severity. Current fault and acknowledgement where supported |
 | BLE notifications | 4586, 4730 | Notifications update status, activity and faults. The event entity requires firmware that supports message subscriptions |
 | Spiral cutting and spot cutting | 4710, 4658, 4586 | Spiral cutting switch and intensity. Manual spot cutting starts when the profile declares the command |
@@ -63,6 +63,8 @@ The app reads the main node version over BLE (`GetVersionString`, family 96, ope
 For secondary area mowing, the app checks the Bluetooth connection, selects `MANUAL`, writes the duration and sends `StartTrigger`. A duration of `0` runs in manual mode until the battery is low. REA confirmed the unlimited, timed and work area variants in `ev_44df46e896eb5c23d7a045befff9dc6ab19994fd3f18f06e11d882a458166e00`, `ev_3dc2ecad36bca062908f4f2c62fdd951e40b025d4e966158bba0cc886157da85` and `ev_af8e361a634f46949d5c53ce1d224e164efe4602b6f5623875cb5d6f010cd98a`.
 
 REA traced the blade counter reset to `MowerBluetoothDataSourceImpl` in `ev_395604821ec534bd4bdcc33a21f773fec59c26ae808e728d72846041db9bcb0b`. Family 4726 TIF files contain operation pairs 7/8 and 13/14. The integration selects the pair by firmware and shows the button after reading the counter.
+
+The app reads the statistics over Bluetooth and estimates distance using running time multiplied by the model's nominal speed (`ev_049eeb011e861a8bce929a1eff0d685f1d96e0b144ba67cc9d995ea4a83b9aa4`, `ev_edc58b10e66f8ed1b25f0f4845e6abeb929047367f7178867e4282da4dd25f45`, `ev_e7595b92cf1ec4065ceb614ed48989666d043ea82d670d6035e038c3ec94d85f`). The speed table matches the app's model enum and corresponds to 36 cm/s for the 420 and 32 cm/s for an unknown model (`ev_d6cb1544dabb8660e4ebdf9adcb0a85df02d4de05de1383ceb36b115d3bd9b50`, `ev_759f3639ea015724c4057d6c08ca19a840bf4b11f30e431e2ac5508c8b38fec3`). The 166 TIF files declare seven 32-bit statistics for `GetAllStatistics` (4726:0) and event 0. The 420 G3 profile uses `SubscribeAllStatistics` (4726:10), and four builds use operation 16. Home Assistant validates the event length and reads a fresh snapshot, including after reconnection. It still polls when the subscription is unavailable. [Husqvarna statistics guide](https://www.husqvarna.com/uk/support/what-statistics-does-automower-connect-show-and-how-often-is-it-updated-ka-01474/)
 
 `SiteManager` enumerates installations with `GetNumberOfSites` and `GetIdListEntry` (`ev_95e5f935eba43867cff0ead95dc1fb48605e8c1eb2841e11c0fdecca210cc6b0`). The integration checks the active ID before calling `Site.SetName`, then reads back the name and ID. `SiteMap` flags report map availability.
 

@@ -76,6 +76,51 @@ BOUNDARY_RANGES = {
     model: bounds for bounds, models in _BOUNDARY_MODELS.items() for model in models
 }
 
+# Speeds in centimetres per second used by the app's estimated distance display.
+DEFAULT_TRAVEL_SPEED_CM_PER_SECOND = 32
+_TRAVEL_SPEED_GROUPS = {
+    28: ((28, 1),),
+    29: ((32, 1),),
+    31: ((28, 2),),
+    35: ((11, 0), (23, 3)),
+    36: ((26, 3), (26, 4), (17, 0), (17, 1), (5, 0)),
+    38: (
+        (31, 1),
+        (39, 1),
+        (39, 2),
+        (48, 1),
+        (48, 2),
+        (48, 3),
+        (48, 4),
+        (48, 5),
+        (48, 6),
+    ),
+    39: ((15, 0), (7, 0), (7, 1), (12, 0), (12, 1), (19, 1), (12, 23)),
+    41: ((31, 2), (31, 4)),
+    42: ((42, 1), (39, 4), (39, 7), (39, 5), (39, 8)),
+    46: ((42, 2), (33, 1), (41, 1)),
+    53: ((31, 3), (31, 5)),
+    54: ((16, 0), (16, 1), (8, 0), (8, 1)),
+    57: (
+        (26, 1),
+        (26, 2),
+        (21, 0),
+        (21, 1),
+        (20, 0),
+        (20, 1),
+        (20, 2),
+        (40, 1),
+        (40, 2),
+    ),
+    64: ((24, 2),),
+    65: ((42, 3), (41, 2)),
+    80: ((41, 3), (41, 4)),
+    85: ((24, 1),),
+}
+TRAVEL_SPEED_CM_PER_SECOND = {
+    model: speed for speed, models in _TRAVEL_SPEED_GROUPS.items() for model in models
+}
+
 LIFT_TILT_ALARM_MODELS = frozenset(
     {(16, 0), (16, 1), (17, 0), (17, 1), (27, 1), (27, 3)}
 )

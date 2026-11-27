@@ -197,6 +197,101 @@ async def test_planner_event_updates_named_restriction_and_keeps_raw_code(tmp_pa
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("model_id", "node", "operation", "speed", "subscribes"),
+    [
+        ((5, 0), "App-G3_devicetype-5.0", 10, 36, True),
+        ((28, 2), "40.3_Main-App-P16_29.47", 16, 31, True),
+        ((5, 0), "App-G3_devicetype-5.0", 10, 36, False),
+        ((255, 0), "Unknown", None, 32, False),
+    ],
+)
+async def test_statistics_refresh_and_estimated_distance(
+    tmp_path, monkeypatch, model_id, node, operation, speed, subscribes
+):
+    hass = HomeAssistant(str(tmp_path))
+    entry = _entry()
+    entry.runtime_data = coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    connected = True
+
+    async def connect(_device):
+        nonlocal connected
+        connected = True
+        return ResponseResult.OK
+
+    monkeypatch.setattr(client, "connect", connect, raising=False)
+    monkeypatch.setattr(client, "is_connected", lambda: connected)
+    monkeypatch.setattr(client, "main_node_version", AsyncMock(return_value=node))
+    monkeypatch.setattr(
+        coordinator_module.bluetooth,
+        "async_ble_device_from_address",
+        lambda *args, **kwargs: object(),
+    )
+    family = 4726
+    stats = Command(family, 0)
+    subscription = Command(family, operation) if operation is not None else None
+    client.values[Command(4698, 9), b""] = bytes(model_id)
+    client.values[stats, b""] = b"\x00"
+    if subscribes:
+        client.values[subscription, b""] = b""
+    try:
+        await coordinator._async_setup()
+        coordinator.async_set_updated_data(await coordinator._async_update_data())
+        entities = []
+        await sensor.async_setup_entry(hass, entry, entities.extend)
+        await coordinator.async_refresh_optional()
+        assert "estimated_travel_distance" not in {entity.key for entity in entities}
+        client.values[stats, b""] = pack("<7I", 100, 81, 20, 19, 4, 3, 42)
+        await coordinator.async_refresh_optional()
+        sensors = {entity.key: entity for entity in entities}
+        distance = sensors["estimated_travel_distance"]
+        assert distance.native_value == speed
+        assert distance.native_unit_of_measurement == "m"
+        assert distance.state_class == "total_increasing"
+        assert sensors["blade_usage_time"].native_value == 42
+
+        await coordinator.async_refresh()
+        stats_subscriptions = [
+            command
+            for command, _ in client.calls
+            if command.family == family and command.operation in (10, 16)
+        ]
+        assert stats_subscriptions == ([subscription] if subscription else [])
+        coordinator._async_on_event(Event(family, 1, bytes(28)))
+        coordinator._async_on_event(Event(family, 0, b"\xff"))
+        assert coordinator._event_refresh_task is None
+
+        client.values[stats, b""] = pack("<7I", 200, 160, 30, 40, 6, 4, 1)
+        coordinator._async_on_event(Event(family, 0, bytes(28)))
+        if subscribes:
+            await coordinator._event_refresh_task
+        else:
+            assert coordinator._event_refresh_task is None
+            assert distance.native_value == speed
+            await coordinator.async_refresh_optional()
+        assert sensors["blade_usage_time"].native_value == 1
+        assert sensors["collisions"].native_value == 6
+        assert distance.native_value == 2 * speed
+
+        client.values[stats, b""] = pack("<7I", 300, 260, 40, 40, 7, 5, 21)
+        connected = False
+        await coordinator.async_refresh()
+        assert distance.native_value == 3 * speed
+        assert client.calls.count((subscription, b"")) == (
+            2 if subscribes else int(subscription is not None)
+        )
+
+        client.values[stats, b""] = pack("<7I", 0xFFFFFFFF, 260, 40, 40, 7, 5, 21)
+        await coordinator.async_refresh_optional()
+        assert not distance.available
+    finally:
+        await coordinator.async_shutdown()
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("model_id", "firmware", "themes"),
     [
         ((5, 0), "App-G3_devicetype-5.0", ()),

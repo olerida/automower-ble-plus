@@ -145,6 +145,12 @@ _DESCRIPTIONS = (
         "total_running_time", SensorDeviceClass.DURATION, UnitOfTime.SECONDS, _COUNTER
     ),
     _description(
+        "estimated_travel_distance",
+        SensorDeviceClass.DISTANCE,
+        UnitOfLength.METERS,
+        _COUNTER,
+    ),
+    _description(
         "total_cutting_time", SensorDeviceClass.DURATION, UnitOfTime.SECONDS, _COUNTER
     ),
     _description(
