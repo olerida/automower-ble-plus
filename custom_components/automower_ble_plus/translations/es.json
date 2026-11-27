@@ -278,6 +278,17 @@
       "in_charging_station": {
         "name": "Cortacésped en la estación"
       },
+      "target_height_active": {
+        "name": "TargetHeight en curso",
+        "state_attributes": {
+          "mower_start_time_seconds": {
+            "name": "Hora de inicio indicada por el cortacésped"
+          },
+          "duration_seconds": {
+            "name": "Duración prevista en segundos"
+          }
+        }
+      },
       "is_daylight": {
         "name": "Luz diurna detectada"
       },
@@ -853,6 +864,20 @@
       },
       "aim_map_updated": {
         "name": "Última actualización del mapa AIM"
+      },
+      "gps_navigation_status": {
+        "name": "Estado de navegación asistida por GPS",
+        "state": {
+          "no_signal": "Sin señal",
+          "initializing": "Inicializando",
+          "map_in_use": "Mapa GPS en uso"
+        }
+      },
+      "current_cutting_height_percentage": {
+        "name": "Porcentaje actual de altura de corte"
+      },
+      "current_cutting_height_level": {
+        "name": "Nivel actual de altura de corte"
       },
       "epos_correction_source": {
         "name": "Fuente de correcciones EPOS",

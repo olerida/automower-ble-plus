@@ -33,6 +33,7 @@ from .epos import EPOS_ENUM_OPTIONS
 from .faults import FAULT_STATES, message_description
 from .firmware import get_message_key
 from .planner import OVERRIDE_OPTIONS, PlannerOverride
+from .position import GPS_NAVIGATION_STATES
 from .reference_station import SCAN_OPTIONS
 from .schedule import WeeklySchedule
 from .wire_test import WIRE_TEST_OPTIONS
@@ -109,6 +110,11 @@ _DESCRIPTIONS = (
     _description("aim_map_state", SensorDeviceClass.ENUM, options=AIM_STATES),
     _description("aim_map_progress", unit=PERCENTAGE, state_class=_MEASUREMENT),
     _description("aim_map_updated", SensorDeviceClass.TIMESTAMP),
+    _description(
+        "gps_navigation_status", SensorDeviceClass.ENUM, options=GPS_NAVIGATION_STATES
+    ),
+    _description("current_cutting_height_percentage", unit=PERCENTAGE),
+    _description("current_cutting_height_level"),
     _description("mower_clock"),
     _description("wire_test_status", SensorDeviceClass.ENUM, options=WIRE_TEST_OPTIONS),
     _description("wire_test_distance", SensorDeviceClass.DISTANCE, UnitOfLength.METERS),

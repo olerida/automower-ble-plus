@@ -35,6 +35,12 @@ async def async_setup_entry(
     async_add_detected(
         entry,
         add_entities,
+        {"target_height_active": None},
+        lambda key, _: TargetHeightSensor(entry.runtime_data, key),
+    )
+    async_add_detected(
+        entry,
+        add_entities,
         {"wifi_connected": None},
         lambda key, _: WifiConnectionSensor(entry.runtime_data, key),
     )
@@ -125,3 +131,20 @@ class WifiConnectionSensor(DiagnosticStatusSensor):
     def extra_state_attributes(self) -> dict[str, str] | None:
         name = self.coordinator.data.get("wifi_ssid")
         return {"ssid": name} if self.is_on and isinstance(name, str) else None
+
+
+class TargetHeightSensor(DiagnosticStatusSensor):
+    """Report whether automatic cutting-height reduction is in progress."""
+
+    @property
+    def extra_state_attributes(self) -> dict[str, int] | None:
+        if not self.is_on:
+            return None
+        return {
+            attribute: value
+            for attribute, key in (
+                ("mower_start_time_seconds", "target_height_start_seconds"),
+                ("duration_seconds", "target_height_duration_seconds"),
+            )
+            if isinstance(value := self.coordinator.data.get(key), int)
+        } or None

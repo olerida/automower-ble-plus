@@ -23,6 +23,7 @@ def test_legacy_profile_requires_the_mower_to_report_the_same_model():
         passage_cutting_read=24,
         wire_test_states="legacy",
         reset_user_settings=8,
+        target_height_status=1,
     )
     assert get_firmware_profile((23, 1), "App-G3_devicetype-5.0") is None
 
@@ -123,3 +124,10 @@ def test_legacy_aim_map_detection_requires_a_matching_firmware_build():
         (28, 2), "40.3_Main-App-P16_unknown"
     ).legacy_aim_maps
     assert not get_firmware_profile((5, 0), "App-G3_devicetype-5.0").legacy_aim_maps
+
+
+def test_target_height_status_distinguishes_ongoing_from_enabled():
+    assert get_firmware_profile((5, 0), "App-G3_devicetype-5.0").target_height_status
+    assert not get_firmware_profile(
+        (29, 1), "40.4_Main-App-P2Z_28.8"
+    ).target_height_status

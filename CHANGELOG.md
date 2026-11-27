@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.34.0
+
+- View whether TargetHeight is actively lowering the cutting height on a supported mower. The diagnostic includes timing when the firmware reports it.
+- Read the current cutting height and GPS-assisted navigation status on models that provide those readings.
+
 ## v0.33.1
 
 - The Marketplace listing, project documentation and GitHub release notes are now in English.

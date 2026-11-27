@@ -29,6 +29,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     epos_operations = {}
     mission_operations = {}
     mission_schedule = 0
+    target_height_status = 0
     map_operations = {}
     raw_operations = {}
     for method in profile.get("methods", ()):
@@ -68,6 +69,20 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             and protocol.get("subCmd") == "16"
         ):
             mission_schedule = 1
+        if (
+            method["family"] == "CuttingHeight"
+            and method["command"] == "GetDownCuttingStatus"
+            and protocol.get("msgType") == "4422"
+            and protocol.get("subCmd") == "12"
+            and not method["inParams"]
+            and method["outParams"]
+            == [
+                {"name": "ongoing", "type": "bool"},
+                {"name": "startTime", "type": "tUnixTime"},
+                {"name": "duration", "type": "tDuration"},
+            ]
+        ):
+            target_height_status = 1
         if (
             method["family"] == "AutomowerConnect"
             and method["command"] == "SetEnabledNoPin"
@@ -406,10 +421,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         aim_work_areas,
         legacy_aim_maps,
         mission_schedule,
+        target_height_status,
     )
     return (
         result
-        if any(result[:-15])
+        if any(result[:-16])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -423,6 +439,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or zone_map_writable
         or legacy_aim_maps
         or mission_schedule
+        or target_height_status
         else None
     )
 

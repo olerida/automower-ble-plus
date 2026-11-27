@@ -2,6 +2,8 @@
 
 from struct import Struct
 
+from automower_ble.protocol import ResponseResult
+
 from .features import (
     GET_POSITION,
     GET_POSITION_AVAILABLE,
@@ -16,11 +18,13 @@ from .wire import Command
 GPS_POSITION_EVENTS = Command(5264, 1)
 GPS_POSITION_REPORT = 0
 GPS_COORDINATE_KEYS = frozenset({"latitude", "longitude"})
+GPS_NAVIGATION_STATES = ("no_signal", "initializing", "map_in_use")
 LOCAL_POSITION_KEYS = frozenset(
     {"local_position_accuracy", "local_heading", "local_heading_accuracy"}
 )
 
 _GPS_AVAILABLE = Reading(GET_POSITION_AVAILABLE, U8)
+_GPS_NAVIGATION_STATUS = Reading(Command(4732, 3), U8)
 _GET_LOCAL_POSE = Command(5242, 5)
 _GET_LOCAL_ORIGIN = Command(5242, 11)
 _LOCAL_POSE = Struct("<iiihiih")
@@ -56,6 +60,19 @@ async def async_read_gps_position(client: AutomowerClient) -> dict[str, int]:
     if payload is None:
         return {}
     return {"gps_position_supported": 1, **decode_gps_position(payload)}
+
+
+async def async_read_gps_navigation_status(client: AutomowerClient) -> int | None:
+    """Read the status of GPS-assisted coverage on compatible wired mowers."""
+    try:
+        state = _GPS_NAVIGATION_STATUS.decode(
+            await client.command(_GPS_NAVIGATION_STATUS.command)
+        )
+    except CommandRejected as err:
+        if not err.unsupported and err.result != ResponseResult.NOT_AVAILABLE:
+            raise
+        return None
+    return state if state < len(GPS_NAVIGATION_STATES) else None
 
 
 async def async_read_local_pose(client: AutomowerClient) -> dict[str, int] | None:

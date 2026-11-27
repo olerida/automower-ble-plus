@@ -147,6 +147,83 @@ def _entry(pin=None):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model_id", "firmware", "actual_height"),
+    [
+        ((5, 0), "App-G3_devicetype-5.0", None),
+        ((28, 2), "40.3_Main-App-P16_81.4", (19, 42)),
+        ((31, 1), "40.16_Main-App-P21NA_112.3", (33, 5)),
+    ],
+)
+async def test_target_height_and_navigation_show_only_reported_telemetry(
+    tmp_path, monkeypatch, model_id, firmware, actual_height
+):
+    hass = HomeAssistant(str(tmp_path))
+    entry = _entry()
+    entry.runtime_data = coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    monkeypatch.setattr(client, "main_node_version", AsyncMock(return_value=firmware))
+    client.values.update(
+        {
+            (Command(4698, 9), b""): bytes(model_id),
+            (Command(4422, 5), b""): b"\1",
+            (Command(4422, 10), b""): b"\1",
+            (Command(4422, 8), b""): b"\1",
+            (Command(4422, 12), b""): b"\1",
+            (Command(4732, 0), b""): bytes((actual_height is not None,)),
+            (Command(4732, 2), b""): b"\1",
+            (Command(4732, 3), b""): b"\2",
+        }
+    )
+    if actual_height is not None:
+        operation, level = actual_height
+        client.values[Command(4422, operation), b""] = bytes((level,))
+    try:
+        await coordinator._async_setup()
+        coordinator.async_set_updated_data(await coordinator._async_update_data())
+        entities = []
+        await sensor.async_setup_entry(hass, entry, entities.extend)
+        await binary_sensor.async_setup_entry(hass, entry, entities.extend)
+        await coordinator.async_refresh_optional()
+        assert not any(entity.key == "target_height_active" for entity in entities)
+        client.values[Command(4422, 12), b""] = pack("<BII", 1, 1800000000, 864000)
+        await coordinator.async_refresh_optional()
+        detected = {entity.key: entity for entity in entities}
+        target = detected["target_height_active"]
+        assert target.is_on
+        assert target.extra_state_attributes == {
+            "mower_start_time_seconds": 1800000000,
+            "duration_seconds": 864000,
+        }
+        if actual_height is None:
+            assert "gps_navigation_status" not in detected
+            assert (Command(4732, 3), b"") not in client.calls
+            assert not any(
+                key.startswith("current_cutting_height_") for key in detected
+            )
+        else:
+            assert detected["gps_navigation_status"].native_value == "map_in_use"
+            key = (
+                "current_cutting_height_percentage"
+                if operation == 19
+                else "current_cutting_height_level"
+            )
+            assert detected[key].native_value == level
+            client.values[Command(4732, 3), b""] = b"\xff"
+        client.values[Command(4422, 12), b""] = pack("<BII", 0, 1800000000, 864000)
+        await coordinator.async_refresh_optional()
+        assert target.is_on is False
+        assert target.extra_state_attributes is None
+        assert "gps_navigation_status" not in coordinator.data
+        client.values[Command(4422, 10), b""] = b"\0"
+        await coordinator.async_refresh_optional()
+        assert not target.available
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
 async def test_hidden_controls_and_model_specific_write(tmp_path):
     hass = HomeAssistant(str(tmp_path))
     entry = _entry()

@@ -278,6 +278,17 @@
       "in_charging_station": {
         "name": "Mower in charging station"
       },
+      "target_height_active": {
+        "name": "TargetHeight in progress",
+        "state_attributes": {
+          "mower_start_time_seconds": {
+            "name": "Mower-reported start time"
+          },
+          "duration_seconds": {
+            "name": "Planned duration in seconds"
+          }
+        }
+      },
       "is_daylight": {
         "name": "Daylight detected"
       },
@@ -853,6 +864,20 @@
       },
       "aim_map_updated": {
         "name": "AIM map last updated"
+      },
+      "gps_navigation_status": {
+        "name": "GPS-assisted navigation status",
+        "state": {
+          "no_signal": "No signal",
+          "initializing": "Initializing",
+          "map_in_use": "GPS map in use"
+        }
+      },
+      "current_cutting_height_percentage": {
+        "name": "Current cutting height percentage"
+      },
+      "current_cutting_height_level": {
+        "name": "Current cutting height level"
       },
       "epos_correction_source": {
         "name": "EPOS correction source",

@@ -48,6 +48,7 @@ class FirmwareProfile:
     aim_work_areas: int = 0
     legacy_aim_maps: int = 0
     mission_schedule: int = 0
+    target_height_status: int = 0
 
 
 @cache
@@ -142,5 +143,9 @@ def get_firmware_profile(
         mission_schedule=int(
             result.mission_schedule
             and all(profile and profile.mission_schedule for profile in releases)
+        ),
+        target_height_status=int(
+            result.target_height_status
+            and all(profile and profile.target_height_status for profile in releases)
         ),
     )

@@ -61,6 +61,7 @@ from .connect_module import (
     is_connect_update,
 )
 from .const import DOMAIN, LOGGER
+from .cutting_status import CUTTING_STATUS_KEYS, async_read_cutting_status
 from .epos import (
     EPOS_AVAILABLE,
     EPOS_CLOUD_EVENTS,
@@ -159,6 +160,7 @@ from .position import (
     GPS_POSITION_REPORT,
     LOCAL_POSITION_KEYS,
     async_describe_position,
+    async_read_gps_navigation_status,
     async_read_gps_position,
     async_read_local_pose,
     decode_gps_position,
@@ -902,6 +904,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 ("statistics", None),
                 ("position", None),
                 ("local_position", None),
+                ("gps_navigation_status", None),
+                ("cutting_status", None),
                 ("installation_selection", None),
                 ("map_previews", None),
                 ("vision", None),
@@ -1023,6 +1027,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                         await self._async_refresh_connect_module(values)
                     elif key == "position":
                         await self._async_refresh_gps(values)
+                    elif key == "gps_navigation_status":
+                        await self._async_refresh_gps_navigation(values)
+                    elif key == "cutting_status":
+                        await self._async_refresh_cutting_status(values)
                     elif key == "local_position":
                         for status in LOCAL_POSITION_KEYS:
                             values.pop(status, None)
@@ -1304,6 +1312,28 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         data.pop("gps_position_supported", None)
         data.update(gps)
 
+    async def _async_refresh_gps_navigation(self, data: MowerData) -> None:
+        data.pop("gps_navigation_status", None)
+        if "gps_assisted_navigation" in data:
+            status = await async_read_gps_navigation_status(self.client)
+            if status is not None:
+                data["gps_navigation_status"] = status
+
+    async def _async_refresh_cutting_status(self, data: MowerData) -> None:
+        for key in CUTTING_STATUS_KEYS:
+            data.pop(key, None)
+        data.update(
+            await async_read_cutting_status(
+                self.client,
+                has_cutting_height="cutting_height" in data,
+                has_target_height=bool(
+                    self.firmware_profile
+                    and self.firmware_profile.target_height_status
+                    and "automatic_height_reduction" in data
+                ),
+            )
+        )
+
     async def _async_refresh_connect_module(self, data: MowerData) -> None:
         status = await async_read_connect_module(self.client)
         for key in CONNECT_STATUS_KEYS.difference(status):
@@ -1570,6 +1600,19 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             elif setting.key == "epos_wire_assistance":
                 self._epos_refresh_pending = True
                 self._async_schedule_event_refresh()
+            elif setting.key in (
+                "automatic_height_reduction",
+                "cutting_height",
+                "gps_assisted_navigation",
+            ):
+                data = dict(self.data)
+                with suppress(CommandRejected, MowerConnectionError, ValueError):
+                    if setting.key == "gps_assisted_navigation":
+                        await self._async_refresh_gps_navigation(data)
+                    else:
+                        await self._async_refresh_cutting_status(data)
+                    if data != self.data:
+                        self.async_set_updated_data(data)
 
     async def _async_write_setting(self, setting: Setting, value: int) -> int:
         """Write and read back a setting while the operation lock is held."""

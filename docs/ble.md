@@ -18,7 +18,7 @@ The APK contains 166 TIF files for firmware variants. An operation name in a TIF
 | Wi-Fi configuration over Bluetooth | 5916 | Enable Wi-Fi, scan from the mower, join open or shared-key networks, manage saved networks and read diagnostics |
 | Automower Connect module | 4738 | Enable or disable the module and read connection status, SIM status and signal strength over BLE. Control uses the PIN or the permissions and commands supported by the BLE session |
 | Weather Timer | 4460 | Settings exposed after capability detection |
-| Cutting height and automatic height reduction | 4422 | Settings exposed after capability detection |
+| Cutting height and automatic height reduction | 4422 | Settings, actual cutting height and TargetHeight status according to capabilities |
 | ECO mode and charging station | 4692 | ECO mode and mower house settings according to capabilities |
 | Charging station pairing and loop diagnostics | 4692, 4462 | Pair with the mower docked and wait for a confirmation event. Read installed loops on compatible firmware |
 | Headlights | 4722 | Settings exposed after capability detection |
@@ -26,7 +26,7 @@ The APK contains 166 TIF files for firmware variants. An operation name in a TIF
 | Starting points and corridors | 4706 | Enable or disable starting points, set proportions, distances, assigned guide wires and corridor widths, and configure passage cutting where supported |
 | Wire departure and return tests | 4706, 4586 | Prepare, check status and distance, cancel, and save a measured distance as a starting point |
 | Charging station search | 4708 | Search methods, delays and range according to capabilities |
-| Assisted navigation and obstacle detection | 4732, 5356 | Settings exposed after capability detection |
+| Assisted navigation and obstacle detection | 4732, 5356 | Settings and GPS-assisted navigation status according to capabilities |
 | Edge cutting and ultrasonic sensors | 6690, 4728 | Enable each feature when the mower reports support |
 | FlexiFence detection | 5926, 6050 | Switch shown when the mower reports accessory support |
 | Frost protection | 5370, 5412 | Setting exposed after detecting the supported variant |
@@ -89,6 +89,10 @@ The app writes mowing pattern, orientation and perimeter settings with `SetMissi
 REA identified the BLE firmware installation commands for the mower (`ev_7192095d433119df061d28ef9d374817c98a00c869be1ab10577a3848eeadc33`) and charging station (`ev_c18c2d79950de1684156894069a854d5f1840304dcc7ca1c8bb3efb3e72851fd`), along with the app's check that the mower is parked or charging (`ev_23b232712c38d23bfcb0be7582df2b3ebd9f576edc9dc721dc60adc51e7af712`). The integration verifies that the selected version is still ready and the mower is parked or charging before sending the command. The app uses the `Enabled` attribute in the Fota and CSFota families for automatic update checks (`ev_1dabb550495df6b4706ad6dc8ecf87f1c732c76a56a8cc94afddfb2481702bc4`, `ev_678596f071ffa15ea0a27becb0543ae7c5790cd92f317cce5a144ef121db82f1`, `ev_6108243aa59c4feca3b86c5b8de7bc40c1480ff1fbe8e4ca4058dca3664105f7`).
 
 The app labels the `SpotCutting` settings as spiral cutting (`ev_46e6738081dcf287782384e11cb8fe3ca4a29353b2b95bbbe9781c8e27a49b98`, `ev_bece35ee572f766ee94f88a9ebe05da400d3c31bd361837f4708f0a363afab47`, `ev_0df7d226f6850dc837e3e1db461b61e2c75376aec8d1f1bdacd28017f8252559`). The G3 profile the app assigns to the 420 declares the enable and sensitivity settings. A manual start button also requires `StartTrigger`, which that profile lacks.
+
+REA located the app's TargetHeight indicator and its separate cutting height display (`ev_d3f332d90fd6e66209a4d8377478a3ad86eae278d5d982b2713578e2bd7887b5`, `ev_997c09a3adc9fd0fd5a61fdbed66a8da94738878576aac8f3feff624eb347d4e`). In 116 TIF files, including G3 profile 31.7 for the 420, `CuttingHeight.GetDownCuttingStatus` (4422:12) reports an ongoing flag, a start time and a duration. One build labels its first field `enabled`. Home Assistant uses the ongoing layout on confirmed firmware when the mower reports TargetHeight support. The status gives the mower's raw start seconds and duration while reduction is ongoing. Actual cutting height comes from `GetCurrentHeightPercentage` (4422:19) or `GetCurrentHeight` (4422:33, levels 1–9), separately from the configured target.
+
+In 114 TIF files, `GpsNavigation.GetStatus` (4732:3) returns a one-byte enum whose values 0, 1 and 2 mean no signal, initialization and GPS map in use. Home Assistant requests this status after checking GPS-assisted navigation availability. The GPS-assisted navigation status uses a different HCP service from the mower's geographic position.
 
 REA confirmed the theft protection write formats and intervals used by the app (`ev_e44b63c08fee3d74bb161255991980922d2abe8cbb588165de791ab79fd94c7c`). The settings distinguish lift, tilt and motion alarms using model-specific flags (`ev_1783f2f3502c34150046f6bc8d08900d1a970bec31ac9c6753f45a7b538a4f2c`, `ev_0bf13ed7d130e9120113da4e0dfa2bb57eec4b4b32a623e740deccddd1343b5d`). Detected sensors read alarm status over BLE during connection maintenance.
 
