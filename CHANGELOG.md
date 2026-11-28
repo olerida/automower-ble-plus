@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.44.0
+
+- Turning on automatic clock synchronization sets the mower's local time immediately and uses Home Assistant's time zone when the mower has none configured.
+- An enabled mower with an empty time zone can recover on its next Bluetooth refresh. The integration checks the saved clock and applies seasonal offset changes using the configured zone.
+
 ## v0.43.0
 
 - Request a six-digit Automower Connect pairing code over Bluetooth on supported mowers with an enabled Connect module. Open the integration's maintenance menu and enter the current PIN.

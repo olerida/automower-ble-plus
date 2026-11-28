@@ -1097,7 +1097,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                             and values.get("automatic_clock_sync") == 1
                         ):
                             try:
-                                values[key] = await async_sync_mower_clock(
+                                actual = await async_sync_mower_clock(
                                     self.client,
                                     self.hass.config.time_zone,
                                     automatic=True,
@@ -1108,6 +1108,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                                     "Could not synchronize the mower clock",
                                     exc_info=True,
                                 )
+                            else:
+                                values[key] = actual
+                                if actual != value:
+                                    self._calendar_time = None
+                                    self._planner_refresh_pending = True
+                                    self._async_schedule_event_refresh()
                     elif key == "statistics":
                         await self._async_refresh_statistics(values)
                     elif key == "mower_name":
@@ -1700,16 +1706,29 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def async_sync_clock(self) -> None:
         """Set the mower clock and publish its verified local time."""
         async with self._operation_lock:
-            try:
-                await self._async_connect()
-                actual = await async_sync_mower_clock(
-                    self.client, self.hass.config.time_zone
-                )
-            except (MowerConnectionError, CommandRejected, ValueError) as err:
-                raise HomeAssistantError(
-                    f"Could not synchronize the mower clock: {err}"
-                ) from err
-            self.async_set_updated_data({**self.data, "mower_clock": actual})
+            await self._async_sync_clock()
+
+    async def _async_sync_clock(self, *, require_time_zone: bool = False) -> None:
+        """Synchronize and refresh the next scheduled start while holding the lock."""
+        try:
+            await self._async_connect()
+            actual = await async_sync_mower_clock(
+                self.client,
+                self.hass.config.time_zone,
+                require_time_zone=require_time_zone,
+            )
+        except (MowerConnectionError, CommandRejected, ValueError) as err:
+            raise HomeAssistantError(
+                f"Could not synchronize the mower clock: {err}"
+            ) from err
+        self._async_publish_clock(actual)
+
+    @callback
+    def _async_publish_clock(self, local_time: int) -> None:
+        self._calendar_time = None
+        self.async_set_updated_data({**self.data, "mower_clock": local_time})
+        self._planner_refresh_pending = True
+        self._async_schedule_event_refresh()
 
     async def async_set_clock_component(self, value: date | time) -> None:
         """Edit the same local clock the mower uses for its schedules."""
@@ -1725,10 +1744,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 raise HomeAssistantError(
                     f"Could not set the mower clock: {err}"
                 ) from err
-            self._calendar_time = None
-            self.async_set_updated_data({**self.data, "mower_clock": actual})
-            self._planner_refresh_pending = True
-            self._async_schedule_event_refresh()
+            self._async_publish_clock(actual)
 
     async def async_set_mower_name(self, name: str) -> None:
         """Store the requested name on the mower and confirm what it saved."""
@@ -1753,6 +1769,12 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def async_set_setting(self, setting: Setting, value: int) -> None:
         """Change a supported setting and retrieve the value stored by the mower."""
         async with self._operation_lock:
+            if (
+                setting.key == "automatic_clock_sync"
+                and value == 1
+                and setting.key in self.setting_variants
+            ):
+                await self._async_sync_clock(require_time_zone=True)
             actual = await self._async_write_setting(setting, value)
             if setting.key == "wifi_enabled":
                 await self._async_update_wifi_telemetry()
@@ -1769,6 +1791,10 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             elif setting.key == "headlight_theme" and actual != value:
                 raise HomeAssistantError(
                     "The mower did not confirm the headlight theme"
+                )
+            elif setting.key == "automatic_clock_sync" and actual != value:
+                raise HomeAssistantError(
+                    "The mower did not confirm its automatic clock mode"
                 )
             elif setting.key in (
                 "automatic_height_reduction",

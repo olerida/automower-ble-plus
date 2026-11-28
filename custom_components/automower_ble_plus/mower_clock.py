@@ -79,6 +79,7 @@ async def async_sync_mower_clock(
     *,
     automatic: bool = False,
     current: int | None = None,
+    require_time_zone: bool = False,
 ) -> int:
     """Set the mower's local time using its configured zone or Home Assistant's."""
     # All known Calendar profiles pair GetTime with SetTime. Confirm the read first.
@@ -87,9 +88,14 @@ async def async_sync_mower_clock(
     if automatic and await client.command(_GET_AUTOMATIC_SYNC) != b"\x01":
         return current
     time_zone = await _read_time_zone(client)
+    if time_zone is None:
+        if require_time_zone:
+            raise ValueError(
+                "The mower does not support a time zone for automatic synchronization"
+            )
+        if automatic:
+            return current
     configured_zone = time_zone[0] if time_zone else ""
-    if automatic and not configured_zone:
-        return current
     try:
         zone = ZoneInfo(configured_zone or zone_name)
     except ZoneInfoNotFoundError as err:
@@ -116,6 +122,7 @@ async def async_sync_mower_clock(
         raise ValueError("The current time falls outside the mower's clock range")
     if (
         automatic
+        and new_zone is None
         and previous_offset == offset_seconds
         and abs(current - sent_time) <= _SYNC_THRESHOLD
     ):

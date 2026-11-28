@@ -1234,6 +1234,7 @@ async def test_synchronize_mower_clock_uses_local_calendar_time(
     read_offset = Command(6746, 3)
     set_offset = Command(6746, 4)
     automatic = Command(6746, 7)
+    set_automatic = Command(6746, 8)
     client.values[read_time, b""] = U32.pack(1_700_000_000)
     if zone_response is not None:
         client.values[read_zone, b""] = zone_response
@@ -1242,11 +1243,14 @@ async def test_synchronize_mower_clock_uses_local_calendar_time(
     send = client.command
     writes = []
     accept_time = True
+    accept_automatic = True
 
     async def command(operation, payload=b""):
-        if operation in (set_time, set_zone, set_offset):
+        if operation in (set_time, set_zone, set_offset, set_automatic):
             writes.append((operation, payload))
-            if operation != set_time or accept_time:
+            if (operation != set_time or accept_time) and (
+                operation != set_automatic or accept_automatic
+            ):
                 client.values[
                     Command(operation.family, operation.operation - 1), b""
                 ] = payload
@@ -1261,7 +1265,7 @@ async def test_synchronize_mower_clock_uses_local_calendar_time(
     def add_entities(new_entities):
         entities.update((entity.key, entity) for entity in new_entities)
 
-    for platform in (button, sensor):
+    for platform in (button, sensor, switch):
         await platform.async_setup_entry(hass, entry, add_entities)
     assert "sync_mower_clock" not in entities
     await coordinator.async_refresh_optional()
@@ -1282,13 +1286,61 @@ async def test_synchronize_mower_clock_uses_local_calendar_time(
     with pytest.raises(HomeAssistantError, match="did not confirm"):
         await entities["sync_mower_clock"].async_press()
     if zone_response is not None:
-        accept_time = True
-        client.values[automatic, b""] = b"\x01"
+        control = entities["automatic_clock_sync"]
         writes.clear()
+        with pytest.raises(HomeAssistantError, match="did not confirm"):
+            await control.async_turn_on()
+        assert (set_automatic, b"\1") not in writes
+        assert not control.is_on
+
+        client.values[read_zone, b""] = zone_response
+        client.values[read_offset, b""] = I32.pack(0)
+        accept_time = True
+        writes.clear()
+        await control.async_turn_on()
+        expected = [
+            (set_offset, I32.pack(expected_offset)),
+            (set_time, U32.pack(expected_wall_time)),
+            (set_automatic, b"\1"),
+        ]
+        if zone_response == bytes(40):
+            expected.insert(0, (set_zone, b"Europe/Madrid".ljust(40, b"\0")))
+        assert writes == expected
+        assert control.is_on
+
+        writes.clear()
+        if zone_response == bytes(40):
+            # Recover an enabled mower with a missing zone and an already-correct clock.
+            client.values[read_zone, b""] = bytes(40)
+            await coordinator.async_refresh_optional()
+            assert writes == [
+                (set_zone, b"Europe/Madrid".ljust(40, b"\0")),
+                (set_time, U32.pack(expected_wall_time)),
+            ]
+            writes.clear()
         await coordinator.async_refresh_optional()
-        assert writes == [(set_time, U32.pack(expected_wall_time))]
+        assert not writes
+
+        now = datetime(2027, 1, 14, 12, tzinfo=UTC)
+        new_offset = expected_offset - 3600
         await coordinator.async_refresh_optional()
-        assert len(writes) == 1
+        assert writes == [
+            (set_offset, I32.pack(new_offset)),
+            (set_time, U32.pack(int(now.timestamp()) + new_offset)),
+        ]
+        writes.clear()
+        await control.async_turn_off()
+        assert writes == [(set_automatic, b"\0")]
+        assert not control.is_on
+
+        accept_automatic = False
+        with pytest.raises(
+            HomeAssistantError, match="did not confirm its automatic clock mode"
+        ):
+            await control.async_turn_on()
+        assert not control.is_on
+    else:
+        assert "automatic_clock_sync" not in entities
     await coordinator.async_shutdown()
 
 
