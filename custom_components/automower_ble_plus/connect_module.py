@@ -5,7 +5,7 @@ from struct import error as StructError
 
 from automower_ble.protocol import ResponseResult
 
-from .features import CONNECT_ENABLED_KEY, CONNECT_FAMILY, U8, Reading
+from .features import CONNECT_ENABLED_KEY, CONNECT_FAMILY, U8, U32, Reading
 from .transport import AutomowerClient, CommandRejected
 from .wire import Command, Event
 
@@ -24,8 +24,12 @@ CONNECT_STATE_OPTIONS = (
 )
 
 CONNECT_AVAILABLE = Reading(Command(CONNECT_FAMILY, 0), U8)
+CONNECT_ENABLED = Reading(Command(CONNECT_FAMILY, 2), U8)
+_INITIATE_CONNECT_PAIRING = Command(CONNECT_FAMILY, 3)
 REMOVE_CONNECT_PAIRINGS = Command(CONNECT_FAMILY, 4)
-_ENABLED = Reading(Command(CONNECT_FAMILY, 2), U8)
+_PAIRING_CODE_EVENT = 0
+_PAIRING_FAILED_EVENT = 1
+_PAIRING_TIMEOUT = 45.0
 _STATE = Reading(Command(CONNECT_FAMILY, 7), U8)
 _SIGNAL = Reading(Command(CONNECT_FAMILY, 8), U8)
 _GET_STATUS = Command(CONNECT_FAMILY, 10)
@@ -54,7 +58,7 @@ async def async_read_connect_module(client: AutomowerClient) -> dict[str, int]:
     """Detect the module before reading enabled state, connection and signal."""
     if await _async_read(client, CONNECT_AVAILABLE) != 1:
         return {}
-    enabled = await _async_read(client, _ENABLED)
+    enabled = await _async_read(client, CONNECT_ENABLED)
     try:
         state, signal = _STATUS.unpack(await client.command(_GET_STATUS))
     except CommandRejected as err:
@@ -75,3 +79,24 @@ async def async_read_connect_module(client: AutomowerClient) -> dict[str, int]:
     if signal is not None and signal <= 100:
         result[CONNECT_SIGNAL_KEY] = signal
     return result
+
+
+async def async_request_connect_pairing_code(client: AutomowerClient) -> str:
+    """Request a fresh account-pairing code and wait for the mower's result."""
+    event = await client.command_and_wait_for_event(
+        _INITIATE_CONNECT_PAIRING,
+        (_PAIRING_CODE_EVENT, _PAIRING_FAILED_EVENT),
+        timeout=_PAIRING_TIMEOUT,
+    )
+    if event.event_id == _PAIRING_FAILED_EVENT and not event.payload:
+        raise ValueError("The mower could not start account pairing")
+    if (
+        event.family != CONNECT_FAMILY
+        or event.event_id != _PAIRING_CODE_EVENT
+        or len(event.payload) != U32.size
+    ):
+        raise ValueError("The mower returned an invalid pairing event")
+    code = U32.unpack(event.payload)[0]
+    if code > 999_999:
+        raise ValueError("The mower did not return a six-digit pairing code")
+    return f"{code:06d}"

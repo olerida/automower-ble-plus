@@ -55,6 +55,7 @@ class FirmwareProfile:
     headlight_themes: str = ""
     statistics_subscription: int = 0
     connect_remove_pairings: int = 0
+    connect_pairing_code: int = 0
 
 
 @cache
@@ -187,5 +188,9 @@ def get_firmware_profile(
         connect_remove_pairings=int(
             result.connect_remove_pairings
             and all(profile and profile.connect_remove_pairings for profile in releases)
+        ),
+        connect_pairing_code=int(
+            result.connect_pairing_code
+            and all(profile and profile.connect_pairing_code for profile in releases)
         ),
     )

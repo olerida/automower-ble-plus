@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.43.0
+
+- Request a six-digit Automower Connect pairing code over Bluetooth on supported mowers with an enabled Connect module. Open the integration's maintenance menu and enter the current PIN.
+- The code appears in the maintenance dialog. Use it in the official Automower Connect app to finish linking the mower to your account.
+
 ## v0.42.0
 
 - Remove all paired Automower Connect accounts over Bluetooth from the integration's maintenance menu. This is available when the mower reports an installed Connect module and accepts an operator session.

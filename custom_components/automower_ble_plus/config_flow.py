@@ -178,6 +178,7 @@ class AutomowerMaintenanceFlow(OptionsFlow):
         self._epos_origin_task: asyncio.Task[bool] | None = None
         self._epos_origin_result = "epos_origin_set"
         self._epos_boundary_context: tuple[int, int | None] | None = None
+        self._connect_pairing_task: asyncio.Task[str] | None = None
 
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         """Offer maintenance for the capabilities this mower reports."""
@@ -191,6 +192,10 @@ class AutomowerMaintenanceFlow(OptionsFlow):
                 ("wifi", coordinator.can_configure_wifi),
                 ("reset", coordinator.can_reset_user_settings),
                 ("change_pin", coordinator.can_change_pin),
+                (
+                    "request_connect_pairing_code",
+                    coordinator.can_request_connect_pairing_code,
+                ),
                 ("remove_connect_pairings", coordinator.can_remove_connect_pairings),
                 ("regenerate_aim_map", coordinator.can_regenerate_aim_map),
                 (
@@ -452,6 +457,65 @@ class AutomowerMaintenanceFlow(OptionsFlow):
             ),
             errors=errors,
             description_placeholders={"name": entry.title},
+        )
+
+    async def async_step_request_connect_pairing_code(
+        self, user_input=None
+    ) -> ConfigFlowResult:
+        """Ask for the current operator PIN before initiating a new pairing."""
+        entry = self.config_entry
+        if (
+            entry.state is not ConfigEntryState.LOADED
+            or not entry.runtime_data.can_request_connect_pairing_code
+        ):
+            return self.async_abort(reason="connect_pairing_code_unavailable")
+        errors = {}
+        if user_input is not None:
+            current_pin = user_input["current_pin"]
+            if not _PIN.fullmatch(current_pin):
+                errors["current_pin"] = "invalid_pin"
+            elif current_pin != entry.data.get(CONF_PIN):
+                errors["current_pin"] = "pin_current_mismatch"
+            else:
+                self._connect_pairing_task = entry.async_create_background_task(
+                    self.hass,
+                    entry.runtime_data.async_request_connect_pairing_code(current_pin),
+                    "request an Automower Connect pairing code",
+                )
+                return await self.async_step_connect_pairing_progress()
+        return self.async_show_form(
+            step_id="request_connect_pairing_code",
+            data_schema=vol.Schema({vol.Required(vol.Secret("current_pin")): _SECRET}),
+            errors=errors,
+            description_placeholders={"name": entry.title},
+        )
+
+    async def async_step_connect_pairing_progress(
+        self, user_input=None
+    ) -> ConfigFlowResult:
+        """Wait for the result without blocking Home Assistant's options flow."""
+        task = self._connect_pairing_task
+        assert task is not None
+        if not task.done():
+            return self.async_show_progress(
+                step_id="connect_pairing_progress",
+                progress_action="connect_pairing_waiting",
+                progress_task=task,
+            )
+        return self.async_show_progress_done(next_step_id="connect_pairing_result")
+
+    async def async_step_connect_pairing_result(
+        self, user_input=None
+    ) -> ConfigFlowResult:
+        """Display the short-lived code in this operator's dialog."""
+        task, self._connect_pairing_task = self._connect_pairing_task, None
+        assert task is not None
+        try:
+            code = task.result()
+        except HomeAssistantError, asyncio.CancelledError:
+            return self.async_abort(reason="connect_pairing_code_failed")
+        return self.async_abort(
+            reason="connect_pairing_code_ready", description_placeholders={"code": code}
         )
 
     async def async_step_remove_connect_pairings(

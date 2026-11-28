@@ -57,6 +57,9 @@ from custom_components.automower_ble_plus import (
 from custom_components.automower_ble_plus import (
     coordinator as coordinator_module,
 )
+from custom_components.automower_ble_plus.connect_module import (
+    async_request_connect_pairing_code,
+)
 from custom_components.automower_ble_plus.const import DOMAIN
 from custom_components.automower_ble_plus.coordinator import MowerCoordinator
 from custom_components.automower_ble_plus.features import I16, I32, U16, U32
@@ -3869,8 +3872,28 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event",
+    [
+        Event(4738, 1, b""),
+        Event(4738, 0, b"\x01"),
+        Event(4738, 0, U32.pack(1_000_000)),
+        Event(4690, 0, U32.pack(42)),
+    ],
+)
+async def test_connect_pairing_code_rejects_invalid_events(event):
+    client = Mock()
+    client.command_and_wait_for_event = AsyncMock(return_value=event)
+    with pytest.raises(ValueError, match="pairing"):
+        await async_request_connect_pairing_code(client)
+    client.command_and_wait_for_event.assert_awaited_once_with(
+        Command(4738, 3), (0, 1), timeout=45.0
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("reply", ["acknowledged", "disconnected", "guest", "absent"])
-async def test_remove_connect_pairings_from_home_assistant(
+async def test_maintain_connect_pairings_from_home_assistant(
     tmp_path, monkeypatch, reply
 ):
     integrations = Path(__file__).resolve().parents[1] / "custom_components"
@@ -3892,11 +3915,12 @@ async def test_remove_connect_pairings_from_home_assistant(
     entry = _entry("0042")
     client = FakeAutomower420()
     operator, available, remove = Command(4664, 3), Command(4738, 0), Command(4738, 4)
+    enabled = Command(4738, 2)
     client.values.update(
         {
             (operator, b""): b"\x00" if reply == "guest" else b"\x01",
             (available, b""): b"\x00" if reply == "absent" else b"\x01",
-            (Command(4738, 2), b""): b"\x01",
+            (enabled, b""): b"\x01",
             (Command(4738, 10), b""): b"\x01\x55",
             (remove, b""): b"",
         }
@@ -3911,6 +3935,20 @@ async def test_remove_connect_pairings_from_home_assistant(
 
     monkeypatch.setattr(client, "command", command)
     monkeypatch.setattr(coordinator_module, "AutomowerClient", lambda *args: client)
+    pairing_started, finish_pairing = asyncio.Event(), asyncio.Event()
+
+    async def wait_for_code(operation, event_ids, *, timeout):
+        assert (operation, event_ids, timeout) == (Command(4738, 3), (0, 1), 45.0)
+        pairing_started.set()
+        await finish_pairing.wait()
+        if reply == "disconnected":
+            raise MowerConnectionError("BLE link lost while waiting for the event")
+        return Event(4738, 0, U32.pack(12345))
+
+    wait_for_event = AsyncMock(side_effect=wait_for_code)
+    monkeypatch.setattr(
+        client, "command_and_wait_for_event", wait_for_event, raising=False
+    )
     try:
         async with asyncio.timeout(15):
             assert await setup.async_setup_component(hass, DOMAIN, {})
@@ -3922,10 +3960,55 @@ async def test_remove_connect_pairings_from_home_assistant(
             flow = await options.async_init(entry.entry_id)
             if reply in ("guest", "absent"):
                 assert not coordinator.can_remove_connect_pairings
+                assert "request_connect_pairing_code" not in flow.get(
+                    "menu_options", ()
+                )
                 assert "remove_connect_pairings" not in flow.get("menu_options", ())
                 assert (remove, b"") not in client.calls
                 return
 
+            assert "request_connect_pairing_code" in flow["menu_options"]
+            flow_id = flow["flow_id"]
+            await options.async_configure(
+                flow_id, {"next_step_id": "request_connect_pairing_code"}
+            )
+            rejected = await options.async_configure(flow_id, {"current_pin": "9999"})
+            assert rejected["errors"] == {"current_pin": "pin_current_mismatch"}
+            client.values[enabled, b""] = b"\x00"
+            with pytest.raises(
+                HomeAssistantError, match="Enable the Automower Connect"
+            ):
+                await coordinator.async_request_connect_pairing_code("0042")
+            wait_for_event.assert_not_called()
+            client.values[enabled, b""] = b"\x01"
+            progress = await options.async_configure(flow_id, {"current_pin": "0042"})
+            assert progress["type"] == FlowResultType.SHOW_PROGRESS
+            await pairing_started.wait()
+            with pytest.raises(
+                HomeAssistantError, match="cannot request a pairing code"
+            ):
+                await coordinator.async_request_connect_pairing_code("0042")
+            finish_pairing.set()
+            await asyncio.gather(
+                options._progress[flow_id].async_get_progress_task(),
+                return_exceptions=True,
+            )
+            await hass.async_block_till_done()
+            progress_done = options._progress[flow_id].cur_step
+            assert progress_done["type"] == FlowResultType.SHOW_PROGRESS_DONE
+            result = await options.async_configure(flow_id)
+            if reply == "acknowledged":
+                assert result["reason"] == "connect_pairing_code_ready"
+                assert result["description_placeholders"] == {"code": "012345"}
+            else:
+                assert result["reason"] == "connect_pairing_code_failed"
+                assert result.get("description_placeholders") is None
+            assert "012345" not in json.dumps(
+                await diagnostics.async_get_config_entry_diagnostics(hass, entry)
+            )
+            wait_for_event.assert_awaited_once()
+
+            flow = await options.async_init(entry.entry_id)
             assert "remove_connect_pairings" in flow["menu_options"]
             flow_id = flow["flow_id"]
             flow = await options.async_configure(

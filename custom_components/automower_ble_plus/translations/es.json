@@ -46,6 +46,7 @@
           "wifi": "Redes Wi-Fi",
           "reset": "Restablecer ajustes",
           "change_pin": "Cambiar el PIN",
+          "request_connect_pairing_code": "Obtener código de vinculación de Automower Connect",
           "remove_connect_pairings": "Desvincular las cuentas de Automower Connect",
           "regenerate_aim_map": "Volver a generar el mapa AIM",
           "setup_epos_origin": "Configurar origen EPOS de Husqvarna Cloud",
@@ -81,6 +82,16 @@
           "current_pin": "PIN actual",
           "new_pin": "Nuevo PIN",
           "confirm_pin": "Repite el nuevo PIN"
+        }
+      },
+      "request_connect_pairing_code": {
+        "title": "Obtener un código de vinculación",
+        "description": "Pide a {name} un código de seis cifras. Podrás introducirlo en la app Automower Connect al añadir el cortacésped a una cuenta.",
+        "data": {
+          "current_pin": "PIN actual del cortacésped"
+        },
+        "data_description": {
+          "current_pin": "Introduce el PIN que configuraste para este cortacésped en Home Assistant."
         }
       },
       "remove_connect_pairings": {
@@ -126,6 +137,7 @@
       }
     },
     "progress": {
+      "connect_pairing_waiting": "Esperando el código de vinculación por Bluetooth.",
       "wifi_scanning": "El cortacésped está buscando redes Wi-Fi cercanas.",
       "wifi_joining": "El cortacésped está conectándose a la red Wi-Fi seleccionada.",
       "epos_origin_waiting": "Esperando a que el cortacésped pueda registrar y validar el origen EPOS."
@@ -149,6 +161,9 @@
     },
     "abort": {
       "mower_unavailable": "La entrada de este cortacésped no está disponible en Home Assistant.",
+      "connect_pairing_code_unavailable": "El código de vinculación requiere un módulo Automower Connect activado y una sesión de operador en un firmware compatible.",
+      "connect_pairing_code_ready": "El código de vinculación es **{code}**. Introdúcelo en la app Automower Connect al añadir el cortacésped a tu cuenta.",
+      "connect_pairing_code_failed": "El cortacésped no devolvió un código válido. Comprueba el módulo Automower Connect y mantén el cortacésped al alcance del Bluetooth.",
       "connect_pairings_unavailable": "La desvinculación no está disponible para este cortacésped o esta sesión de operador.",
       "connect_pairings_requested": "El cortacésped ha aceptado la solicitud de desvincular todas las cuentas de Automower Connect.",
       "connect_pairings_unconfirmed": "Home Assistant no ha podido confirmar la solicitud. Comprueba las cuentas vinculadas en Automower Connect antes de volver a intentarlo.",

@@ -46,6 +46,7 @@
           "wifi": "Wi-Fi networks",
           "reset": "Reset user settings",
           "change_pin": "Change PIN",
+          "request_connect_pairing_code": "Get Automower Connect pairing code",
           "remove_connect_pairings": "Remove paired Automower Connect accounts",
           "regenerate_aim_map": "Regenerate AIM map",
           "setup_epos_origin": "Set up Husqvarna Cloud EPOS origin",
@@ -81,6 +82,16 @@
           "current_pin": "Current PIN",
           "new_pin": "New PIN",
           "confirm_pin": "Repeat new PIN"
+        }
+      },
+      "request_connect_pairing_code": {
+        "title": "Get a pairing code",
+        "description": "Ask {name} for a six-digit code. You can enter it in the Automower Connect app when adding the mower to an account.",
+        "data": {
+          "current_pin": "Current mower PIN"
+        },
+        "data_description": {
+          "current_pin": "Enter the PIN you configured for this mower in Home Assistant."
         }
       },
       "remove_connect_pairings": {
@@ -126,6 +137,7 @@
       }
     },
     "progress": {
+      "connect_pairing_waiting": "Waiting for the mower to report a pairing code over Bluetooth.",
       "wifi_scanning": "The mower is scanning for nearby Wi-Fi networks.",
       "wifi_joining": "The mower is connecting to the selected Wi-Fi network.",
       "epos_origin_waiting": "Waiting for the mower to register and validate the EPOS origin."
@@ -149,6 +161,9 @@
     },
     "abort": {
       "mower_unavailable": "This mower's Home Assistant entry is unavailable.",
+      "connect_pairing_code_unavailable": "Pairing codes require an enabled Automower Connect module and an operator session on supported firmware.",
+      "connect_pairing_code_ready": "The pairing code is **{code}**. Enter it in the Automower Connect app when adding the mower to your account.",
+      "connect_pairing_code_failed": "The mower did not return a valid pairing code. Check its Automower Connect module and keep it within Bluetooth range.",
       "connect_pairings_unavailable": "Account removal is unavailable for this mower or operator session.",
       "connect_pairings_requested": "The mower accepted the request to remove all paired Automower Connect accounts.",
       "connect_pairings_unconfirmed": "Home Assistant could not confirm the request. Check the account pairings in Automower Connect before trying again.",

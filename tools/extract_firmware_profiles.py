@@ -25,6 +25,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     mower_operations = {}
     connect_enabled_no_pin = 0
     connect_remove_pairings = 0
+    connect_pairing_request = False
     reset_operations = set()
     message_events = 0
     aim_map_regeneration = 0
@@ -110,6 +111,15 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         ):
             connect_remove_pairings = 1
         if (
+            method["family"] == "AutomowerConnect"
+            and method["command"] == "InitiateNewPairing"
+            and protocol.get("msgType") == "4738"
+            and protocol.get("subCmd") == "3"
+            and not method["inParams"]
+            and not method["outParams"]
+        ):
+            connect_pairing_request = True
+        if (
             method["family"] == "System"
             and protocol.get("msgType") == "4698"
             and not method.get("inParams")
@@ -148,6 +158,19 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         if method["family"] == "Headlights" and protocol.get("msgType") == "4722":
             headlight_methods[method["command"]] = (protocol.get("subCmd"), method)
     types = {item["name"]: item for item in profile.get("types", ())}
+    connect_pairing_events = {
+        (event["name"], fields.get("eventId")): event["params"]
+        for event in profile.get("events", ())
+        if event["family"] == "AutomowerConnect"
+        for fields in [{item["key"]: item["value"] for item in event["protocol"]}]
+        if fields.get("family") == "4738"
+    }
+    connect_pairing_code = int(
+        connect_pairing_request
+        and connect_pairing_events.get(("PairingCodeAvailable", "0"))
+        == [{"name": "code", "type": "uint32"}]
+        and connect_pairing_events.get(("PairingFailed", "1")) == []
+    )
     headlight_theme_type = "tIHeadlights_Theme"
     headlight_theme_field = [{"name": "theme", "type": headlight_theme_type}]
     headlight_themes = ""
@@ -551,10 +574,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         headlight_themes,
         statistics_subscription,
         connect_remove_pairings,
+        connect_pairing_code,
     )
     return (
         result
-        if any(result[:-22])
+        if any(result[:-23])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -575,6 +599,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or headlight_themes
         or statistics_subscription
         or connect_remove_pairings
+        or connect_pairing_code
         else None
     )
 

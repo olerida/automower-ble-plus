@@ -56,10 +56,12 @@ from .appdrive import (
 )
 from .connect_module import (
     CONNECT_AVAILABLE,
+    CONNECT_ENABLED,
     CONNECT_EVENTS,
     CONNECT_STATUS_KEYS,
     REMOVE_CONNECT_PAIRINGS,
     async_read_connect_module,
+    async_request_connect_pairing_code,
     is_connect_update,
 )
 from .const import DOMAIN, LOGGER
@@ -341,6 +343,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._event_refresh_task: asyncio.Task | None = None
         self._calendar_update_pending = False
         self._connect_refresh_pending = False
+        self._connect_pairing_active = False
         self._epos_refresh_pending = False
         self._epos_boundary_change_pending = False
         self._epos_origin_lock = asyncio.Lock()
@@ -443,6 +446,19 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             and self._operator_logged_in
             and "connect_remove_pairings" not in self._unsupported
             and CONNECT_STATUS_KEYS & (self.data or {}).keys()
+        )
+
+    @property
+    def can_request_connect_pairing_code(self) -> bool:
+        """Check firmware, operator session and live Connect module settings."""
+        profile = self.firmware_profile
+        return bool(
+            profile
+            and profile.connect_pairing_code
+            and self._operator_logged_in
+            and not self._connect_pairing_active
+            and "connect_pairing_code" not in self._unsupported
+            and (self.data or {}).get(CONNECT_ENABLED_KEY) == 1
         )
 
     @property
@@ -2754,26 +2770,11 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
     async def async_remove_connect_pairings(self, current_pin: str) -> bool:
         """Send one account-removal request and report its acknowledgement."""
         async with self._operation_lock:
-            if (
-                not self.can_remove_connect_pairings
-                or self.appdrive_active
-                or self.config_entry.data.get(CONF_PIN) != current_pin
-            ):
+            if not self.can_remove_connect_pairings:
                 raise HomeAssistantError(
                     "Automower Connect account removal is unavailable"
                 )
-            try:
-                await self._async_connect()
-                operator_logged_in = await self.client.command(_IS_OPERATOR_LOGGED_IN)
-                available = await self._read(CONNECT_AVAILABLE)
-            except (CommandRejected, MowerConnectionError, ValueError) as err:
-                raise HomeAssistantError(
-                    "Could not validate the mower's BLE session and Connect module"
-                ) from err
-            if operator_logged_in != b"\x01" or available != 1:
-                raise HomeAssistantError(
-                    "The mower requires an operator session and an available Connect module"
-                )
+            await self._async_check_connect_operator(current_pin)
             try:
                 response = await self.client.command(REMOVE_CONNECT_PAIRINGS)
             except CommandRejected as err:
@@ -2787,6 +2788,52 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             self._connect_refresh_pending = True
             self._async_schedule_event_refresh()
             return not response
+
+    async def _async_check_connect_operator(self, current_pin: str) -> None:
+        """Validate the supplied PIN and the operator session under the operation lock."""
+        if self.appdrive_active or self.config_entry.data.get(CONF_PIN) != current_pin:
+            raise HomeAssistantError(
+                "Automower Connect account maintenance is unavailable"
+            )
+        try:
+            await self._async_connect()
+            operator_logged_in = await self.client.command(_IS_OPERATOR_LOGGED_IN)
+            available = await self._read(CONNECT_AVAILABLE)
+        except (CommandRejected, MowerConnectionError, ValueError) as err:
+            raise HomeAssistantError(
+                "Could not validate the mower's BLE session and Connect module"
+            ) from err
+        if operator_logged_in != b"\x01" or available != 1:
+            raise HomeAssistantError(
+                "The mower requires an operator session and an available Connect module"
+            )
+
+    async def async_request_connect_pairing_code(self, current_pin: str) -> str:
+        """Request a single pairing code in the maintenance flow."""
+        if not self.can_request_connect_pairing_code:
+            raise HomeAssistantError(
+                "The mower cannot request a pairing code right now"
+            )
+        self._connect_pairing_active = True
+        try:
+            async with self._operation_lock:
+                await self._async_check_connect_operator(current_pin)
+                try:
+                    if await self._read(CONNECT_ENABLED) != 1:
+                        raise ValueError("Enable the Automower Connect module first")
+                    return await async_request_connect_pairing_code(self.client)
+                except CommandRejected as err:
+                    if err.unsupported:
+                        self._unsupported.add("connect_pairing_code")
+                    raise HomeAssistantError(
+                        "The mower rejected the pairing request"
+                    ) from err
+                except (MowerConnectionError, ValueError) as err:
+                    raise HomeAssistantError(
+                        f"Could not obtain a mower pairing code: {err}"
+                    ) from err
+        finally:
+            self._connect_pairing_active = False
 
     async def async_change_pin(self, current_pin: str, new_pin: str) -> bool:
         """Change the operator PIN once, then reconnect with the confirmed value."""
