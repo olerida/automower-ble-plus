@@ -4,6 +4,7 @@ A Home Assistant integration for Husqvarna Automower robotic lawn mowers that su
 
 ## Highlights
 
+- **v0.45** · See the installed version's highlights during setup and receive Bluetooth updates when the mower clock changes.
 - **v0.44** · Initialize the mower's clock when turning on automatic synchronization.
 - **v0.43** · Request an Automower Connect account pairing code over Bluetooth on supported mowers.
 - **v0.42** · Remove paired Automower Connect accounts over Bluetooth on compatible mowers with a Connect module.
@@ -100,4 +101,4 @@ The Automower 420 is the reference model. Automated tests reproduce pairing and 
 
 This community integration uses AutoMower-BLE for pairing and Bluetooth channel setup. [AutoMower-BLE project](https://github.com/alistair23/AutoMower-BLE)
 
-Build the distribution ZIP with `python3 tools/build_hacs_release.py`. When a version tag matches the integration manifest, GitHub Actions publishes the archive used by Marketplace and HACS after tests and Hassfest pass. [Home Assistant Marketplace documentation](https://www.home-assistant.io/integrations/marketplace/)
+Build the distribution ZIP with `python3 tools/build_hacs_release.py`. The archive includes the current `CHANGELOG.md` section for the setup dialog. When a version tag matches the integration manifest, GitHub Actions publishes the archive and the same release notes for Marketplace and HACS after tests and Hassfest pass. [Home Assistant Marketplace documentation](https://www.home-assistant.io/integrations/marketplace/)

@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Conectar el cortacésped",
-        "description": "Pon el cortacésped en modo de emparejamiento e introduce su dirección Bluetooth. Introduce el PIN si el modelo lo requiere.\n\n**Novedades principales**\n\n- Consulta y edita mapas, áreas de trabajo y zonas de exclusión AIM en modelos compatibles.\n- Gestiona el PIN, el perímetro EPOS o los ajustes de cable y guías según el modelo.\n\n[Ver el historial de cambios]({changelog_url})",
+        "description": "Pon el cortacésped en modo de emparejamiento e introduce su dirección Bluetooth. Introduce el PIN si el modelo lo requiere.\n\n{release_highlights}[Ver el historial de cambios]({changelog_url})",
         "data": {
           "address": "Dirección Bluetooth",
           "pin": "PIN del cortacésped"
@@ -12,7 +12,7 @@
       },
       "bluetooth_confirm": {
         "title": "Configurar {name}",
-        "description": "Pon el cortacésped en modo de emparejamiento e introduce su PIN si el modelo lo requiere.\n\n**Novedades principales**\n\n- Consulta y edita mapas, áreas de trabajo y zonas de exclusión AIM en modelos compatibles.\n- Gestiona el PIN, el perímetro EPOS o los ajustes de cable y guías según el modelo.\n\n[Ver el historial de cambios]({changelog_url})",
+        "description": "Pon el cortacésped en modo de emparejamiento e introduce su PIN si el modelo lo requiere.\n\n{release_highlights}[Ver el historial de cambios]({changelog_url})",
         "data": {
           "pin": "PIN del cortacésped"
         }

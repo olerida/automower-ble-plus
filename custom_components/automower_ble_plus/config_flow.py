@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+from pathlib import Path
 from struct import error as StructError
 from uuid import UUID
 
@@ -32,6 +33,16 @@ _SECRET = selector.TextSelector(
 _MAC = re.compile(r"(?:[A-F0-9]{2}:){5}[A-F0-9]{2}")
 _PIN = re.compile(r"[0-9]{4}")
 _CHANGELOG_URL = "https://github.com/olerida/automower-ble-plus/blob/main/CHANGELOG.md"
+_RELEASE_NOTES_PATH = Path(__file__).with_name("release_notes.md")
+
+
+def _read_release_highlights() -> str:
+    """Read the version and highlights packaged in the Marketplace ZIP."""
+    try:
+        notes = _RELEASE_NOTES_PATH.read_text(encoding="utf-8").strip()
+    except OSError, UnicodeError:
+        return ""
+    return f"{notes}\n\n" if notes else ""
 
 
 def normalize_address(value: str) -> str:
@@ -129,6 +140,9 @@ class AutomowerConfigFlow(ConfigFlow, domain=DOMAIN):
         description = {"name": getattr(self, "address", "")}
         if step != "reauth_confirm":
             description["changelog_url"] = _CHANGELOG_URL
+            description["release_highlights"] = await self.hass.async_add_executor_job(
+                _read_release_highlights
+            )
         return self.async_show_form(
             step_id=step,
             data_schema=self.add_suggested_values_to_schema(

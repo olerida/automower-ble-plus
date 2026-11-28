@@ -6,8 +6,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .features import I32, U32, Reading
 from .transport import AutomowerClient, CommandRejected
-from .wire import Command
+from .wire import Command, Event
 
+MOWER_CLOCK_EVENTS = Command(6746, 0)
+MOWER_CLOCK_OFFSET_UPDATED = 1
 MOWER_CLOCK = Reading(Command(4690, 2), U32)
 _SET_TIME = Command(4690, 3)
 _GET_TIME_ZONE = Command(6746, 1)
@@ -16,6 +18,17 @@ _GET_OFFSET = Reading(Command(6746, 3), I32)
 _SET_OFFSET = Command(6746, 4)
 _GET_AUTOMATIC_SYNC = Command(6746, 7)
 _SYNC_THRESHOLD = 60
+
+
+def is_mower_clock_update(event: Event) -> bool:
+    """Match a known clock time, offset or synchronization notification."""
+    return event.family == MOWER_CLOCK_EVENTS.family and (
+        (
+            event.event_id in (0, MOWER_CLOCK_OFFSET_UPDATED)
+            and len(event.payload) == U32.size
+        )
+        or (event.event_id == 2 and event.payload in (b"\x00", b"\x01"))
+    )
 
 
 async def _read_time_zone(client: AutomowerClient) -> tuple[str, int] | None:

@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from hashlib import md5
 from pathlib import Path
 from struct import pack, unpack_from
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from zlib import crc32
 from zoneinfo import ZoneInfo
@@ -43,6 +43,7 @@ from custom_components.automower_ble_plus import (
     binary_sensor,
     button,
     calendar,
+    config_flow,
     device_tracker,
     diagnostics,
     maps_panel,
@@ -150,6 +151,44 @@ def _entry(pin=None):
         subentries_data=(),
         unique_id="00:11:22:33:44:55",
     )
+
+
+@pytest.mark.asyncio
+async def test_setup_forms_show_highlights_from_the_installed_package(
+    tmp_path, monkeypatch
+):
+    hass = HomeAssistant(str(tmp_path))
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    notes = tmp_path / "release_notes.md"
+    monkeypatch.setattr(config_flow, "_RELEASE_NOTES_PATH", notes)
+    flow = config_flow.AutomowerConfigFlow()
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.context = {"source": "user"}
+    try:
+        form = await flow.async_step_user()
+        assert form["description_placeholders"]["release_highlights"] == ""
+
+        release_notes = "**v1.2.3**\n\n- A new model is supported.\n"
+        notes.write_text(release_notes)
+        manual = await flow.async_step_user()
+        discovered = await flow.async_step_bluetooth(
+            SimpleNamespace(address="00:11:22:33:44:55", name="Robi")
+        )
+        directory = Path(config_flow.__file__).with_name("translations")
+        for form in (manual, discovered):
+            assert form["type"] is FlowResultType.FORM
+            for locale in ("en", "es"):
+                strings = json.loads((directory / f"{locale}.json").read_bytes())
+                description = strings["config"]["step"][form["step_id"]]["description"]
+                rendered = description.format(**form["description_placeholders"])
+                assert release_notes.strip() in rendered
+                assert "[" in rendered and "/CHANGELOG.md)" in rendered
+        reauth = await flow.async_step_reauth_confirm()
+        assert "release_highlights" not in reauth["description_placeholders"]
+    finally:
+        await hass.async_stop(force=True)
 
 
 @pytest.mark.asyncio
@@ -1342,6 +1381,94 @@ async def test_synchronize_mower_clock_uses_local_calendar_time(
     else:
         assert "automatic_clock_sync" not in entities
     await coordinator.async_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("modern", [False, True])
+async def test_ble_clock_updates_refresh_local_clock_and_next_start(
+    tmp_path, monkeypatch, modern
+):
+    hass = HomeAssistant(str(tmp_path))
+    hass.config.time_zone = "UTC"
+    entry = _entry()
+    entry.runtime_data = coordinator = MowerCoordinator(hass, entry)
+    client = FakeAutomower420()
+    coordinator.client = client
+    connected = True
+
+    async def connect(_device):
+        nonlocal connected
+        connected = True
+        return ResponseResult.OK
+
+    monkeypatch.setattr(client, "is_connected", lambda: connected)
+    monkeypatch.setattr(client, "connect", connect, raising=False)
+    monkeypatch.setattr(
+        coordinator_module.bluetooth,
+        "async_ble_device_from_address",
+        lambda *args, **kwargs: object(),
+    )
+    clock, auto, subscription = Command(4690, 2), Command(6746, 7), Command(6746, 0)
+    zone, next_start = Command(6746, 1), Command(4658, 1)
+    client.values.update(
+        {
+            (clock, b""): U32.pack(1_800_000_000),
+            (next_start, b""): U32.pack(1_800_003_600),
+            (Command(4690, 4), b""): U32.pack(0),
+            (Command(4690, 14), b""): U32.pack(5),
+            (Command(4690, 15), b""): U32.pack(2),
+        }
+    )
+    if modern:
+        client.values.update(
+            {
+                (auto, b""): b"\x00",
+                (subscription, b""): b"",
+                (zone, b""): b"UTC\0",
+            }
+        )
+    try:
+        await coordinator._async_setup()
+        await coordinator.async_refresh()
+        await coordinator.async_refresh_optional()
+        await coordinator.async_refresh()
+        assert client.calls.count((subscription, b"")) == int(modern)
+        for malformed in (
+            Event(6746, 0, b"\0"),
+            Event(6746, 2, b"\x02"),
+            Event(6746, 3, U32.pack(1)),
+        ):
+            coordinator._async_on_event(malformed)
+        assert coordinator._event_refresh_task is None
+        if not modern:
+            coordinator._async_on_event(Event(6746, 0, U32.pack(1_800_000_300)))
+            assert coordinator._event_refresh_task is None
+            return
+        client.values[clock, b""] = U32.pack(1_800_000_300)
+        client.values[next_start, b""] = U32.pack(1_800_004_200)
+        client.values[zone, b""] = b"Europe/Madrid\0"
+        client.values[auto, b""] = b"\x01"
+        coordinator._async_on_event(Event(6746, 1, I32.pack(3600)))
+        await coordinator._event_refresh_task
+        assert coordinator.data["mower_clock"] == 1_800_000_300
+        assert coordinator.data["next_start"] == 1_800_004_200
+        assert coordinator.data["weekly_schedule"].time_zone.key == "Europe/Madrid"
+        assert coordinator.data["automatic_clock_sync"] == 1
+        assert not any(
+            command in (Command(4690, 3), Command(6746, 8))
+            for command, _ in client.calls
+        )
+
+        client.values[auto, b""] = b"\x00"
+        client.values[clock, b""] = U32.pack(1_800_000_500)
+        connected = False
+        await coordinator.async_refresh()
+        assert client.calls.count((subscription, b"")) == 2
+        assert coordinator.data["mower_clock"] == 1_800_000_500
+        assert coordinator.data["automatic_clock_sync"] == 0
+    finally:
+        await coordinator.async_shutdown()
+        await hass.async_stop(force=True)
 
 
 @pytest.mark.asyncio

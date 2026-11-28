@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.45.0
+
+- The Home Assistant setup dialog shows the release highlights for the installed version. The Marketplace release and the setup dialog use the same changelog entry.
+- On compatible models, Bluetooth clock notifications refresh the mower's clock, automatic synchronization switch, and next scheduled start. An offset change also refreshes the calendar's time zone.
+
 ## v0.44.0
 
 - Turning on automatic clock synchronization sets the mower's local time immediately and uses Home Assistant's time zone when the mower has none configured.

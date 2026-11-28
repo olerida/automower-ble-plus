@@ -44,7 +44,7 @@ def build_release(
     expected_tag = f"v{manifest['version']}"
     if tag is not None and tag != expected_tag:
         raise ValueError(f"The integration manifest requires tag {expected_tag}")
-    notes = release_notes(expected_tag) if notes_file is not None else None
+    notes = release_notes(expected_tag)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     destination = output_dir / metadata["filename"]
@@ -70,8 +70,13 @@ def build_release(
             package.writestr(
                 ZipInfo("LICENSE"), license_text, compress_type=ZIP_DEFLATED
             )
+            package.writestr(
+                ZipInfo("release_notes.md"),
+                f"**{expected_tag}**\n\n{notes}",
+                compress_type=ZIP_DEFLATED,
+            )
         archive.replace(destination)
-    if notes_file is not None and notes is not None:
+    if notes_file is not None:
         notes_file.write_text(notes, encoding="utf-8")
     return destination.resolve()
 

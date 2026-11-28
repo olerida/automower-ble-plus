@@ -171,8 +171,11 @@ from .models import (
 )
 from .mower_clock import (
     MOWER_CLOCK,
+    MOWER_CLOCK_EVENTS,
+    MOWER_CLOCK_OFFSET_UPDATED,
     async_set_mower_clock_component,
     async_sync_mower_clock,
+    is_mower_clock_update,
 )
 from .planner import (
     PLANNER_EVENTS,
@@ -342,6 +345,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._subscription_retry: dict[Command, float] = {}
         self._event_refresh_task: asyncio.Task | None = None
         self._calendar_update_pending = False
+        self._clock_refresh_pending = False
         self._connect_refresh_pending = False
         self._connect_pairing_active = False
         self._epos_refresh_pending = False
@@ -586,6 +590,16 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 self._calendar_time = U32.unpack(event.payload)[0]
             self._calendar_update_pending = True
             self._async_schedule_event_refresh()
+        elif MOWER_CLOCK_EVENTS in self._active_subscriptions and is_mower_clock_update(
+            event
+        ):
+            self._clock_refresh_pending = True
+            self._planner_refresh_pending = True
+            if event.event_id == MOWER_CLOCK_OFFSET_UPDATED and "weekly_schedule" in (
+                self.data or {}
+            ):
+                self._calendar_update_pending = True
+            self._async_schedule_event_refresh()
         elif is_planner_update(event):
             self._planner_refresh_pending = True
             self._async_schedule_event_refresh()
@@ -656,6 +670,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         await self.async_request_refresh()
         if (
             self._calendar_update_pending
+            or self._clock_refresh_pending
             or self._planner_refresh_pending
             or self._statistics_refresh_pending
             or self._map_refresh_pending
@@ -698,6 +713,7 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
         self._aim_refresh_pending = bool(AIM_KEYS & (self.data or {}).keys())
         if self.data and "weekly_schedule" in self.data:
             self._calendar_update_pending = True
+        self._clock_refresh_pending = "automatic_clock_sync" in self.setting_variants
         self._planner_refresh_pending = bool(
             self.data and {"restriction_reason", "next_start"} & self.data.keys()
         )
@@ -731,6 +747,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             commands += EPOS_CLOUD_EVENTS
         if self.data and AIM_KEYS & self.data.keys():
             commands += (AIM_EVENTS,)
+        if "automatic_clock_sync" in self.setting_variants:
+            commands += (MOWER_CLOCK_EVENTS,)
         if (
             profile
             and profile.statistics_subscription
@@ -882,6 +900,8 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
                 )
                 if self._calendar_update_pending and self.client.is_connected():
                     await self._async_refresh_calendar(data)
+                if self._clock_refresh_pending and self.client.is_connected():
+                    await self._async_refresh_clock(data)
                 if self._planner_refresh_pending and self.client.is_connected():
                     await self._async_refresh_planner(data)
                 if self._statistics_refresh_pending and self.client.is_connected():
@@ -988,6 +1008,21 @@ class MowerCoordinator(DataUpdateCoordinator[MowerData]):
             data["estimated_travel_distance"] = (
                 running_time * self._travel_speed_cm_per_second // 100
             )
+
+    async def _async_refresh_clock(self, data: MowerData) -> None:
+        self._clock_refresh_pending = False
+        variant = self.setting_variants.get("automatic_clock_sync")
+        if variant is None:
+            return
+        try:
+            mode = await self._read(variant.read)
+            if mode in (0, 1):
+                data["automatic_clock_sync"] = mode
+            data["mower_clock"] = await self._read(MOWER_CLOCK)
+        except MowerConnectionError:
+            self._clock_refresh_pending = True
+        except CommandRejected, ValueError:
+            LOGGER.debug("Could not refresh the mower clock after a clock event")
 
     async def _probe_setting(self, setting: Setting) -> int | None:
         previous = self.setting_variants.get(setting.key)
