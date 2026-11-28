@@ -46,6 +46,7 @@
           "wifi": "Wi-Fi networks",
           "reset": "Reset user settings",
           "change_pin": "Change PIN",
+          "remove_connect_pairings": "Remove paired Automower Connect accounts",
           "regenerate_aim_map": "Regenerate AIM map",
           "setup_epos_origin": "Set up Husqvarna Cloud EPOS origin",
           "change_epos_boundary": "Change perimeter type"
@@ -80,6 +81,14 @@
           "current_pin": "Current PIN",
           "new_pin": "New PIN",
           "confirm_pin": "Repeat new PIN"
+        }
+      },
+      "remove_connect_pairings": {
+        "title": "Remove paired Automower Connect accounts",
+        "description": "Remove {name} from every paired Automower Connect account. Those accounts will lose remote access and will need to pair again in the Automower Connect app.",
+        "data": {
+          "current_pin": "Current mower PIN",
+          "confirm_remove_connect_pairings": "Remove all paired Automower Connect accounts"
         }
       },
       "reset": {
@@ -123,6 +132,8 @@
     },
     "error": {
       "confirmation_required": "Confirm that you want to reset this mower.",
+      "connect_pairings_confirmation_required": "Confirm removal of all paired Automower Connect accounts.",
+      "connect_pairings_failed": "The request failed. Check the operator PIN, Bluetooth connection and Automower Connect module.",
       "invalid_pin": "Enter a four-digit PIN.",
       "pin_current_mismatch": "The current PIN must match the one configured in Home Assistant.",
       "pin_unchanged": "The new PIN must differ from the current PIN.",
@@ -138,6 +149,9 @@
     },
     "abort": {
       "mower_unavailable": "This mower's Home Assistant entry is unavailable.",
+      "connect_pairings_unavailable": "Account removal is unavailable for this mower or operator session.",
+      "connect_pairings_requested": "The mower accepted the request to remove all paired Automower Connect accounts.",
+      "connect_pairings_unconfirmed": "Home Assistant could not confirm the request. Check the account pairings in Automower Connect before trying again.",
       "epos_boundary_unavailable": "Changing the perimeter is unavailable on this mower.",
       "epos_boundary_failed": "The perimeter type could not be changed. Check the active installation and the mower status.",
       "epos_boundary_changed": "The mower confirmed the change. Home Assistant will read its settings again.",

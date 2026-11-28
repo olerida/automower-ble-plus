@@ -3869,6 +3869,106 @@ async def test_edit_aim_zones_and_work_areas_through_home_assistant(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("reply", ["acknowledged", "disconnected", "guest", "absent"])
+async def test_remove_connect_pairings_from_home_assistant(
+    tmp_path, monkeypatch, reply
+):
+    integrations = Path(__file__).resolve().parents[1] / "custom_components"
+    (tmp_path / "custom_components").symlink_to(integrations, target_is_directory=True)
+    hass = HomeAssistant(str(tmp_path))
+    loader.async_setup(hass)
+    hass.config.skip_pip = True
+    hass.config_entries = ConfigEntries(hass, {})
+    await hass.config_entries.async_initialize()
+    device_registry.async_setup(hass)
+    await asyncio.gather(
+        area_registry.async_load(hass),
+        device_registry.async_load(hass),
+        entity_registry.async_load(hass),
+        label_registry.async_load(hass),
+    )
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
+    hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    entry = _entry("0042")
+    client = FakeAutomower420()
+    operator, available, remove = Command(4664, 3), Command(4738, 0), Command(4738, 4)
+    client.values.update(
+        {
+            (operator, b""): b"\x00" if reply == "guest" else b"\x01",
+            (available, b""): b"\x00" if reply == "absent" else b"\x01",
+            (Command(4738, 2), b""): b"\x01",
+            (Command(4738, 10), b""): b"\x01\x55",
+            (remove, b""): b"",
+        }
+    )
+    send = client.command
+
+    async def command(operation, payload=b""):
+        result = await send(operation, payload)
+        if operation == remove and reply == "disconnected":
+            raise MowerConnectionError("BLE link lost after writing")
+        return result
+
+    monkeypatch.setattr(client, "command", command)
+    monkeypatch.setattr(coordinator_module, "AutomowerClient", lambda *args: client)
+    try:
+        async with asyncio.timeout(15):
+            assert await setup.async_setup_component(hass, DOMAIN, {})
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+            coordinator = entry.runtime_data
+            await coordinator.async_refresh_optional()
+            options = hass.config_entries.options
+            flow = await options.async_init(entry.entry_id)
+            if reply in ("guest", "absent"):
+                assert not coordinator.can_remove_connect_pairings
+                assert "remove_connect_pairings" not in flow.get("menu_options", ())
+                assert (remove, b"") not in client.calls
+                return
+
+            assert "remove_connect_pairings" in flow["menu_options"]
+            flow_id = flow["flow_id"]
+            flow = await options.async_configure(
+                flow_id, {"next_step_id": "remove_connect_pairings"}
+            )
+            assert flow["step_id"] == "remove_connect_pairings"
+            flow = await options.async_configure(
+                flow_id,
+                {"current_pin": "9999", "confirm_remove_connect_pairings": False},
+            )
+            assert flow["errors"] == {
+                "current_pin": "pin_current_mismatch",
+                "confirm_remove_connect_pairings": "connect_pairings_confirmation_required",
+            }
+            confirmation = {
+                "current_pin": "0042",
+                "confirm_remove_connect_pairings": True,
+            }
+            client.values[operator, b""] = b"\x00"
+            flow = await options.async_configure(flow_id, confirmation)
+            assert flow["errors"] == {"base": "connect_pairings_failed"}
+            assert (remove, b"") not in client.calls
+            client.values[operator, b""] = b"\x01"
+            client.values[available, b""] = b"\x00"
+            flow = await options.async_configure(flow_id, confirmation)
+            assert flow["errors"] == {"base": "connect_pairings_failed"}
+            assert (remove, b"") not in client.calls
+            client.values[available, b""] = b"\x01"
+            flow = await options.async_configure(flow_id, confirmation)
+            assert flow["type"] == FlowResultType.ABORT
+            assert flow["reason"] == (
+                "connect_pairings_requested"
+                if reply == "acknowledged"
+                else "connect_pairings_unconfirmed"
+            )
+            assert client.calls.count((remove, b"")) == 1
+            assert entry.state == ConfigEntryState.LOADED
+            assert entry.runtime_data is coordinator
+    finally:
+        await hass.async_stop(force=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "reply", ["acknowledged", "disconnected", "unsupported", "guest"]
 )

@@ -54,6 +54,7 @@ class FirmwareProfile:
     global_height_mm: int = 0
     headlight_themes: str = ""
     statistics_subscription: int = 0
+    connect_remove_pairings: int = 0
 
 
 @cache
@@ -183,4 +184,8 @@ def get_firmware_profile(
             for profile in releases
         )
         else 0,
+        connect_remove_pairings=int(
+            result.connect_remove_pairings
+            and all(profile and profile.connect_remove_pairings for profile in releases)
+        ),
     )

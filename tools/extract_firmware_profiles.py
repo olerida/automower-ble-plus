@@ -24,6 +24,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
     follow_wire_operations = {}
     mower_operations = {}
     connect_enabled_no_pin = 0
+    connect_remove_pairings = 0
     reset_operations = set()
     message_events = 0
     aim_map_regeneration = 0
@@ -99,6 +100,15 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
             and method["inParams"] == [{"name": "enabled", "type": "bool"}]
         ):
             connect_enabled_no_pin = 1
+        if (
+            method["family"] == "AutomowerConnect"
+            and method["command"] == "RemoveAllPairings"
+            and protocol.get("msgType") == "4738"
+            and protocol.get("subCmd") == "4"
+            and not method["inParams"]
+            and not method["outParams"]
+        ):
+            connect_remove_pairings = 1
         if (
             method["family"] == "System"
             and protocol.get("msgType") == "4698"
@@ -540,10 +550,11 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         global_height_mm,
         headlight_themes,
         statistics_subscription,
+        connect_remove_pairings,
     )
     return (
         result
-        if any(result[:-21])
+        if any(result[:-22])
         or boundary_corridor_read >= 0
         or passage_cutting_read
         or wire_test_states
@@ -563,6 +574,7 @@ def capabilities(profile: dict) -> tuple[int | str, ...] | None:
         or global_height_mm
         or headlight_themes
         or statistics_subscription
+        or connect_remove_pairings
         else None
     )
 

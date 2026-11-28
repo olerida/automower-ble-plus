@@ -191,6 +191,7 @@ class AutomowerMaintenanceFlow(OptionsFlow):
                 ("wifi", coordinator.can_configure_wifi),
                 ("reset", coordinator.can_reset_user_settings),
                 ("change_pin", coordinator.can_change_pin),
+                ("remove_connect_pairings", coordinator.can_remove_connect_pairings),
                 ("regenerate_aim_map", coordinator.can_regenerate_aim_map),
                 (
                     "setup_epos_origin",
@@ -446,6 +447,58 @@ class AutomowerMaintenanceFlow(OptionsFlow):
                 {
                     vol.Required(
                         "confirm_reset", default=False
+                    ): selector.BooleanSelector(),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"name": entry.title},
+        )
+
+    async def async_step_remove_connect_pairings(
+        self, user_input=None
+    ) -> ConfigFlowResult:
+        """Confirm account unlinking and ask for the mower's current PIN."""
+        entry = self.config_entry
+        if (
+            entry.state is not ConfigEntryState.LOADED
+            or not entry.runtime_data.can_remove_connect_pairings
+        ):
+            return self.async_abort(reason="connect_pairings_unavailable")
+
+        errors = {}
+        if user_input is not None:
+            current_pin = user_input["current_pin"]
+            if not _PIN.fullmatch(current_pin):
+                errors["current_pin"] = "invalid_pin"
+            elif current_pin != entry.data.get(CONF_PIN):
+                errors["current_pin"] = "pin_current_mismatch"
+            if not user_input["confirm_remove_connect_pairings"]:
+                errors["confirm_remove_connect_pairings"] = (
+                    "connect_pairings_confirmation_required"
+                )
+            if not errors:
+                try:
+                    acknowledged = (
+                        await entry.runtime_data.async_remove_connect_pairings(
+                            current_pin
+                        )
+                    )
+                except HomeAssistantError:
+                    errors["base"] = "connect_pairings_failed"
+                else:
+                    return self.async_abort(
+                        reason="connect_pairings_requested"
+                        if acknowledged
+                        else "connect_pairings_unconfirmed"
+                    )
+
+        return self.async_show_form(
+            step_id="remove_connect_pairings",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(vol.Secret("current_pin")): _SECRET,
+                    vol.Required(
+                        "confirm_remove_connect_pairings", default=False
                     ): selector.BooleanSelector(),
                 }
             ),

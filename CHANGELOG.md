@@ -1,5 +1,10 @@
 # Automower BLE Plus changelog
 
+## v0.42.0
+
+- Remove all paired Automower Connect accounts over Bluetooth from the integration's maintenance menu. This is available when the mower reports an installed Connect module and accepts an operator session.
+- Home Assistant asks for the current PIN and explicit confirmation, then reports whether the mower acknowledged the request.
+
 ## v0.41.0
 
 - Set the mower's local date and time separately from its device page in Home Assistant. Each control reads the latest clock before applying the edit.

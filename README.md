@@ -4,6 +4,7 @@ A Home Assistant integration for Husqvarna Automower robotic lawn mowers that su
 
 ## Highlights
 
+- **v0.42** · Remove paired Automower Connect accounts over Bluetooth on compatible mowers with a Connect module.
 - **v0.41** · Edit the mower's local date and time over Bluetooth, including on the known Automower 420 profile.
 - **v0.40** · View estimated distance travelled and receive live Bluetooth statistics on compatible firmware, including the known 420 profile.
 - **v0.39** · Choose the headlight theme on supported mowers.
@@ -37,6 +38,7 @@ Compatible mowers also expose spiral cutting and its intensity, along with any t
 
 - **Headlight theme** shows the lighting modes defined for the mower's firmware when the mower confirms that headlights are available. [Husqvarna Automower 550 EPOS manual](https://www-static-nw.husqvarna.com/hbd/tdrdownload/v2/pub000091766/doc000227307/OM/vNo9syZrADzn-OFbfZTVWYbWTzk)
 - **Estimated distance travelled** uses operating time and the mower model's nominal speed. Operating time, charging cycles, collisions and blade usage can also update when the mower sends a Bluetooth notification. [Husqvarna statistics guide](https://www.husqvarna.com/uk/support/what-statistics-does-automower-connect-show-and-how-often-is-it-updated-ka-01474/)
+- On a mower with an Automower Connect module, **Configure → Remove paired Automower Connect accounts** requests removal of all account pairings. Enter the current PIN and confirm that the accounts will lose remote access. [Husqvarna pairing removal guide](https://www.husqvarna.com/ca-en/support/how-to-remove-pairings-from-your-automower-robotic-lawn-mower-ka-01296/)
 
 - **TargetHeight in progress** shows whether the mower is gradually lowering the cutting height. It includes the reported duration when available. On models with a current-height reading, Home Assistant shows the actual height as a level or percentage. [Husqvarna TargetHeight guide](https://www.husqvarna.com/uk/support/automower-support-guide-by-season-ka-70343/)
 - **Global cutting height** shows the mower-wide target in millimetres when the firmware reports it. If the firmware supports native writes, the control uses the current range reported by the mower. The existing **Cutting height** level remains available on models that provide it, including the known 420 profile. [Husqvarna cutting height guide](https://www.husqvarna.com/uk/support/automower-support-guide-by-season-ka-70343/)

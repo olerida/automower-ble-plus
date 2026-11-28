@@ -23,7 +23,8 @@ CONNECT_STATE_OPTIONS = (
     "no_sim_card",
 )
 
-_AVAILABLE = Reading(Command(CONNECT_FAMILY, 0), U8)
+CONNECT_AVAILABLE = Reading(Command(CONNECT_FAMILY, 0), U8)
+REMOVE_CONNECT_PAIRINGS = Command(CONNECT_FAMILY, 4)
 _ENABLED = Reading(Command(CONNECT_FAMILY, 2), U8)
 _STATE = Reading(Command(CONNECT_FAMILY, 7), U8)
 _SIGNAL = Reading(Command(CONNECT_FAMILY, 8), U8)
@@ -51,7 +52,7 @@ async def _async_read(client: AutomowerClient, reading: Reading) -> int | None:
 
 async def async_read_connect_module(client: AutomowerClient) -> dict[str, int]:
     """Detect the module before reading enabled state, connection and signal."""
-    if await _async_read(client, _AVAILABLE) != 1:
+    if await _async_read(client, CONNECT_AVAILABLE) != 1:
         return {}
     enabled = await _async_read(client, _ENABLED)
     try:

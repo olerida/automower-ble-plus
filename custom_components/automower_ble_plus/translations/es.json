@@ -46,6 +46,7 @@
           "wifi": "Redes Wi-Fi",
           "reset": "Restablecer ajustes",
           "change_pin": "Cambiar el PIN",
+          "remove_connect_pairings": "Desvincular las cuentas de Automower Connect",
           "regenerate_aim_map": "Volver a generar el mapa AIM",
           "setup_epos_origin": "Configurar origen EPOS de Husqvarna Cloud",
           "change_epos_boundary": "Cambiar tipo de perímetro"
@@ -80,6 +81,14 @@
           "current_pin": "PIN actual",
           "new_pin": "Nuevo PIN",
           "confirm_pin": "Repite el nuevo PIN"
+        }
+      },
+      "remove_connect_pairings": {
+        "title": "Desvincular las cuentas de Automower Connect",
+        "description": "Desvincula {name} de todas las cuentas de Automower Connect. Esas cuentas perderán el acceso remoto y tendrán que vincularse de nuevo desde la app Automower Connect.",
+        "data": {
+          "current_pin": "PIN actual del cortacésped",
+          "confirm_remove_connect_pairings": "Desvincular todas las cuentas de Automower Connect"
         }
       },
       "reset": {
@@ -123,6 +132,8 @@
     },
     "error": {
       "confirmation_required": "Confirma que quieres restablecer los ajustes de este cortacésped.",
+      "connect_pairings_confirmation_required": "Confirma que quieres desvincular todas las cuentas de Automower Connect.",
+      "connect_pairings_failed": "La solicitud ha fallado. Comprueba el PIN, la conexión Bluetooth y el módulo Automower Connect.",
       "invalid_pin": "Introduce un PIN de cuatro cifras.",
       "pin_current_mismatch": "El PIN actual debe coincidir con el configurado en Home Assistant.",
       "pin_unchanged": "El nuevo PIN debe ser distinto del actual.",
@@ -138,6 +149,9 @@
     },
     "abort": {
       "mower_unavailable": "La entrada de este cortacésped no está disponible en Home Assistant.",
+      "connect_pairings_unavailable": "La desvinculación no está disponible para este cortacésped o esta sesión de operador.",
+      "connect_pairings_requested": "El cortacésped ha aceptado la solicitud de desvincular todas las cuentas de Automower Connect.",
+      "connect_pairings_unconfirmed": "Home Assistant no ha podido confirmar la solicitud. Comprueba las cuentas vinculadas en Automower Connect antes de volver a intentarlo.",
       "epos_boundary_unavailable": "El cambio de perímetro no está disponible en este cortacésped.",
       "epos_boundary_failed": "No se ha podido cambiar el tipo de perímetro. Comprueba el perfil activo y el estado del cortacésped.",
       "epos_boundary_changed": "El cortacésped ha confirmado el cambio. Home Assistant volverá a leer la configuración.",
